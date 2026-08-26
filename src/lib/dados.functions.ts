@@ -2,8 +2,8 @@
  * Server functions que executam as consultas no PostgreSQL.
  *
  * Nada é configurado à mão: quando a variável DATABASE_URL existe, a primeira
- * chamada já cria todas as tabelas/colunas (ver src/lib/pg.server.ts).
- * Sem DATABASE_URL, `bancoPronto` avisa o navegador para usar o modo local.
+ * chamada já cria todas as tabelas/colunas (ver src/lib/pg.server.ts). Sem
+ * DATABASE_URL, as chamadas retornam erro — não há mais fallback local.
  */
 import { createServerFn } from "@tanstack/react-start";
 
@@ -36,8 +36,8 @@ export interface RespostaRemota {
 }
 
 // O driver do Postgres devolve colunas date/timestamp como objetos `Date`.
-// O app inteiro (e o modo local, sem banco) trabalha com strings ISO, então
-// normalizamos aqui antes de responder ao navegador.
+// O app inteiro trabalha com strings ISO, então normalizamos aqui antes de
+// responder ao navegador.
 function normalizarLinha(linha: unknown): unknown {
   if (linha === null || typeof linha !== "object") return linha;
   const normalizada: Record<string, unknown> = {};
@@ -63,21 +63,6 @@ const TABELAS_PERMITIDAS = new Set([
   "financeiro_lancamentos",
   "eventos_agenda",
 ]);
-
-// ---------------------------------------------------------------------------
-// Status do banco
-// ---------------------------------------------------------------------------
-
-export const bancoPronto = createServerFn({ method: "GET" }).handler(async () => {
-  const { urlBanco, conexao } = await import("./pg.server");
-  if (!urlBanco()) return { configurado: false };
-  try {
-    await conexao(); // cria as tabelas na primeira vez
-    return { configurado: true };
-  } catch {
-    return { configurado: false };
-  }
-});
 
 // ---------------------------------------------------------------------------
 // Consulta genérica (espelha o que as telas usam)
