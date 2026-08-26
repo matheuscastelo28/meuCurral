@@ -35,6 +35,22 @@ export interface RespostaRemota {
   count: number;
 }
 
+// O driver do Postgres devolve colunas date/timestamp como objetos `Date`.
+// O app inteiro (e o modo local, sem banco) trabalha com strings ISO, então
+// normalizamos aqui antes de responder ao navegador.
+function normalizarLinha(linha: unknown): unknown {
+  if (linha === null || typeof linha !== "object") return linha;
+  const normalizada: Record<string, unknown> = {};
+  for (const [chave, valor] of Object.entries(linha as Record<string, unknown>)) {
+    normalizada[chave] = valor instanceof Date ? valor.toISOString() : valor;
+  }
+  return normalizada;
+}
+
+function normalizarLinhas(linhas: unknown[]): unknown[] {
+  return linhas.map(normalizarLinha);
+}
+
 // Tabelas que o navegador pode acessar (proteção básica).
 const TABELAS_PERMITIDAS = new Set([
   "perfis",
@@ -107,7 +123,7 @@ export const consultar = createServerFn({ method: "POST" })
         const entrada = Array.isArray(pedido.valores) ? pedido.valores : [pedido.valores ?? {}];
         if (entrada.length === 0) return { data: [], error: null, count: 0 };
         const criadas: any[] = await sql`insert into ${sql(tabela)} ${sql(entrada as any)} returning *`;
-        return { data: criadas, error: null, count: criadas.length };
+        return { data: normalizarLinhas(criadas), error: null, count: criadas.length };
       }
 
       // ----- UPDATE -----
@@ -115,7 +131,7 @@ export const consultar = createServerFn({ method: "POST" })
         const atualizadas: any[] = await sql`
           update ${sql(tabela)} set ${sql((pedido.valores ?? {}) as any)}, updated_at = now()
           where ${onde} returning *`;
-        return { data: atualizadas, error: null, count: atualizadas.length };
+        return { data: normalizarLinhas(atualizadas), error: null, count: atualizadas.length };
       }
 
       // ----- DELETE -----
@@ -169,6 +185,7 @@ export const consultar = createServerFn({ method: "POST" })
         }
       }
 
+      linhas = normalizarLinhas(linhas);
       const total = linhas.length;
 
       if (pedido.umUnico) {

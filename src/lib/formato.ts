@@ -14,10 +14,10 @@ export function pesoTexto(kg: number | null | undefined, unidade = "kg") {
   return `${numero.toLocaleString("pt-BR", { maximumFractionDigits: 1 })} kg`;
 }
 
-
-export function dataCurta(iso: string | null | undefined) {
+export function dataCurta(iso: string | Date | null | undefined) {
   if (!iso) return "—";
-  const [ano, mes, dia] = iso.slice(0, 10).split("-");
+  const texto = iso instanceof Date ? iso.toISOString() : iso;
+  const [ano, mes, dia] = texto.slice(0, 10).split("-");
   return `${dia}/${mes}/${ano}`;
 }
 
@@ -28,14 +28,14 @@ export function hojeISO() {
   return `${d.getFullYear()}-${mes}-${dia}`;
 }
 
-export function idadeEmMeses(nascimento: string | null | undefined) {
+export function idadeEmMeses(nascimento: string | Date | null | undefined) {
   if (!nascimento) return null;
   const nasc = new Date(nascimento);
   const hoje = new Date();
   return (hoje.getFullYear() - nasc.getFullYear()) * 12 + (hoje.getMonth() - nasc.getMonth());
 }
 
-export function idadeTexto(nascimento: string | null | undefined) {
+export function idadeTexto(nascimento: string | Date | null | undefined) {
   const meses = idadeEmMeses(nascimento);
   if (meses === null || meses < 0) return "—";
   if (meses < 24) return `${meses} ${meses === 1 ? "mês" : "meses"}`;
