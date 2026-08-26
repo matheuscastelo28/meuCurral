@@ -223,6 +223,7 @@ class Consulta implements PromiseLike<Resposta> {
     }
     const resposta = await consultar({
       data: {
+        token: tokenSessao(),
         tabela: this.tabela,
         modo: this.modo,
         colunas: this.colunas,

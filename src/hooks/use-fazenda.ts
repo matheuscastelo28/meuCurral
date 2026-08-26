@@ -32,6 +32,7 @@ export function useFazenda() {
       const { data, error } = await db
         .from("fazendas")
         .select("id, nome, cidade, estado, plano, dono_id, produtos_leite")
+        .eq("dono_id", user.id)
         .order("created_at", { ascending: true })
         .limit(1);
       if (error) throw error;
