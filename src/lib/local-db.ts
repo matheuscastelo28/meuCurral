@@ -16,6 +16,8 @@ import {
   sair,
   atualizarUsuario,
   excluirConta,
+  enviarCodigoVerificacao,
+  verificarCodigoEmail,
   type FiltroRemoto,
 } from "@/lib/dados.functions";
 
@@ -292,24 +294,27 @@ const auth = {
   async signUp(params: {
     email: string;
     password: string;
+    nomeFazenda: string;
+    cidade?: string | null;
+    estado?: string | null;
     options?: {
       emailRedirectTo?: string;
       data?: { nome?: string | null; objetivo?: string | null };
     };
   }) {
-    const r = await cadastrar({
+    // Não loga automaticamente: a conta só ganha sessão depois que o e-mail
+    // é confirmado com o código de 6 dígitos (ver auth.verificarCodigo).
+    return cadastrar({
       data: {
         email: params.email,
         senha: params.password,
         nome: params.options?.data?.nome ?? null,
         objetivo: params.options?.data?.objetivo ?? null,
+        nomeFazenda: params.nomeFazenda,
+        cidade: params.cidade ?? null,
+        estado: params.estado ?? null,
       },
     });
-    if (!r.error && r.data.session) {
-      guardarToken(r.data.session.access_token);
-      avisar("SIGNED_IN");
-    }
-    return r;
   },
 
   async signInWithPassword(params: { email: string; password: string }) {
@@ -319,6 +324,21 @@ const auth = {
       avisar("SIGNED_IN");
     }
     return r;
+  },
+
+  /** Confirma o código de 6 dígitos e, se estiver certo, já cria a sessão. */
+  async verificarCodigo(params: { email: string; codigo: string }) {
+    const r = await verificarCodigoEmail({ data: { email: params.email, codigo: params.codigo } });
+    if (!r.error && r.data.session) {
+      guardarToken(r.data.session.access_token);
+      avisar("SIGNED_IN");
+    }
+    return r;
+  },
+
+  /** Pede um novo código de verificação (sujeito a cooldown de 60s no servidor). */
+  async reenviarCodigo(params: { email: string }) {
+    return enviarCodigoVerificacao({ data: { email: params.email } });
   },
 
   async signOut(_opcoes?: { scope?: string }) {
