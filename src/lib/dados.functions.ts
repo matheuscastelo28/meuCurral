@@ -2,10 +2,11 @@
  * Server functions que executam as consultas no PostgreSQL.
  *
  * Nada é configurado à mão: quando a variável DATABASE_URL existe, a primeira
- * chamada já cria todas as tabelas/colunas (ver src/lib/pg.server.ts).
- * Sem DATABASE_URL, `bancoPronto` avisa o navegador para usar o modo local.
+ * chamada já cria todas as tabelas/colunas (ver src/lib/pg.server.ts). Sem
+ * DATABASE_URL, as chamadas retornam erro — não há mais fallback local.
  */
 import { createServerFn } from "@tanstack/react-start";
+import type { Sql } from "./pg.server";
 
 // ---------------------------------------------------------------------------
 // Tipos trocados com o navegador
@@ -18,6 +19,7 @@ export interface FiltroRemoto {
 }
 
 export interface PedidoConsulta {
+  token: string | null;
   tabela: string;
   modo: "select" | "insert" | "update" | "delete";
   colunas?: string;
@@ -35,6 +37,32 @@ export interface RespostaRemota {
   count: number;
 }
 
+// O driver do Postgres devolve colunas date/timestamp como objetos `Date`.
+// O app inteiro trabalha com strings ISO, então normalizamos aqui antes de
+// responder ao navegador.
+function normalizarLinha(linha: unknown): unknown {
+  if (linha === null || typeof linha !== "object") return linha;
+  const normalizada: Record<string, unknown> = {};
+  for (const [chave, valor] of Object.entries(linha as Record<string, unknown>)) {
+    normalizada[chave] = valor instanceof Date ? valor.toISOString() : valor;
+  }
+  return normalizada;
+}
+
+function normalizarLinhas(linhas: unknown[]): unknown[] {
+  return linhas.map(normalizarLinha);
+}
+
+async function usuarioIdDaSessao(
+  sql: Sql,
+  token: string | null | undefined,
+): Promise<string | null> {
+  if (!token) return null;
+  const sessoes: { user_id: string }[] =
+    await sql`select user_id from sessoes where token = ${token} limit 1`;
+  return sessoes[0]?.user_id ?? null;
+}
+
 // Tabelas que o navegador pode acessar (proteção básica).
 const TABELAS_PERMITIDAS = new Set([
   "perfis",
@@ -47,21 +75,6 @@ const TABELAS_PERMITIDAS = new Set([
   "financeiro_lancamentos",
   "eventos_agenda",
 ]);
-
-// ---------------------------------------------------------------------------
-// Status do banco
-// ---------------------------------------------------------------------------
-
-export const bancoPronto = createServerFn({ method: "GET" }).handler(async () => {
-  const { urlBanco, conexao } = await import("./pg.server");
-  if (!urlBanco()) return { configurado: false };
-  try {
-    await conexao(); // cria as tabelas na primeira vez
-    return { configurado: true };
-  } catch {
-    return { configurado: false };
-  }
-});
 
 // ---------------------------------------------------------------------------
 // Consulta genérica (espelha o que as telas usam)
@@ -77,6 +90,29 @@ export const consultar = createServerFn({ method: "POST" })
       const { conexao } = await import("./pg.server");
       const sql = await conexao();
       const tabela = pedido.tabela;
+
+      const userId = await usuarioIdDaSessao(sql, pedido.token);
+      if (!userId) {
+        return { data: [], error: { message: "Não autenticado." }, count: 0 };
+      }
+
+      let fazendasDoUsuarioCache: string[] | null = null;
+      async function fazendasDoUsuario(): Promise<string[]> {
+        if (!fazendasDoUsuarioCache) {
+          const linhas: { id: string }[] =
+            await sql`select id from fazendas where dono_id = ${userId}`;
+          fazendasDoUsuarioCache = linhas.map((l) => l.id);
+        }
+        return fazendasDoUsuarioCache;
+      }
+
+      // Fragmento de posse: toda consulta é restrita ao que pertence ao
+      // usuário autenticado, mesmo que o navegador não mande esse filtro.
+      const fragmentoPosse = (prefixo = ""): any => {
+        if (tabela === "perfis") return sql`${sql(`${prefixo}id`)} = ${userId}`;
+        if (tabela === "fazendas") return sql`${sql(`${prefixo}dono_id`)} = ${userId}`;
+        return sql`${sql(`${prefixo}fazenda_id`)} in (select id from fazendas where dono_id = ${userId})`;
+      };
 
       const frag = (f: FiltroRemoto): any => {
         const col = sql(f.coluna);
@@ -95,10 +131,8 @@ export const consultar = createServerFn({ method: "POST" })
             return sql`(${col} is null or not (${col} = any(${f.valor as any})))`;
         }
       };
-      const montarOnde = (filtros: FiltroRemoto[]): any =>
-        filtros.length === 0
-          ? sql`true`
-          : filtros.slice(1).reduce((acc: any, f) => sql`${acc} and ${frag(f)}`, frag(filtros[0]!));
+      const montarOnde = (filtros: FiltroRemoto[], prefixo = ""): any =>
+        filtros.reduce((acc: any, f) => sql`${acc} and ${frag(f)}`, fragmentoPosse(prefixo));
 
       const onde = montarOnde(pedido.filtros ?? []);
 
@@ -106,16 +140,41 @@ export const consultar = createServerFn({ method: "POST" })
       if (pedido.modo === "insert") {
         const entrada = Array.isArray(pedido.valores) ? pedido.valores : [pedido.valores ?? {}];
         if (entrada.length === 0) return { data: [], error: null, count: 0 };
-        const criadas: any[] = await sql`insert into ${sql(tabela)} ${sql(entrada as any)} returning *`;
-        return { data: criadas, error: null, count: criadas.length };
+
+        let entradaSegura: Record<string, unknown>[];
+        if (tabela === "perfis") {
+          entradaSegura = entrada.map((v) => ({ ...v, id: userId }));
+        } else if (tabela === "fazendas") {
+          entradaSegura = entrada.map((v) => ({ ...v, dono_id: userId }));
+        } else {
+          const idsPermitidos = await fazendasDoUsuario();
+          const invalida = entrada.some(
+            (v) => !idsPermitidos.includes(String((v as Record<string, unknown>)["fazenda_id"])),
+          );
+          if (invalida) return { data: [], error: { message: "Fazenda inválida." }, count: 0 };
+          entradaSegura = entrada as Record<string, unknown>[];
+        }
+
+        const criadas: any[] =
+          await sql`insert into ${sql(tabela)} ${sql(entradaSegura as any)} returning *`;
+        return { data: normalizarLinhas(criadas), error: null, count: criadas.length };
       }
 
       // ----- UPDATE -----
       if (pedido.modo === "update") {
+        const valoresAtualizacao: Record<string, unknown> = { ...(pedido.valores as any) };
+        if (tabela === "perfis") delete valoresAtualizacao["id"];
+        if (tabela === "fazendas") delete valoresAtualizacao["dono_id"];
+        if (tabela !== "perfis" && tabela !== "fazendas" && "fazenda_id" in valoresAtualizacao) {
+          const idsPermitidos = await fazendasDoUsuario();
+          if (!idsPermitidos.includes(String(valoresAtualizacao["fazenda_id"]))) {
+            return { data: [], error: { message: "Fazenda inválida." }, count: 0 };
+          }
+        }
         const atualizadas: any[] = await sql`
-          update ${sql(tabela)} set ${sql((pedido.valores ?? {}) as any)}, updated_at = now()
+          update ${sql(tabela)} set ${sql(valoresAtualizacao as any)}, updated_at = now()
           where ${onde} returning *`;
-        return { data: atualizadas, error: null, count: atualizadas.length };
+        return { data: normalizarLinhas(atualizadas), error: null, count: atualizadas.length };
       }
 
       // ----- DELETE -----
@@ -139,6 +198,7 @@ export const consultar = createServerFn({ method: "POST" })
         // Relação simples usada no app: traz o nome do animal junto.
         const ondeJoin = montarOnde(
           (pedido.filtros ?? []).map((f) => ({ ...f, coluna: `t.${f.coluna}` })),
+          "t.",
         );
         const ordemJoin = ordenacao
           ? sql`order by ${sql(`t.${ordenacao.coluna}`)} ${ordenacao.asc ? sql`asc` : sql`desc`} nulls last`
@@ -169,6 +229,7 @@ export const consultar = createServerFn({ method: "POST" })
         }
       }
 
+      linhas = normalizarLinhas(linhas);
       const total = linhas.length;
 
       if (pedido.umUnico) {

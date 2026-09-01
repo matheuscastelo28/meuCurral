@@ -17,7 +17,7 @@ import {
 } from "@/components/ui/dialog";
 import { useFazenda } from "@/hooks/use-fazenda";
 import { apagarRegistrosDaFazenda, exportarDadosDaFazenda } from "@/lib/exportar";
-import { excluirContaLocal } from "@/lib/local-db";
+import { excluirContaAtual } from "@/lib/local-db";
 import { CartaoConfig } from "./CartaoConfig";
 
 type Acao = "limpar" | "excluir" | null;
@@ -57,7 +57,7 @@ export function SecaoDados() {
         toast.success("Todos os registros foram apagados.");
         fechar();
       } else {
-        await excluirContaLocal();
+        await excluirContaAtual();
         queryClient.clear();
         await db.auth.signOut();
         navigate({ to: "/", replace: true });
