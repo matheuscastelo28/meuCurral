@@ -58,6 +58,10 @@ function VerificarEmail() {
     expira ? new Date(expira).getTime() : Date.now() + DURACAO_PADRAO_S * 1000,
   );
   const [bloqueadoAte, setBloqueadoAte] = useState<number>(() => Date.now() + COOLDOWN_S * 1000);
+  // Separado do relógio de fundo: o contador só atualiza a cada 1s, então
+  // depender só dele pra "expirado" deixa uma janela de até 1s em que os
+  // inputs continuam clicáveis mesmo já bloqueados no servidor.
+  const [bloqueio, setBloqueio] = useState<"expirado" | "tentativas" | null>(null);
   const [agora, setAgora] = useState(() => Date.now());
   const refs = useRef<Array<HTMLInputElement | null>>([]);
 
@@ -71,7 +75,7 @@ function VerificarEmail() {
   }, []);
 
   const segundosRestantes = Math.max(0, Math.ceil((expiraEm - agora) / 1000));
-  const expirado = segundosRestantes <= 0;
+  const expirado = bloqueio !== null || segundosRestantes <= 0;
   const cooldownRestante = Math.max(0, Math.ceil((bloqueadoAte - agora) / 1000));
 
   function focarPrimeiro() {
@@ -106,10 +110,10 @@ function VerificarEmail() {
         );
       } else if (err.code === "codigo_expirado") {
         setErro("Esse código expirou. Peça um novo abaixo.");
-        setExpiraEm(Date.now());
+        setBloqueio("expirado");
       } else if (err.code === "muitas_tentativas") {
         setErro("Muitas tentativas erradas. Peça um novo código abaixo.");
-        setExpiraEm(Date.now());
+        setBloqueio("tentativas");
       } else {
         setErro("Não conseguimos confirmar agora. Tente de novo.");
       }
@@ -137,6 +141,7 @@ function VerificarEmail() {
       return;
     }
     setBloqueadoAte(Date.now() + COOLDOWN_S * 1000);
+    setBloqueio(null);
     if (data?.expiraEm) setExpiraEm(new Date(data.expiraEm).getTime());
     else setExpiraEm(Date.now() + DURACAO_PADRAO_S * 1000);
     limpar();
@@ -228,7 +233,9 @@ function VerificarEmail() {
           </div>
 
           <p className="mt-3 text-center text-xs text-muted-foreground">
-            {expirado ? (
+            {bloqueio === "tentativas" ? (
+              <span className="font-medium text-destructive">Peça um novo código abaixo.</span>
+            ) : expirado ? (
               <span className="font-medium text-destructive">
                 Código expirado — peça um novo abaixo.
               </span>
