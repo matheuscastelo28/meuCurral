@@ -15,6 +15,7 @@ import { Route as AuthRouteImport } from './routes/auth'
 import { Route as CadastroRouteImport } from './routes/cadastro'
 import { Route as PrivacidadeRouteImport } from './routes/privacidade'
 import { Route as TermosRouteImport } from './routes/termos'
+import { Route as VerificarEmailRouteImport } from './routes/verificar-email'
 import { Route as AuthenticatedCalendarioRouteImport } from './routes/_authenticated/calendario'
 import { Route as AuthenticatedConfigRouteImport } from './routes/_authenticated/config'
 import { Route as AuthenticatedEngordaRouteImport } from './routes/_authenticated/engorda'
@@ -52,6 +53,11 @@ const PrivacidadeRoute = PrivacidadeRouteImport.update({
 const TermosRoute = TermosRouteImport.update({
   id: '/termos',
   path: '/termos',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const VerificarEmailRoute = VerificarEmailRouteImport.update({
+  id: '/verificar-email',
+  path: '/verificar-email',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AuthenticatedCalendarioRoute = AuthenticatedCalendarioRouteImport.update({
@@ -106,6 +112,7 @@ export interface FileRoutesByFullPath {
   '/cadastro': typeof CadastroRoute
   '/privacidade': typeof PrivacidadeRoute
   '/termos': typeof TermosRoute
+  '/verificar-email': typeof VerificarEmailRoute
   '/calendario': typeof AuthenticatedCalendarioRoute
   '/config': typeof AuthenticatedConfigRoute
   '/engorda': typeof AuthenticatedEngordaRoute
@@ -122,6 +129,7 @@ export interface FileRoutesByTo {
   '/cadastro': typeof CadastroRoute
   '/privacidade': typeof PrivacidadeRoute
   '/termos': typeof TermosRoute
+  '/verificar-email': typeof VerificarEmailRoute
   '/calendario': typeof AuthenticatedCalendarioRoute
   '/config': typeof AuthenticatedConfigRoute
   '/engorda': typeof AuthenticatedEngordaRoute
@@ -140,6 +148,7 @@ export interface FileRoutesById {
   '/cadastro': typeof CadastroRoute
   '/privacidade': typeof PrivacidadeRoute
   '/termos': typeof TermosRoute
+  '/verificar-email': typeof VerificarEmailRoute
   '/_authenticated/calendario': typeof AuthenticatedCalendarioRoute
   '/_authenticated/config': typeof AuthenticatedConfigRoute
   '/_authenticated/engorda': typeof AuthenticatedEngordaRoute
@@ -158,6 +167,7 @@ export interface FileRouteTypes {
     | '/cadastro'
     | '/privacidade'
     | '/termos'
+    | '/verificar-email'
     | '/calendario'
     | '/config'
     | '/engorda'
@@ -174,6 +184,7 @@ export interface FileRouteTypes {
     | '/cadastro'
     | '/privacidade'
     | '/termos'
+    | '/verificar-email'
     | '/calendario'
     | '/config'
     | '/engorda'
@@ -191,6 +202,7 @@ export interface FileRouteTypes {
     | '/cadastro'
     | '/privacidade'
     | '/termos'
+    | '/verificar-email'
     | '/_authenticated/calendario'
     | '/_authenticated/config'
     | '/_authenticated/engorda'
@@ -209,6 +221,7 @@ export interface RootRouteChildren {
   CadastroRoute: typeof CadastroRoute
   PrivacidadeRoute: typeof PrivacidadeRoute
   TermosRoute: typeof TermosRoute
+  VerificarEmailRoute: typeof VerificarEmailRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -253,6 +266,13 @@ declare module '@tanstack/react-router' {
       path: '/termos'
       fullPath: '/termos'
       preLoaderRoute: typeof TermosRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/verificar-email': {
+      id: '/verificar-email'
+      path: '/verificar-email'
+      fullPath: '/verificar-email'
+      preLoaderRoute: typeof VerificarEmailRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/_authenticated/calendario': {
@@ -355,6 +375,7 @@ const rootRouteChildren: RootRouteChildren = {
   CadastroRoute: CadastroRoute,
   PrivacidadeRoute: PrivacidadeRoute,
   TermosRoute: TermosRoute,
+  VerificarEmailRoute: VerificarEmailRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

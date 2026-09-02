@@ -42,7 +42,6 @@ function Cadastro() {
   const [aceite, setAceite] = useState(false);
   const [enviando, setEnviando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
-  const [sucesso, setSucesso] = useState<string | null>(null);
 
   const forca = forcaSenha(senha);
   const planoGratis = PLANOS[0]!;
@@ -59,7 +58,6 @@ function Cadastro() {
       return;
     }
     setErro(null);
-    setSucesso(null);
     setEnviando(true);
     const timeout = setTimeout(() => {
       setErro(
@@ -70,6 +68,9 @@ function Cadastro() {
       const { data, error } = await db.auth.signUp({
         email: email.trim(),
         password: senha,
+        nomeFazenda: nomeFazenda.trim(),
+        cidade: cidade.trim() || null,
+        estado: estado.trim() || null,
         options: {
           emailRedirectTo: window.location.origin,
           data: { nome: nome.trim(), objetivo },
@@ -77,23 +78,13 @@ function Cadastro() {
       });
       if (error) throw error;
 
-      if (!data.session) {
-        setSucesso(
-          "Conta criada! Confirme seu e-mail para entrar. Se não receber, verifique a caixa de spam.",
-        );
-        return;
-      }
-
-      await db.from("perfis").update({ nome: nome.trim(), objetivo }).eq("id", data.user!.id);
-      const { error: erroFazenda } = await db.from("fazendas").insert({
-        nome: nomeFazenda.trim(),
-        cidade: cidade.trim() || null,
-        estado: estado.trim() || null,
-        dono_id: data.user!.id,
+      navigate({
+        to: "/verificar-email",
+        search: {
+          email: data.email ?? email.trim(),
+          expira: data.expiraEm ?? undefined,
+        },
       });
-      if (erroFazenda) throw erroFazenda;
-
-      navigate({ to: "/inicio", replace: true });
     } catch (err) {
       const msg = err instanceof Error ? err.message.toLowerCase() : "";
       if (msg.includes("already") || msg.includes("registered")) {
@@ -323,12 +314,6 @@ function Cadastro() {
           ) : null}
         </div>
 
-        {sucesso ? (
-          <p role="status" className="mt-5 rounded-lg bg-success/10 px-3 py-2 text-sm text-success">
-            {sucesso}
-          </p>
-        ) : null}
-
         {erro ? (
           <p
             role="alert"
@@ -363,7 +348,7 @@ function Cadastro() {
           ) : (
             <Button size="lg" className="flex-1" onClick={criarConta} disabled={enviando}>
               {enviando ? <Loader2 className="size-4 animate-spin" aria-hidden="true" /> : null}
-              {enviando ? "Criando conta..." : "Criar conta e entrar"}
+              {enviando ? "Criando conta..." : "Criar conta"}
             </Button>
           )}
         </div>

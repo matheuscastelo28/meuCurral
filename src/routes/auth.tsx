@@ -43,7 +43,22 @@ function Login() {
     }, 12000);
     try {
       const { error } = await db.auth.signInWithPassword({ email: email.trim(), password: senha });
-      if (error) throw error;
+      if (error) {
+        const err = error as {
+          message: string;
+          code?: string;
+          email?: string;
+          expiraEm?: string | null;
+        };
+        if (err.code === "email_nao_verificado") {
+          navigate({
+            to: "/verificar-email",
+            search: { email: err.email ?? email.trim(), expira: err.expiraEm ?? undefined },
+          });
+          return;
+        }
+        throw error;
+      }
       navigate({ to: "/inicio", replace: true });
     } catch (err) {
       const msg = err instanceof Error ? err.message : "";
@@ -119,7 +134,10 @@ function Login() {
           </div>
 
           {erro ? (
-            <p role="alert" className="rounded-lg bg-destructive/10 px-3 py-2 text-sm text-destructive">
+            <p
+              role="alert"
+              className="rounded-lg bg-destructive/10 px-3 py-2 text-sm text-destructive"
+            >
               {erro}
             </p>
           ) : null}
@@ -141,7 +159,10 @@ function Login() {
 
         <p className="mt-8 text-sm text-muted-foreground">
           Primeiro acesso?{" "}
-          <Link to="/cadastro" className="font-medium text-primary underline-offset-4 hover:underline">
+          <Link
+            to="/cadastro"
+            className="font-medium text-primary underline-offset-4 hover:underline"
+          >
             Criar conta grátis
           </Link>
         </p>

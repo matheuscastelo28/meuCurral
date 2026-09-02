@@ -49,14 +49,30 @@ create table if not exists usuarios (
   senha_hash text not null,
   nome text,
   objetivo text,
+  email_verificado boolean not null default true,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
+
+-- Contas criadas antes deste recurso existir já contam como verificadas
+-- (default true acima). O cadastro passa email_verificado = false na hora
+-- de criar a conta, então só quem se cadastra a partir de agora precisa
+-- confirmar o e-mail.
+alter table usuarios add column if not exists email_verificado boolean not null default true;
 
 create table if not exists sessoes (
   token text primary key,
   user_id uuid not null references usuarios(id) on delete cascade,
   created_at timestamptz not null default now()
+);
+
+-- Um código pendente por usuário: pedir um novo substitui o anterior.
+create table if not exists verificacoes_email (
+  user_id uuid primary key references usuarios(id) on delete cascade,
+  codigo_hash text not null,
+  tentativas integer not null default 0,
+  expira_em timestamptz not null,
+  enviado_em timestamptz not null default now()
 );
 
 create table if not exists perfis (
