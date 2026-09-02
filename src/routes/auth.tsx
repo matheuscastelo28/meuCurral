@@ -49,11 +49,16 @@ function Login() {
           code?: string;
           email?: string;
           expiraEm?: string | null;
+          avisoEnvio?: boolean;
         };
         if (err.code === "email_nao_verificado") {
           navigate({
             to: "/verificar-email",
-            search: { email: err.email ?? email.trim(), expira: err.expiraEm ?? undefined },
+            search: {
+              email: err.email ?? email.trim(),
+              expira: err.expiraEm ?? undefined,
+              aviso: err.avisoEnvio ? "1" : undefined,
+            },
           });
           return;
         }

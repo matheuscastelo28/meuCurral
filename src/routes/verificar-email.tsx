@@ -23,9 +23,10 @@ interface ErroReenvio {
 export const Route = createFileRoute("/verificar-email")({
   validateSearch: (
     busca: Record<string, unknown>,
-  ): { email: string; expira?: string | undefined } => ({
+  ): { email: string; expira?: string | undefined; aviso?: string | undefined } => ({
     email: typeof busca["email"] === "string" ? busca["email"] : "",
     expira: typeof busca["expira"] === "string" ? busca["expira"] : undefined,
+    aviso: typeof busca["aviso"] === "string" ? busca["aviso"] : undefined,
   }),
   head: () => ({
     meta: [
@@ -47,13 +48,14 @@ function formatarTempo(segundos: number) {
 }
 
 function VerificarEmail() {
-  const { email, expira } = Route.useSearch();
+  const { email, expira, aviso } = Route.useSearch();
   const navigate = useNavigate();
 
   const [digitos, setDigitos] = useState<string[]>(Array(6).fill(""));
   const [verificando, setVerificando] = useState(false);
   const [reenviando, setReenviando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
+  const [envioFalhou, setEnvioFalhou] = useState(aviso === "1");
   const [expiraEm, setExpiraEm] = useState<number>(() =>
     expira ? new Date(expira).getTime() : Date.now() + DURACAO_PADRAO_S * 1000,
   );
@@ -142,6 +144,7 @@ function VerificarEmail() {
     }
     setBloqueadoAte(Date.now() + COOLDOWN_S * 1000);
     setBloqueio(null);
+    setEnvioFalhou(false);
     if (data?.expiraEm) setExpiraEm(new Date(data.expiraEm).getTime());
     else setExpiraEm(Date.now() + DURACAO_PADRAO_S * 1000);
     limpar();
@@ -205,6 +208,13 @@ function VerificarEmail() {
           Enviamos um código de 6 dígitos para <strong className="text-foreground">{email}</strong>.
           Digite abaixo para liberar o acesso à sua fazenda.
         </p>
+
+        {envioFalhou ? (
+          <p role="alert" className="mt-4 rounded-lg bg-warning/10 px-3 py-2 text-sm text-warning">
+            Não conseguimos enviar esse e-mail agora. Clique em "Reenviar código" abaixo para tentar
+            de novo.
+          </p>
+        ) : null}
 
         <div className="mt-8">
           <div

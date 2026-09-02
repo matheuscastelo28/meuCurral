@@ -421,6 +421,7 @@ export const entrar = createServerFn({ method: "POST" })
 
       if (!usuario["email_verificado"]) {
         let expiraEm: string | null = null;
+        let avisoEnvio = false;
         try {
           const status = await statusCodigo(sql, usuario["id"]);
           const dentroCooldown =
@@ -434,6 +435,7 @@ export const entrar = createServerFn({ method: "POST" })
               });
         } catch (erroEnvio) {
           console.error(erroEnvio);
+          avisoEnvio = true;
         }
         return {
           data: { user: null, session: null },
@@ -442,6 +444,7 @@ export const entrar = createServerFn({ method: "POST" })
             code: "email_nao_verificado",
             email: usuario["email"] as string,
             expiraEm,
+            avisoEnvio,
           },
         };
       }

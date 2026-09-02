@@ -83,6 +83,7 @@ function Cadastro() {
         search: {
           email: data.email ?? email.trim(),
           expira: data.expiraEm ?? undefined,
+          aviso: data.avisoEmail ? "1" : undefined,
         },
       });
     } catch (err) {
