@@ -87,7 +87,9 @@ function Cadastro() {
         },
       });
     } catch (err) {
-      const msg = err instanceof Error ? err.message.toLowerCase() : "";
+      const mensagemErro =
+        err instanceof Error ? err.message : ((err as { message?: string })?.message ?? "");
+      const msg = mensagemErro.toLowerCase();
       if (msg.includes("already") || msg.includes("registered")) {
         setErro("Já existe uma conta com esse e-mail. Tente entrar em vez de criar uma nova.");
       } else if (msg.includes("password")) {

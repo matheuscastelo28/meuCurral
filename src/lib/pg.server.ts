@@ -55,9 +55,9 @@ create table if not exists usuarios (
 );
 
 -- Contas criadas antes deste recurso existir já contam como verificadas
--- (default true acima). O cadastro passa email_verificado = false na hora
--- de criar a conta, então só quem se cadastra a partir de agora precisa
--- confirmar o e-mail.
+-- (default true acima). Uma linha em usuarios só é criada depois que o
+-- código de verificação é confirmado (ver cadastros_pendentes abaixo),
+-- então toda conta nova nessa tabela já nasce com email_verificado = true.
 alter table usuarios add column if not exists email_verificado boolean not null default true;
 
 create table if not exists sessoes (
@@ -66,14 +66,25 @@ create table if not exists sessoes (
   created_at timestamptz not null default now()
 );
 
--- Um código pendente por usuário: pedir um novo substitui o anterior.
-create table if not exists verificacoes_email (
-  user_id uuid primary key references usuarios(id) on delete cascade,
+-- Cadastro em andamento: só vira usuário de verdade (tabela usuarios)
+-- depois que o código de 6 dígitos é confirmado. Assim quem nunca confirma
+-- o e-mail não fica ocupando o endereço nem aparece como usuário real.
+create table if not exists cadastros_pendentes (
+  email text primary key,
+  senha_hash text not null,
+  nome text,
+  objetivo text,
+  nome_fazenda text not null,
+  cidade text,
+  estado text,
   codigo_hash text not null,
   tentativas integer not null default 0,
   expira_em timestamptz not null,
-  enviado_em timestamptz not null default now()
+  enviado_em timestamptz not null default now(),
+  criado_em timestamptz not null default now()
 );
+
+drop table if exists verificacoes_email;
 
 create table if not exists perfis (
   id uuid primary key references usuarios(id) on delete cascade,

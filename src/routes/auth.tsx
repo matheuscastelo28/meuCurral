@@ -62,6 +62,10 @@ function Login() {
           });
           return;
         }
+        if (err.code === "cadastro_incompleto") {
+          setErro("Esse cadastro não foi concluído. Crie a conta novamente para receber um novo código.");
+          return;
+        }
         throw error;
       }
       navigate({ to: "/inicio", replace: true });
