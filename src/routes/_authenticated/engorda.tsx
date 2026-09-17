@@ -18,12 +18,12 @@ import { usePreferencias } from "@/hooks/use-preferencias";
 export const Route = createFileRoute("/_authenticated/engorda")({
   head: () => ({
     meta: [
-      { title: "Engorda — Meu Curral Digital" },
+      { title: "Engorda — Curral Online" },
       {
         name: "description",
         content: "Acompanhamento de peso e ganho de peso do lote em engorda.",
       },
-      { property: "og:title", content: "Engorda — Meu Curral Digital" },
+      { property: "og:title", content: "Engorda — Curral Online" },
       { property: "og:description", content: "Pesagens, GMD e arrobas do lote em engorda." },
       { name: "robots", content: "noindex" },
     ],

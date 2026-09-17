@@ -11,16 +11,16 @@ import { PLANOS } from "@/lib/planos";
 export const Route = createFileRoute("/cadastro")({
   head: () => ({
     meta: [
-      { title: "Criar conta grátis — Meu Curral Digital" },
+      { title: "Criar conta grátis — Curral Online" },
       {
         name: "description",
         content:
           "Crie sua conta em 4 passos e comece a controlar o rebanho com até 10 cabeças grátis.",
       },
-      { property: "og:title", content: "Criar conta grátis — Meu Curral Digital" },
+      { property: "og:title", content: "Criar conta grátis — Curral Online" },
       {
         property: "og:description",
-        content: "Cadastro guiado em 4 passos para começar a usar o Meu Curral Digital.",
+        content: "Cadastro guiado em 4 passos para começar a usar o Curral Online.",
       },
     ],
   }),
@@ -112,7 +112,7 @@ function Cadastro() {
           <span className="flex size-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
             <Sprout className="size-4" aria-hidden="true" />
           </span>
-          <span className="font-display text-sm font-extrabold">Meu Curral Digital</span>
+          <span className="font-display text-sm font-extrabold">Curral Online</span>
         </Link>
         <Button variant="ghost" size="sm" asChild>
           <Link to="/auth">Já tenho conta</Link>

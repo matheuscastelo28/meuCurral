@@ -16,9 +16,9 @@ import { usePreferencias } from "@/hooks/use-preferencias";
 export const Route = createFileRoute("/_authenticated/financeiro")({
   head: () => ({
     meta: [
-      { title: "Financeiro — Meu Curral Digital" },
+      { title: "Financeiro — Curral Online" },
       { name: "description", content: "Receitas e despesas da fazenda em um só lugar." },
-      { property: "og:title", content: "Financeiro — Meu Curral Digital" },
+      { property: "og:title", content: "Financeiro — Curral Online" },
       { property: "og:description", content: "Receitas e despesas da fazenda." },
       { name: "robots", content: "noindex" },
     ],

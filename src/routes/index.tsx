@@ -15,13 +15,13 @@ import { Button } from "@/components/ui/button";
 export const Route = createFileRoute("/")({
   head: () => ({
     meta: [
-      { title: "Meu Curral Digital — controle do rebanho sem planilha" },
+      { title: "Curral Online — controle do rebanho sem planilha" },
       {
         name: "description",
         content:
           "Cadastre animais, acompanhe manejo, vacinação, leite e financeiro da fazenda. Comece grátis com até 10 cabeças.",
       },
-      { property: "og:title", content: "Meu Curral Digital — controle do rebanho sem planilha" },
+      { property: "og:title", content: "Curral Online — controle do rebanho sem planilha" },
       {
         property: "og:description",
         content:
@@ -63,7 +63,7 @@ function Landing() {
           <span className="flex size-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
             <Sprout className="size-4" aria-hidden="true" />
           </span>
-          <span className="font-display text-sm font-extrabold">Meu Curral Digital</span>
+          <span className="font-display text-sm font-extrabold">Curral Online</span>
         </div>
         <Button variant="outline" size="sm" asChild>
           <Link to="/auth">Entrar</Link>
@@ -148,7 +148,7 @@ function Landing() {
           <Link to="/privacidade" className="underline underline-offset-4">
             Política de privacidade
           </Link>
-          <span className="w-full text-xs">© 2026 Meu Curral Digital</span>
+          <span className="w-full text-xs">© 2026 Curral Online</span>
         </div>
       </footer>
     </div>

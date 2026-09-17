@@ -17,9 +17,9 @@ import { PRODUTOS_LEITE, rotuloProduto, unidadeProduto } from "@/lib/produtos-le
 export const Route = createFileRoute("/_authenticated/leite")({
   head: () => ({
     meta: [
-      { title: "Leite — Meu Curral Digital" },
+      { title: "Leite — Curral Online" },
       { name: "description", content: "Registro diário da produção de leite da fazenda." },
-      { property: "og:title", content: "Leite — Meu Curral Digital" },
+      { property: "og:title", content: "Leite — Curral Online" },
       { property: "og:description", content: "Registro diário da produção de leite." },
       { name: "robots", content: "noindex" },
     ],
