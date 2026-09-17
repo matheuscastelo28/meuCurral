@@ -13,9 +13,9 @@ import { usePreferencias } from "@/hooks/use-preferencias";
 export const Route = createFileRoute("/_authenticated/inicio")({
   head: () => ({
     meta: [
-      { title: "Início — Meu Curral Digital" },
+      { title: "Início — Curral Online" },
       { name: "description", content: "Resumo do rebanho, alertas e próximos manejos da fazenda." },
-      { property: "og:title", content: "Início — Meu Curral Digital" },
+      { property: "og:title", content: "Início — Curral Online" },
       { property: "og:description", content: "Resumo do rebanho e próximos manejos." },
       { name: "robots", content: "noindex" },
     ],

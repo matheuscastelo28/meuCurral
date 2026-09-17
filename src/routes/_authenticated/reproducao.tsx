@@ -15,12 +15,12 @@ import { dataCurta, hojeISO } from "@/lib/formato";
 export const Route = createFileRoute("/_authenticated/reproducao")({
   head: () => ({
     meta: [
-      { title: "Reprodução — Meu Curral Digital" },
+      { title: "Reprodução — Curral Online" },
       {
         name: "description",
         content: "Coberturas, inseminações, diagnósticos e previsão de parto.",
       },
-      { property: "og:title", content: "Reprodução — Meu Curral Digital" },
+      { property: "og:title", content: "Reprodução — Curral Online" },
       { property: "og:description", content: "Controle reprodutivo do rebanho." },
       { name: "robots", content: "noindex" },
     ],

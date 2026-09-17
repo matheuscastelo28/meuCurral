@@ -36,12 +36,12 @@ const TIPOS_EVENTO = [
 export const Route = createFileRoute("/_authenticated/calendario")({
   head: () => ({
     meta: [
-      { title: "Calendário — Meu Curral Digital" },
+      { title: "Calendário — Curral Online" },
       {
         name: "description",
         content: "Vacinação, pesagem, partos e lançamentos marcados automaticamente no calendário.",
       },
-      { property: "og:title", content: "Calendário — Meu Curral Digital" },
+      { property: "og:title", content: "Calendário — Curral Online" },
       { property: "og:description", content: "Agenda automática da fazenda." },
       { name: "robots", content: "noindex" },
     ],

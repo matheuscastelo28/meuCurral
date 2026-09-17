@@ -30,7 +30,7 @@ export const Route = createFileRoute("/verificar-email")({
   }),
   head: () => ({
     meta: [
-      { title: "Confirme seu e-mail — Meu Curral Digital" },
+      { title: "Confirme seu e-mail — Curral Online" },
       {
         name: "description",
         content: "Digite o código de 6 dígitos que enviamos para o seu e-mail.",
@@ -195,7 +195,7 @@ function VerificarEmail() {
           <span className="flex size-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
             <Sprout className="size-4" aria-hidden="true" />
           </span>
-          <span className="font-display text-sm font-extrabold">Meu Curral Digital</span>
+          <span className="font-display text-sm font-extrabold">Curral Online</span>
         </Link>
       </header>
 

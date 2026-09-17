@@ -1,4 +1,4 @@
-# Meu Curral Digital
+# Curral Online
 
 SaaS de gestão rural: controle de rebanho, manejo, produção de leite, reprodução, financeiro e calendário da fazenda.
 

@@ -25,9 +25,9 @@ import { usePreferencias } from "@/hooks/use-preferencias";
 export const Route = createFileRoute("/_authenticated/rebanho")({
   head: () => ({
     meta: [
-      { title: "Rebanho — Meu Curral Digital" },
+      { title: "Rebanho — Curral Online" },
       { name: "description", content: "Cadastro e ficha dos animais da fazenda." },
-      { property: "og:title", content: "Rebanho — Meu Curral Digital" },
+      { property: "og:title", content: "Rebanho — Curral Online" },
       { property: "og:description", content: "Cadastro e ficha dos animais da fazenda." },
       { name: "robots", content: "noindex" },
     ],

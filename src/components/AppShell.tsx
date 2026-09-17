@@ -62,7 +62,7 @@ export function AppShell({
               <Sprout className="size-4" aria-hidden="true" />
             </span>
             <span className="leading-tight">
-              <span className="block font-display text-sm font-extrabold">Meu Curral Digital</span>
+              <span className="block font-display text-sm font-extrabold">Curral Online</span>
               <span className="block text-xs text-muted-foreground">
                 {fazenda?.nome ?? "Carregando fazenda..."}
               </span>

@@ -10,10 +10,10 @@ import { Label } from "@/components/ui/label";
 export const Route = createFileRoute("/auth")({
   head: () => ({
     meta: [
-      { title: "Entrar — Meu Curral Digital" },
-      { name: "description", content: "Acesse sua fazenda no Meu Curral Digital." },
-      { property: "og:title", content: "Entrar — Meu Curral Digital" },
-      { property: "og:description", content: "Acesse sua fazenda no Meu Curral Digital." },
+      { title: "Entrar — Curral Online" },
+      { name: "description", content: "Acesse sua fazenda no Curral Online." },
+      { property: "og:title", content: "Entrar — Curral Online" },
+      { property: "og:description", content: "Acesse sua fazenda no Curral Online." },
       { name: "robots", content: "noindex" },
     ],
   }),
@@ -106,7 +106,7 @@ function Login() {
           <span className="flex size-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
             <Sprout className="size-4" aria-hidden="true" />
           </span>
-          <span className="font-display text-sm font-extrabold">Meu Curral Digital</span>
+          <span className="font-display text-sm font-extrabold">Curral Online</span>
         </Link>
       </header>
 
