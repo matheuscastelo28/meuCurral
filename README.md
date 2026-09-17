@@ -30,3 +30,30 @@ cp .env.example .env   # preencha DATABASE_URL (e RESEND_API_KEY se for testar e
 npm i
 npm run dev
 ```
+
+## Aplicativo Android (APK)
+
+O projeto já vem configurado com [Capacitor](https://capacitorjs.com/), que empacota
+o site de produção (`curralonline.com`, ver `capacitor.config.ts`) dentro de uma
+WebView nativa — o app abre em tela cheia, com ícone e splash screen próprios,
+sem precisar reescrever nada em React Native.
+
+Pré-requisitos na sua máquina (não dá pra gerar o APK num ambiente sem
+Android SDK, como um container remoto):
+
+- [Android Studio](https://developer.android.com/studio) instalado (ele baixa o
+  Android SDK sozinho no primeiro uso).
+
+Passos:
+
+```sh
+npm run cap:android   # builda o site, sincroniza e abre o projeto no Android Studio
+```
+
+Dentro do Android Studio: `Build → Build Bundle(s) / APK(s) → Build APK(s)` gera um
+APK de teste (não assinado). Para publicar na Play Store, é preciso gerar um AAB
+assinado com uma keystore própria (`Build → Generate Signed Bundle / APK`).
+
+Sempre que o site em produção mudar, não é necessário gerar um APK novo — o app
+carrega a versão mais recente do site automaticamente (é uma WebView apontando
+para `curralonline.com`).
