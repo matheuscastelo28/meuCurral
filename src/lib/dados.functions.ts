@@ -294,33 +294,35 @@ function gerarCodigo(): string {
   return Array.from(bytes, (b) => b % 10).join("");
 }
 
-async function statusCodigo(
+/**
+ * Cadastro só vira usuário de verdade (linha em `usuarios`) depois que o
+ * código é confirmado. Até lá, tudo fica em `cadastros_pendentes` — assim
+ * quem nunca confirma o e-mail não "reserva" o endereço para sempre nem
+ * aparece como usuário real no banco.
+ */
+async function statusCodigoPendente(
   sql: Sql,
-  userId: string,
-): Promise<{ expira_em: Date; enviado_em: Date } | null> {
-  const linhas: { expira_em: Date; enviado_em: Date }[] =
-    await sql`select expira_em, enviado_em from verificacoes_email where user_id = ${userId}`;
+  email: string,
+): Promise<{ nome: string | null; expira_em: Date; enviado_em: Date } | null> {
+  const linhas: { nome: string | null; expira_em: Date; enviado_em: Date }[] = await sql`
+    select nome, expira_em, enviado_em from cadastros_pendentes where email = ${email}`;
   return linhas[0] ?? null;
 }
 
-/** Gera um código novo, substitui o pendente e envia por e-mail. */
-async function enviarNovoCodigo(
+/** Gera um código novo para um cadastro pendente já existente e reenvia por e-mail. */
+async function enviarNovoCodigoPendente(
   sql: Sql,
-  usuario: { id: string; email: string; nome: string | null },
+  pendente: { email: string; nome: string | null },
 ): Promise<string> {
   const codigo = gerarCodigo();
   const codigoHash = await hashCodigo(codigo);
   const expiraEm = new Date(Date.now() + DURACAO_CODIGO_MS);
   await sql`
-    insert into verificacoes_email (user_id, codigo_hash, tentativas, expira_em, enviado_em)
-    values (${usuario.id}, ${codigoHash}, 0, ${expiraEm}, now())
-    on conflict (user_id) do update set
-      codigo_hash = excluded.codigo_hash,
-      tentativas = 0,
-      expira_em = excluded.expira_em,
-      enviado_em = now()`;
+    update cadastros_pendentes set
+      codigo_hash = ${codigoHash}, tentativas = 0, expira_em = ${expiraEm}, enviado_em = now()
+    where email = ${pendente.email}`;
   const { enviarCodigoPorEmail } = await import("./email.server");
-  await enviarCodigoPorEmail({ to: usuario.email, nome: usuario.nome, codigo });
+  await enviarCodigoPorEmail({ to: pendente.email, nome: pendente.nome, codigo });
   return expiraEm.toISOString();
 }
 
@@ -347,35 +349,56 @@ export const cadastrar = createServerFn({ method: "POST" })
           error: { message: "Password should be at least 8 characters" },
         };
       }
-      const existe: any[] = await sql`select id from usuarios where email = ${email} limit 1`;
-      if (existe.length > 0) {
-        return {
-          data: { user: null, session: null },
-          error: { message: "User already registered" },
-        };
-      }
-      const senhaHash = await hashSenha(data.senha);
-      const usuarios: any[] = await sql`
-        insert into usuarios (email, senha_hash, nome, objetivo, email_verificado)
-        values (${email}, ${senhaHash}, ${data.nome ?? null}, ${data.objetivo ?? null}, false)
-        returning id, email, nome, objetivo`;
-      const usuario = usuarios[0];
-      await sql`
-        insert into perfis (id, nome, email, objetivo)
-        values (${usuario["id"]}, ${data.nome ?? null}, ${email}, ${data.objetivo ?? null})
-        on conflict (id) do nothing`;
-      await sql`
-        insert into fazendas (nome, cidade, estado, dono_id)
-        values (${data.nomeFazenda}, ${data.cidade ?? null}, ${data.estado ?? null}, ${usuario["id"]})`;
 
-      let expiraEm: string | null = null;
+      const existentes: { id: string; email_verificado: boolean }[] = await sql`
+        select id, email_verificado from usuarios where email = ${email} limit 1`;
+      const existente = existentes[0];
+      if (existente) {
+        if (existente.email_verificado) {
+          return {
+            data: { user: null, session: null },
+            error: { message: "User already registered" },
+          };
+        }
+        // Conta de um cadastro antigo que nunca confirmou o e-mail: libera o
+        // endereço para recomeçar em vez de deixar essa conta "fantasma"
+        // travando o cadastro para sempre.
+        await sql`delete from usuarios where id = ${existente.id}`;
+      }
+
+      const senhaHash = await hashSenha(data.senha);
+      const nome = data.nome ?? null;
+      const objetivo = data.objetivo ?? null;
+      const codigo = gerarCodigo();
+      const codigoHash = await hashCodigo(codigo);
+      const expiraEmData = new Date(Date.now() + DURACAO_CODIGO_MS);
+
+      await sql`
+        insert into cadastros_pendentes (
+          email, senha_hash, nome, objetivo, nome_fazenda, cidade, estado,
+          codigo_hash, tentativas, expira_em, enviado_em
+        )
+        values (
+          ${email}, ${senhaHash}, ${nome}, ${objetivo}, ${data.nomeFazenda},
+          ${data.cidade ?? null}, ${data.estado ?? null},
+          ${codigoHash}, 0, ${expiraEmData}, now()
+        )
+        on conflict (email) do update set
+          senha_hash = excluded.senha_hash,
+          nome = excluded.nome,
+          objetivo = excluded.objetivo,
+          nome_fazenda = excluded.nome_fazenda,
+          cidade = excluded.cidade,
+          estado = excluded.estado,
+          codigo_hash = excluded.codigo_hash,
+          tentativas = 0,
+          expira_em = excluded.expira_em,
+          enviado_em = now()`;
+
       let avisoEmail = false;
       try {
-        expiraEm = await enviarNovoCodigo(sql, {
-          id: usuario["id"],
-          email: usuario["email"],
-          nome: data.nome ?? null,
-        });
+        const { enviarCodigoPorEmail } = await import("./email.server");
+        await enviarCodigoPorEmail({ to: email, nome, codigo });
       } catch (erroEnvio) {
         console.error(erroEnvio);
         avisoEmail = true;
@@ -386,8 +409,8 @@ export const cadastrar = createServerFn({ method: "POST" })
           user: null,
           session: null,
           precisaVerificar: true,
-          email: usuario["email"] as string,
-          expiraEm,
+          email,
+          expiraEm: expiraEmData.toISOString(),
           avisoEmail,
         },
         error: null,
@@ -412,27 +435,29 @@ export const entrar = createServerFn({ method: "POST" })
         select id, email, nome, objetivo, email_verificado from usuarios
         where email = ${email} and senha_hash = ${senhaHash} limit 1`;
       const usuario = usuarios[0];
-      if (!usuario) {
-        return {
-          data: { user: null, session: null },
-          error: { message: "Invalid login credentials" },
-        };
-      }
 
-      if (!usuario["email_verificado"]) {
+      if (!usuario) {
+        // Sem conta confirmada com essa senha — mas pode existir um
+        // cadastro pendente (ainda não virou usuário de verdade).
+        const pendentes: { email: string; nome: string | null; expira_em: Date; enviado_em: Date }[] =
+          await sql`
+            select email, nome, expira_em, enviado_em from cadastros_pendentes
+            where email = ${email} and senha_hash = ${senhaHash} limit 1`;
+        const pendente = pendentes[0];
+        if (!pendente) {
+          return {
+            data: { user: null, session: null },
+            error: { message: "Invalid login credentials" },
+          };
+        }
         let expiraEm: string | null = null;
         let avisoEnvio = false;
         try {
-          const status = await statusCodigo(sql, usuario["id"]);
           const dentroCooldown =
-            !!status && Date.now() - new Date(status.enviado_em).getTime() < COOLDOWN_REENVIO_MS;
+            Date.now() - new Date(pendente.enviado_em).getTime() < COOLDOWN_REENVIO_MS;
           expiraEm = dentroCooldown
-            ? new Date(status!.expira_em).toISOString()
-            : await enviarNovoCodigo(sql, {
-                id: usuario["id"],
-                email: usuario["email"],
-                nome: usuario["nome"] ?? null,
-              });
+            ? new Date(pendente.expira_em).toISOString()
+            : await enviarNovoCodigoPendente(sql, { email: pendente.email, nome: pendente.nome });
         } catch (erroEnvio) {
           console.error(erroEnvio);
           avisoEnvio = true;
@@ -442,9 +467,23 @@ export const entrar = createServerFn({ method: "POST" })
           error: {
             message: "Confirme seu e-mail para entrar.",
             code: "email_nao_verificado",
-            email: usuario["email"] as string,
+            email: pendente.email,
             expiraEm,
             avisoEnvio,
+          },
+        };
+      }
+
+      if (!usuario["email_verificado"]) {
+        // Sobra de um cadastro antigo (de antes desta correção) que ficou
+        // como usuário real sem confirmar o e-mail. Libera o endereço para
+        // um cadastro novo em vez de deixar essa conta travada.
+        await sql`delete from usuarios where id = ${usuario["id"]}`;
+        return {
+          data: { user: null, session: null },
+          error: {
+            message: "Esse cadastro não foi concluído. Cadastre-se novamente para receber um novo código.",
+            code: "cadastro_incompleto",
           },
         };
       }
@@ -468,36 +507,34 @@ export const enviarCodigoVerificacao = createServerFn({ method: "POST" })
       const { conexao } = await import("./pg.server");
       const sql = await conexao();
       const email = data.email.trim().toLowerCase();
-      const usuarios: any[] =
-        await sql`select id, email, nome, email_verificado from usuarios where email = ${email} limit 1`;
-      const usuario = usuarios[0];
 
-      // Resposta neutra quando a conta não existe ou já está verificada —
-      // não confirma nem nega a existência da conta pro navegador.
-      if (!usuario || usuario["email_verificado"]) {
+      // Resposta neutra quando a conta já está verificada — não confirma
+      // nem nega a existência da conta pro navegador.
+      const verificados: any[] =
+        await sql`select id from usuarios where email = ${email} and email_verificado limit 1`;
+      if (verificados.length > 0) {
         return { data: { enviado: true, expiraEm: null }, error: null };
       }
 
-      const status = await statusCodigo(sql, usuario["id"]);
-      if (status) {
-        const passados = Date.now() - new Date(status.enviado_em).getTime();
-        if (passados < COOLDOWN_REENVIO_MS) {
-          return {
-            data: null,
-            error: {
-              message: "Aguarde um pouco para pedir outro código.",
-              code: "aguardar",
-              aguardarSegundos: Math.ceil((COOLDOWN_REENVIO_MS - passados) / 1000),
-            },
-          };
-        }
+      const pendente = await statusCodigoPendente(sql, email);
+      // Resposta neutra também quando não existe cadastro pendente algum.
+      if (!pendente) {
+        return { data: { enviado: true, expiraEm: null }, error: null };
       }
 
-      const expiraEm = await enviarNovoCodigo(sql, {
-        id: usuario["id"],
-        email: usuario["email"],
-        nome: usuario["nome"] ?? null,
-      });
+      const passados = Date.now() - new Date(pendente.enviado_em).getTime();
+      if (passados < COOLDOWN_REENVIO_MS) {
+        return {
+          data: null,
+          error: {
+            message: "Aguarde um pouco para pedir outro código.",
+            code: "aguardar",
+            aguardarSegundos: Math.ceil((COOLDOWN_REENVIO_MS - passados) / 1000),
+          },
+        };
+      }
+
+      const expiraEm = await enviarNovoCodigoPendente(sql, { email, nome: pendente.nome });
       return { data: { enviado: true, expiraEm }, error: null };
     } catch (erro) {
       return {
@@ -518,16 +555,9 @@ export const verificarCodigoEmail = createServerFn({ method: "POST" })
       const email = data.email.trim().toLowerCase();
       const codigo = data.codigo.trim();
 
-      const usuarios: any[] = await sql`
-        select id, email, nome, objetivo, email_verificado from usuarios where email = ${email} limit 1`;
-      const usuario = usuarios[0];
-      if (!usuario) {
-        return {
-          data: { user: null, session: null },
-          error: { message: "Código inválido ou expirado.", code: "codigo_invalido" },
-        };
-      }
-      if (usuario["email_verificado"]) {
+      const verificados: any[] =
+        await sql`select id from usuarios where email = ${email} and email_verificado limit 1`;
+      if (verificados.length > 0) {
         return {
           data: { user: null, session: null },
           error: {
@@ -542,12 +572,22 @@ export const verificarCodigoEmail = createServerFn({ method: "POST" })
         | { tipo: "expirado" }
         | { tipo: "muitas_tentativas" }
         | { tipo: "codigo_errado"; restantes: number }
-        | { tipo: "ok" };
+        | { tipo: "ok"; usuario: { id: string; email: string; nome: string | null; objetivo: string | null } };
 
       const resultado: Resultado = await sql.begin(async (tx) => {
-        const linhas: { codigo_hash: string; tentativas: number; expira_em: Date }[] = await tx`
-          select codigo_hash, tentativas, expira_em from verificacoes_email
-          where user_id = ${usuario["id"]} for update`;
+        const linhas: {
+          senha_hash: string;
+          nome: string | null;
+          objetivo: string | null;
+          nome_fazenda: string;
+          cidade: string | null;
+          estado: string | null;
+          codigo_hash: string;
+          tentativas: number;
+          expira_em: Date;
+        }[] = await tx`
+          select senha_hash, nome, objetivo, nome_fazenda, cidade, estado, codigo_hash, tentativas, expira_em
+          from cadastros_pendentes where email = ${email} for update`;
         const pendente = linhas[0];
         if (!pendente) return { tipo: "sem_codigo" };
         if (new Date(pendente.expira_em).getTime() < Date.now()) return { tipo: "expirado" };
@@ -556,14 +596,25 @@ export const verificarCodigoEmail = createServerFn({ method: "POST" })
         const hashRecebido = await hashCodigo(codigo);
         if (hashRecebido !== pendente.codigo_hash) {
           const novasTentativas = pendente.tentativas + 1;
-          await tx`update verificacoes_email set tentativas = ${novasTentativas} where user_id = ${usuario["id"]}`;
+          await tx`update cadastros_pendentes set tentativas = ${novasTentativas} where email = ${email}`;
           if (novasTentativas >= MAX_TENTATIVAS_CODIGO) return { tipo: "muitas_tentativas" };
           return { tipo: "codigo_errado", restantes: MAX_TENTATIVAS_CODIGO - novasTentativas };
         }
 
-        await tx`update usuarios set email_verificado = true, updated_at = now() where id = ${usuario["id"]}`;
-        await tx`delete from verificacoes_email where user_id = ${usuario["id"]}`;
-        return { tipo: "ok" };
+        const usuarios: { id: string; email: string; nome: string | null; objetivo: string | null }[] = await tx`
+          insert into usuarios (email, senha_hash, nome, objetivo, email_verificado)
+          values (${email}, ${pendente.senha_hash}, ${pendente.nome}, ${pendente.objetivo}, true)
+          returning id, email, nome, objetivo`;
+        const usuario = usuarios[0]!;
+        await tx`
+          insert into perfis (id, nome, email, objetivo)
+          values (${usuario.id}, ${pendente.nome}, ${email}, ${pendente.objetivo})
+          on conflict (id) do nothing`;
+        await tx`
+          insert into fazendas (nome, cidade, estado, dono_id)
+          values (${pendente.nome_fazenda}, ${pendente.cidade}, ${pendente.estado}, ${usuario.id})`;
+        await tx`delete from cadastros_pendentes where email = ${email}`;
+        return { tipo: "ok", usuario };
       });
 
       if (resultado.tipo === "sem_codigo") {
@@ -599,8 +650,8 @@ export const verificarCodigoEmail = createServerFn({ method: "POST" })
       }
 
       const token = crypto.randomUUID();
-      await sql`insert into sessoes (token, user_id) values (${token}, ${usuario["id"]})`;
-      const user = paraSessao(usuario);
+      await sql`insert into sessoes (token, user_id) values (${token}, ${resultado.usuario.id})`;
+      const user = paraSessao(resultado.usuario);
       return { data: { user, session: { user, access_token: token } }, error: null };
     } catch (erro) {
       return {
