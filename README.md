@@ -56,4 +56,36 @@ assinado com uma keystore própria (`Build → Generate Signed Bundle / APK`).
 
 Sempre que o site em produção mudar, não é necessário gerar um APK novo — o app
 carrega a versão mais recente do site automaticamente (é uma WebView apontando
-para `curralonline.com`).
+para `www.curralonline.com`).
+
+## Aplicativo iOS (IPA)
+
+Mesma ideia do Android: o app abre `www.curralonline.com` dentro de uma WebView
+nativa. Diferente do Android, a Apple só permite compilar apps iOS num **Mac com
+Xcode** — não tem como gerar o IPA em Windows/Linux nem em um ambiente sem Mac
+por trás.
+
+Pré-requisitos:
+
+- Um Mac com [Xcode](https://apps.apple.com/br/app/xcode/id497799835) instalado.
+- Uma conta Apple (grátis) para testar no seu próprio iPhone via Xcode — expira
+  a cada 7 dias e precisa reinstalar. Para distribuir de verdade (TestFlight ou
+  App Store), é necessário o [Apple Developer Program](https://developer.apple.com/programs/)
+  (US$ 99/ano).
+
+Passos:
+
+```sh
+npm run cap:ios   # builda o site, sincroniza e abre o projeto no Xcode
+```
+
+Na primeira vez, dentro da pasta `ios/App`, pode ser necessário instalar as
+dependências do CocoaPods:
+
+```sh
+cd ios/App && pod install && cd ../..
+```
+
+Dentro do Xcode: selecione um simulador ou o seu iPhone conectado no topo da
+janela e clique no botão de **▶ (Run)** para instalar e abrir o app. Para gerar
+um build para TestFlight/App Store, use `Product → Archive`.
