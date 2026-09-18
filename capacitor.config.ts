@@ -11,17 +11,15 @@ const config: CapacitorConfig = {
   appName: "Curral Online",
   webDir: ".output/public",
   server: {
-    url: "https://curralonline.com",
+    // O domínio sem "www" redireciona para "www.curralonline.com" (Vercel).
+    // O Capacitor só mantém a navegação dentro do WebView quando a página
+    // carregada é exatamente o host configurado aqui — se apontar para o
+    // domínio que redireciona, o primeiro carregamento já cai fora do host
+    // esperado e o Capacitor abre no navegador externo em vez de manter no
+    // app. Por isso aponta direto para o host final, sem passar pelo redirect.
+    url: "https://www.curralonline.com",
     cleartext: false,
-  },
-  android: {
-    // O WebView do Android manda "; wv" no User-Agent, o que identifica o
-    // tráfego como vindo de dentro de um app (não um navegador comum).
-    // Alguns sistemas de proteção contra bots tratam isso com mais
-    // suspeita e podem servir uma página em branco silenciosamente. Removendo
-    // o marcador "wv", o app fica indistinguível de um navegador Chrome comum.
-    overrideUserAgent:
-      "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Mobile Safari/537.36",
+    allowNavigation: ["curralonline.com", "www.curralonline.com"],
   },
 };
 
