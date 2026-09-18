@@ -14,6 +14,15 @@ const config: CapacitorConfig = {
     url: "https://curralonline.com",
     cleartext: false,
   },
+  android: {
+    // O WebView do Android manda "; wv" no User-Agent, o que identifica o
+    // tráfego como vindo de dentro de um app (não um navegador comum).
+    // Alguns sistemas de proteção contra bots tratam isso com mais
+    // suspeita e podem servir uma página em branco silenciosamente. Removendo
+    // o marcador "wv", o app fica indistinguível de um navegador Chrome comum.
+    overrideUserAgent:
+      "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Mobile Safari/537.36",
+  },
 };
 
 export default config;
