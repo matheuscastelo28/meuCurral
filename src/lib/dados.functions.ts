@@ -74,7 +74,16 @@ const TABELAS_PERMITIDAS = new Set([
   "reproducao",
   "financeiro_lancamentos",
   "eventos_agenda",
+  "precos_produto",
+  "destinacoes_leite",
+  "vendas",
 ]);
+
+// destinacoes_leite e vendas têm regras de negócio (destinação não pode
+// passar da produção do dia; venda precisa criar o lançamento financeiro
+// junto) que o consultar genérico não sabe aplicar — por isso só leitura
+// aqui; escrita é só via registrarDestinacaoLeite/registrarVenda abaixo.
+const TABELAS_SOMENTE_LEITURA = new Set(["destinacoes_leite", "vendas"]);
 
 // ---------------------------------------------------------------------------
 // Consulta genérica (espelha o que as telas usam)
@@ -86,6 +95,9 @@ export const consultar = createServerFn({ method: "POST" })
     try {
       if (!TABELAS_PERMITIDAS.has(pedido.tabela)) {
         return { data: [], error: { message: "Tabela não permitida." }, count: 0 };
+      }
+      if (pedido.modo !== "select" && TABELAS_SOMENTE_LEITURA.has(pedido.tabela)) {
+        return { data: [], error: { message: "Use a função específica para alterar esta tabela." }, count: 0 };
       }
       const { conexao } = await import("./pg.server");
       const sql = await conexao();
@@ -744,5 +756,175 @@ export const excluirConta = createServerFn({ method: "POST" })
       return { ok: true };
     } catch (erro) {
       return { ok: false, message: erro instanceof Error ? erro.message : "Erro ao excluir" };
+    }
+  });
+
+// ---------------------------------------------------------------------------
+// Leite: preço vigente, destinação da produção e vendas
+// ---------------------------------------------------------------------------
+
+async function fazendaDoUsuario(
+  sql: Sql,
+  token: string | null | undefined,
+  fazendaId: string,
+): Promise<string | null> {
+  const userId = await usuarioIdDaSessao(sql, token);
+  if (!userId) return null;
+  const fazendas: { id: string }[] =
+    await sql`select id from fazendas where id = ${fazendaId} and dono_id = ${userId} limit 1`;
+  return fazendas[0] ? userId : null;
+}
+
+/**
+ * Registra (substituindo o que já existia) a destinação da produção de leite
+ * de um dia. Bloqueia se a soma dos destinos passar do total produzido —
+ * essa é a trava que evita contar como receita leite que nunca foi vendido.
+ */
+export const registrarDestinacaoLeite = createServerFn({ method: "POST" })
+  .inputValidator(
+    (dados: {
+      token: string | null;
+      fazendaId: string;
+      data: string;
+      destinos: { destino: string; quantidade: number }[];
+    }) => dados,
+  )
+  .handler(async ({ data }) => {
+    try {
+      const { conexao } = await import("./pg.server");
+      const sql = await conexao();
+      const userId = await fazendaDoUsuario(sql, data.token, data.fazendaId);
+      if (!userId) {
+        return { data: null, error: { message: "Não autenticado ou fazenda inválida." } };
+      }
+
+      const destinosValidos = data.destinos.filter((d) => d.quantidade > 0);
+      const totalDestinado = destinosValidos.reduce((soma, d) => soma + d.quantidade, 0);
+
+      const producao: { total: string | null }[] = await sql`
+        select sum(litros) as total from producao_leite
+        where fazenda_id = ${data.fazendaId} and data = ${data.data}`;
+      const totalProduzido = Number(producao[0]?.total ?? 0);
+
+      if (totalDestinado > totalProduzido + 0.001) {
+        return {
+          data: null,
+          error: {
+            message: `A soma dos destinos (${totalDestinado}L) não pode passar da produção do dia (${totalProduzido}L).`,
+            code: "destinacao_excede_producao",
+          },
+        };
+      }
+
+      const linhas = await sql.begin(async (tx) => {
+        await tx`delete from destinacoes_leite where fazenda_id = ${data.fazendaId} and data = ${data.data}`;
+        if (destinosValidos.length === 0) return [];
+        const entradas = destinosValidos.map((d) => ({
+          fazenda_id: data.fazendaId,
+          data: data.data,
+          destino: d.destino,
+          quantidade: d.quantidade,
+        }));
+        return await tx`insert into destinacoes_leite ${tx(entradas as any)} returning *`;
+      });
+
+      return { data: normalizarLinhas(linhas) as any, error: null };
+    } catch (erro) {
+      return {
+        data: null,
+        error: { message: erro instanceof Error ? erro.message : "Erro ao registrar destinação." },
+      };
+    }
+  });
+
+/**
+ * Registra uma venda e já cria o lançamento financeiro correspondente
+ * (status "a_receber"), num só passo — é assim que a receita do leite
+ * "conversa" com o financeiro.
+ */
+export const registrarVenda = createServerFn({ method: "POST" })
+  .inputValidator(
+    (dados: {
+      token: string | null;
+      fazendaId: string;
+      produto?: string;
+      quantidade: number;
+      unidade?: string;
+      precoUnitario: number;
+      comprador?: string | null;
+      data: string;
+    }) => dados,
+  )
+  .handler(async ({ data }) => {
+    try {
+      const { conexao } = await import("./pg.server");
+      const sql = await conexao();
+      const userId = await fazendaDoUsuario(sql, data.token, data.fazendaId);
+      if (!userId) {
+        return { data: null, error: { message: "Não autenticado ou fazenda inválida." } };
+      }
+      if (data.quantidade <= 0 || data.precoUnitario <= 0) {
+        return { data: null, error: { message: "Quantidade e preço precisam ser maiores que zero." } };
+      }
+
+      const produto = data.produto ?? "leite";
+      const unidade = data.unidade ?? "litro";
+      const valorTotal = Math.round(data.quantidade * data.precoUnitario * 100) / 100;
+      const descricao = `Venda de ${produto}${data.comprador ? ` — ${data.comprador}` : ""}`;
+
+      const venda = await sql.begin(async (tx) => {
+        const financeiros: { id: string }[] = await tx`
+          insert into financeiro_lancamentos (fazenda_id, tipo, descricao, valor, data, categoria, status)
+          values (${data.fazendaId}, 'receita', ${descricao}, ${valorTotal}, ${data.data}, ${`venda_${produto}`}, 'a_receber')
+          returning id`;
+        const financeiroId = financeiros[0]!.id;
+
+        const vendas: any[] = await tx`
+          insert into vendas (
+            fazenda_id, produto, quantidade, unidade, preco_unitario, valor_total, comprador, data, financeiro_id
+          )
+          values (
+            ${data.fazendaId}, ${produto}, ${data.quantidade}, ${unidade}, ${data.precoUnitario},
+            ${valorTotal}, ${data.comprador ?? null}, ${data.data}, ${financeiroId}
+          )
+          returning *`;
+        return vendas[0];
+      });
+
+      return { data: normalizarLinha(venda) as any, error: null };
+    } catch (erro) {
+      return {
+        data: null,
+        error: { message: erro instanceof Error ? erro.message : "Erro ao registrar venda." },
+      };
+    }
+  });
+
+/**
+ * Marca um ou mais lançamentos "a_receber" como "recebido" de uma vez —
+ * cobre o caso comum de o comprador pagar várias vendas juntas (semanal,
+ * quinzenal, mensal) em vez de uma confirmação por venda.
+ */
+export const marcarLancamentosRecebidos = createServerFn({ method: "POST" })
+  .inputValidator((dados: { token: string | null; ids: string[] }) => dados)
+  .handler(async ({ data }) => {
+    try {
+      const { conexao } = await import("./pg.server");
+      const sql = await conexao();
+      const userId = await usuarioIdDaSessao(sql, data.token);
+      if (!userId) return { data: null, error: { message: "Não autenticado." } };
+      if (data.ids.length === 0) return { data: [], error: null };
+
+      const atualizados: any[] = await sql`
+        update financeiro_lancamentos set status = 'recebido', updated_at = now()
+        where id = any(${data.ids}) and status = 'a_receber'
+          and fazenda_id in (select id from fazendas where dono_id = ${userId})
+        returning *`;
+      return { data: normalizarLinhas(atualizados) as any, error: null };
+    } catch (erro) {
+      return {
+        data: null,
+        error: { message: erro instanceof Error ? erro.message : "Erro ao marcar como recebido." },
+      };
     }
   });

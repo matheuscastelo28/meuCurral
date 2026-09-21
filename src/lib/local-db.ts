@@ -18,6 +18,9 @@ import {
   excluirConta,
   enviarCodigoVerificacao,
   verificarCodigoEmail,
+  registrarDestinacaoLeite,
+  registrarVenda,
+  marcarLancamentosRecebidos,
   type FiltroRemoto,
 } from "@/lib/dados.functions";
 
@@ -384,6 +387,32 @@ export const db = {
     return new Consulta(tabela);
   },
   auth,
+  leite: {
+    /** Substitui a destinação do dia inteiro pela lista enviada. */
+    async registrarDestinacao(params: {
+      fazendaId: string;
+      data: string;
+      destinos: { destino: string; quantidade: number }[];
+    }) {
+      return registrarDestinacaoLeite({ data: { token: tokenSessao(), ...params } });
+    },
+    /** Registra a venda e já cria o "a receber" no financeiro. */
+    async registrarVenda(params: {
+      fazendaId: string;
+      produto?: string;
+      quantidade: number;
+      unidade?: string;
+      precoUnitario: number;
+      comprador?: string | null;
+      data: string;
+    }) {
+      return registrarVenda({ data: { token: tokenSessao(), ...params } });
+    },
+    /** Marca um ou mais lançamentos "a receber" como recebidos de uma vez. */
+    async marcarRecebido(ids: string[]) {
+      return marcarLancamentosRecebidos({ data: { token: tokenSessao(), ids } });
+    },
+  },
 };
 
 /** Apaga a conta atual e todos os dados das fazendas em que ela é dona. */

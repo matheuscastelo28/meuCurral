@@ -191,9 +191,69 @@ create table if not exists financeiro_lancamentos (
   categoria text,
   forma_pagamento text default 'dinheiro',
   parcelas integer,
+  -- Lançamentos vindos de uma venda nascem "a_receber" e viram "recebido"
+  -- quando o produtor confirma o pagamento. Lançamentos manuais (o fluxo
+  -- que já existia) continuam "confirmado", sem esse controle.
+  status text not null default 'confirmado',
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
+
+alter table financeiro_lancamentos add column if not exists status text not null default 'confirmado';
+
+-- Preço vigente de um produto (leite, queijo etc.) num período. O preço
+-- válido pra uma data é o registro com data_inicio <= data e (data_fim is
+-- null ou data_fim >= data) — nunca o preço "atual", pra não bagunçar o
+-- histórico quando o preço muda.
+create table if not exists precos_produto (
+  id uuid primary key default gen_random_uuid(),
+  fazenda_id uuid references fazendas(id) on delete cascade,
+  produto text not null default 'leite',
+  valor numeric not null,
+  unidade text not null default 'litro',
+  comprador text,
+  forma_pagamento text,
+  data_inicio date not null default current_date,
+  data_fim date,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+-- O que foi feito com a produção de um dia (venda, bezerros, queijo,
+-- consumo, descarte...). Fica separado da produção em si porque nem tudo
+-- que é produzido é vendido — o financeiro só pode nascer da parte que
+-- efetivamente virou "venda".
+create table if not exists destinacoes_leite (
+  id uuid primary key default gen_random_uuid(),
+  fazenda_id uuid references fazendas(id) on delete cascade,
+  data date not null default current_date,
+  destino text not null,
+  quantidade numeric not null,
+  observacoes text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+-- Uma venda gera no máximo um lançamento financeiro (financeiro_id), que
+-- começa "a_receber" e vira "recebido" quando o produtor confirma.
+create table if not exists vendas (
+  id uuid primary key default gen_random_uuid(),
+  fazenda_id uuid references fazendas(id) on delete cascade,
+  produto text not null default 'leite',
+  quantidade numeric not null,
+  unidade text not null default 'litro',
+  preco_unitario numeric not null,
+  valor_total numeric not null,
+  comprador text,
+  data date not null default current_date,
+  financeiro_id uuid references financeiro_lancamentos(id) on delete set null,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create index if not exists idx_precos_produto_fazenda on precos_produto(fazenda_id, produto, data_inicio);
+create index if not exists idx_destinacoes_leite_fazenda on destinacoes_leite(fazenda_id, data);
+create index if not exists idx_vendas_fazenda on vendas(fazenda_id, data);
 
 create table if not exists eventos_agenda (
   id uuid primary key default gen_random_uuid(),
