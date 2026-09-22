@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Plus, Wallet } from "lucide-react";
+import { CircleCheck, Plus, Wallet } from "lucide-react";
 import { toast } from "sonner";
 import { db } from "@/lib/local-db";
 import { AppShell } from "@/components/AppShell";
@@ -45,6 +45,7 @@ function Financeiro() {
   const [data, setData] = useState(hojeISO());
   const [formaPagamento, setFormaPagamento] = useState("dinheiro");
   const [parcelas, setParcelas] = useState("1");
+  const [selecionados, setSelecionados] = useState<Set<string>>(new Set());
 
   const lancamentos = useQuery({
     queryKey: ["financeiro", fazenda?.id],
@@ -85,20 +86,61 @@ function Financeiro() {
     onError: () => toast.error("Não conseguimos salvar agora. Tente novamente."),
   });
 
+  const marcarRecebido = useMutation({
+    mutationFn: async (ids: string[]) => {
+      const { error } = await db.leite.marcarRecebido(ids);
+      if (error) throw new Error(error.message);
+    },
+    onSuccess: () => {
+      toast.success("Lançamentos marcados como recebidos.");
+      setSelecionados(new Set());
+      queryClient.invalidateQueries({ queryKey: ["financeiro"] });
+    },
+    onError: () => toast.error("Não conseguimos confirmar o recebimento agora."),
+  });
+
   const receitas = (lancamentos.data ?? [])
     .filter((l) => l.tipo === "receita")
     .reduce((s, l) => s + Number(l.valor), 0);
   const despesas = (lancamentos.data ?? [])
     .filter((l) => l.tipo === "despesa")
     .reduce((s, l) => s + Number(l.valor), 0);
+  const aReceber = (lancamentos.data ?? [])
+    .filter((l) => l.status === "a_receber")
+    .reduce((s, l) => s + Number(l.valor), 0);
+
+  function alternarSelecao(id: string) {
+    setSelecionados((atual) => {
+      const novo = new Set(atual);
+      if (novo.has(id)) novo.delete(id);
+      else novo.add(id);
+      return novo;
+    });
+  }
 
   return (
     <AppShell titulo="Financeiro" descricao="Entradas e saídas da fazenda, sem planilha.">
-      <div className="mb-5 grid gap-3 sm:grid-cols-3">
+      <div className="mb-5 grid gap-3 sm:grid-cols-4">
         <Resumo rotulo="Receitas" valor={moeda(receitas)} classe="text-success" />
         <Resumo rotulo="Despesas" valor={moeda(despesas)} classe="text-destructive" />
         <Resumo rotulo="Saldo" valor={moeda(receitas - despesas)} classe="" />
+        <Resumo rotulo="A receber" valor={moeda(aReceber)} classe="text-warning" />
       </div>
+
+      {selecionados.size > 0 ? (
+        <div className="mb-3 flex items-center justify-between rounded-xl border border-border bg-accent/40 px-4 py-2.5 text-sm">
+          <span>{selecionados.size} selecionado(s)</span>
+          <Button
+            type="button"
+            size="sm"
+            disabled={marcarRecebido.isPending}
+            onClick={() => marcarRecebido.mutate(Array.from(selecionados))}
+          >
+            <CircleCheck className="size-4" aria-hidden="true" />
+            Marcar como recebido
+          </Button>
+        </div>
+      ) : null}
 
       <form
         className="mb-5 grid gap-3 rounded-xl border border-border bg-card p-4 sm:grid-cols-5 lg:grid-cols-7"
@@ -197,13 +239,29 @@ function Financeiro() {
         <ul className="divide-y divide-border rounded-xl border border-border bg-card">
           {lancamentos.data?.map((l) => (
             <li key={l.id} className="flex items-center justify-between gap-3 px-4 py-3 text-sm">
-              <span>
-                <span className="block font-medium">{l.descricao}</span>
-                <span className="block text-xs text-muted-foreground">
-                  {dataCurta(l.data)} · {FORMAS_PAGAMENTO[l.forma_pagamento] ?? l.forma_pagamento}
-                  {l.forma_pagamento === "cartao" && l.parcelas && l.parcelas > 1
-                    ? ` em ${l.parcelas}x`
-                    : ""}
+              <span className="flex items-center gap-3">
+                {l.status === "a_receber" ? (
+                  <input
+                    type="checkbox"
+                    checked={selecionados.has(l.id)}
+                    onChange={() => alternarSelecao(l.id)}
+                    aria-label={`Selecionar ${l.descricao}`}
+                    className="size-4 accent-[var(--primary)]"
+                  />
+                ) : null}
+                <span>
+                  <span className="block font-medium">{l.descricao}</span>
+                  <span className="block text-xs text-muted-foreground">
+                    {dataCurta(l.data)} · {FORMAS_PAGAMENTO[l.forma_pagamento] ?? l.forma_pagamento}
+                    {l.forma_pagamento === "cartao" && l.parcelas && l.parcelas > 1
+                      ? ` em ${l.parcelas}x`
+                      : ""}
+                    {l.status === "a_receber" ? (
+                      <span className="ml-1.5 rounded-full bg-warning/15 px-1.5 py-0.5 text-warning">
+                        a receber
+                      </span>
+                    ) : null}
+                  </span>
                 </span>
               </span>
               <span
