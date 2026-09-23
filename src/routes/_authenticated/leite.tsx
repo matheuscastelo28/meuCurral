@@ -162,6 +162,8 @@ function Leite() {
   const [vendaAvulsaPreco, setVendaAvulsaPreco] = useState("");
   const [vendaAvulsaComprador, setVendaAvulsaComprador] = useState("");
   const [vendaAvulsaData, setVendaAvulsaData] = useState(hoje);
+  const [vendaAvulsaPago, setVendaAvulsaPago] = useState(false);
+  const [vendaAvulsaFormaPagamento, setVendaAvulsaFormaPagamento] = useState("dinheiro");
 
   const salvarVendaAvulsa = useMutation({
     mutationFn: async () => {
@@ -171,6 +173,8 @@ function Leite() {
         precoUnitario: Number(vendaAvulsaPreco),
         comprador: vendaAvulsaComprador.trim() || null,
         data: vendaAvulsaData,
+        pago: vendaAvulsaPago,
+        formaPagamento: vendaAvulsaFormaPagamento,
       });
       if (error) throw new Error(error.message);
     },
@@ -181,6 +185,8 @@ function Leite() {
       setVendaAvulsaPreco("");
       setVendaAvulsaComprador("");
       setVendaAvulsaData(hoje);
+      setVendaAvulsaPago(false);
+      setVendaAvulsaFormaPagamento("dinheiro");
       queryClient.invalidateQueries({ queryKey: ["vendas"] });
       queryClient.invalidateQueries({ queryKey: ["financeiro"] });
       queryClient.invalidateQueries({ queryKey: ["inicio-resumo"] });
@@ -477,6 +483,47 @@ function Leite() {
                     required
                   />
                 </div>
+
+                <div className="space-y-1.5 sm:col-span-2">
+                  <Label>Pagamento</Label>
+                  <div className="flex gap-2">
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant={vendaAvulsaPago ? "outline" : "default"}
+                      onClick={() => setVendaAvulsaPago(false)}
+                    >
+                      A receber
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant={vendaAvulsaPago ? "default" : "outline"}
+                      onClick={() => setVendaAvulsaPago(true)}
+                    >
+                      Pago agora
+                    </Button>
+                  </div>
+                </div>
+
+                {vendaAvulsaPago ? (
+                  <div className="space-y-1.5">
+                    <Label htmlFor="va-forma-pagamento">Forma de pagamento</Label>
+                    <select
+                      id="va-forma-pagamento"
+                      value={vendaAvulsaFormaPagamento}
+                      onChange={(e) => setVendaAvulsaFormaPagamento(e.target.value)}
+                      className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+                    >
+                      <option value="dinheiro">Dinheiro</option>
+                      <option value="pix">Pix</option>
+                      <option value="cartao">Cartão</option>
+                      <option value="boleto">Boleto</option>
+                      <option value="transferencia">Transferência</option>
+                    </select>
+                  </div>
+                ) : null}
+
                 <div className="flex gap-2 sm:col-span-2">
                   <Button type="submit" size="sm" disabled={salvarVendaAvulsa.isPending}>
                     <Coins className="size-4" aria-hidden="true" />

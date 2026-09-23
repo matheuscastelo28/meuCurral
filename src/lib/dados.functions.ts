@@ -853,6 +853,9 @@ export const registrarVenda = createServerFn({ method: "POST" })
       precoUnitario: number;
       comprador?: string | null;
       data: string;
+      // Sem informar, mantém o comportamento de sempre: nasce "a receber".
+      pago?: boolean;
+      formaPagamento?: string;
     }) => dados,
   )
   .handler(async ({ data }) => {
@@ -871,11 +874,13 @@ export const registrarVenda = createServerFn({ method: "POST" })
       const unidade = data.unidade ?? "litro";
       const valorTotal = Math.round(data.quantidade * data.precoUnitario * 100) / 100;
       const descricao = `Venda de ${produto}${data.comprador ? ` — ${data.comprador}` : ""}`;
+      const status = data.pago ? "recebido" : "a_receber";
+      const formaPagamento = data.pago ? (data.formaPagamento ?? "dinheiro") : "dinheiro";
 
       const venda = await sql.begin(async (tx) => {
         const financeiros: { id: string }[] = await tx`
-          insert into financeiro_lancamentos (fazenda_id, tipo, descricao, valor, data, categoria, status)
-          values (${data.fazendaId}, 'receita', ${descricao}, ${valorTotal}, ${data.data}, ${`venda_${produto}`}, 'a_receber')
+          insert into financeiro_lancamentos (fazenda_id, tipo, descricao, valor, data, categoria, status, forma_pagamento)
+          values (${data.fazendaId}, 'receita', ${descricao}, ${valorTotal}, ${data.data}, ${`venda_${produto}`}, ${status}, ${formaPagamento})
           returning id`;
         const financeiroId = financeiros[0]!.id;
 

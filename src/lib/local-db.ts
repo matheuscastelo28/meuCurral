@@ -405,6 +405,8 @@ export const db = {
       precoUnitario: number;
       comprador?: string | null;
       data: string;
+      pago?: boolean;
+      formaPagamento?: string;
     }) {
       return registrarVenda({ data: { token: tokenSessao(), ...params } });
     },
