@@ -25,6 +25,23 @@ const DESTINOS = [
   { valor: "outro", rotulo: "Outro" },
 ] as const;
 
+const FORMAS_PAGAMENTO = [
+  { valor: "dinheiro", rotulo: "Dinheiro" },
+  { valor: "pix", rotulo: "Pix" },
+  { valor: "cartao", rotulo: "Cartão" },
+  { valor: "boleto", rotulo: "Boleto" },
+  { valor: "transferencia", rotulo: "Transferência" },
+] as const;
+
+/** Preço vigente pra uma data: data_inicio <= dataAlvo && (data_fim == null || data_fim >= dataAlvo). */
+function encontrarPrecoVigente(precos: any[] | undefined, dataAlvo: string) {
+  return (precos ?? []).find((p: any) => {
+    const inicio = String(p.data_inicio).slice(0, 10);
+    const fim = p.data_fim ? String(p.data_fim).slice(0, 10) : null;
+    return inicio <= dataAlvo && (!fim || fim >= dataAlvo);
+  });
+}
+
 export const Route = createFileRoute("/_authenticated/leite")({
   head: () => ({
     meta: [
@@ -118,16 +135,7 @@ function Leite() {
     },
   });
 
-  const precoVigente = useMemo(() => {
-    // As datas voltam da API como ISO completo (ex: 2026-09-22T00:00:00.000Z),
-    // então comparar direto com "hoje" (YYYY-MM-DD) nunca bate — normaliza
-    // pros 10 primeiros caracteres antes de comparar.
-    return (precos.data ?? []).find((p) => {
-      const inicio = String(p.data_inicio).slice(0, 10);
-      const fim = p.data_fim ? String(p.data_fim).slice(0, 10) : null;
-      return inicio <= hoje && (!fim || fim >= hoje);
-    });
-  }, [precos.data, hoje]);
+  const precoVigente = useMemo(() => encontrarPrecoVigente(precos.data, hoje), [precos.data, hoje]);
 
   const [mostrarFormPreco, setMostrarFormPreco] = useState(false);
   const [precoValor, setPrecoValor] = useState("");
@@ -156,8 +164,10 @@ function Leite() {
     onError: () => toast.error("Não conseguimos salvar o preço agora."),
   });
 
-  // ---- Venda avulsa (preço diferente do vigente, pra uma ocasião só) ---
-  const [mostrarFormVendaAvulsa, setMostrarFormVendaAvulsa] = useState(false);
+  // ---- Venda (avulsa com preço manual, ou pro laticínio com preço vigente) ---
+  const [mostrarFormVenda, setMostrarFormVenda] = useState(false);
+  const [modoVenda, setModoVenda] = useState<"avulsa" | "laticinio">("avulsa");
+
   const [vendaAvulsaLitros, setVendaAvulsaLitros] = useState("");
   const [vendaAvulsaPreco, setVendaAvulsaPreco] = useState("");
   const [vendaAvulsaComprador, setVendaAvulsaComprador] = useState("");
@@ -180,7 +190,7 @@ function Leite() {
     },
     onSuccess: () => {
       toast.success("Venda avulsa registrada.");
-      setMostrarFormVendaAvulsa(false);
+      setMostrarFormVenda(false);
       setVendaAvulsaLitros("");
       setVendaAvulsaPreco("");
       setVendaAvulsaComprador("");
@@ -193,6 +203,61 @@ function Leite() {
     },
     onError: (erro: Error) =>
       toast.error(erro.message || "Não conseguimos registrar a venda avulsa."),
+  });
+
+  // ---- Venda para laticínio (usa o preço vigente na data da venda) -----
+  const [vendaLaticinioLitros, setVendaLaticinioLitros] = useState("");
+  const [vendaLaticinioComprador, setVendaLaticinioComprador] = useState("");
+  const [vendaLaticinioData, setVendaLaticinioData] = useState(hoje);
+  const [vendaLaticinioPago, setVendaLaticinioPago] = useState(false);
+  const [vendaLaticinioFormaPagamento, setVendaLaticinioFormaPagamento] = useState("dinheiro");
+
+  const precoNaDataLaticinio = useMemo(
+    () => encontrarPrecoVigente(precos.data, vendaLaticinioData),
+    [precos.data, vendaLaticinioData],
+  );
+
+  const vendaLaticinioTotal = precoNaDataLaticinio
+    ? (Number(vendaLaticinioLitros) || 0) * Number(precoNaDataLaticinio.valor)
+    : 0;
+
+  const salvarVendaLaticinio = useMutation({
+    mutationFn: async () => {
+      if (!precoNaDataLaticinio) {
+        throw new Error(
+          "Nenhum preço do leite cadastrado para esta data. Atualize o preço do leite antes de registrar a venda.",
+        );
+      }
+      const litrosNum = Number(vendaLaticinioLitros);
+      if (!(litrosNum > 0)) {
+        throw new Error("Informe uma quantidade maior que zero.");
+      }
+      const comprador = precoNaDataLaticinio.comprador || vendaLaticinioComprador.trim() || null;
+      const { error } = await db.leite.registrarVenda({
+        fazendaId: fazenda!.id,
+        quantidade: litrosNum,
+        precoUnitario: Number(precoNaDataLaticinio.valor),
+        comprador,
+        data: vendaLaticinioData,
+        pago: vendaLaticinioPago,
+        formaPagamento: vendaLaticinioFormaPagamento,
+      });
+      if (error) throw new Error(error.message);
+    },
+    onSuccess: () => {
+      toast.success("Venda para laticínio registrada.");
+      setMostrarFormVenda(false);
+      setVendaLaticinioLitros("");
+      setVendaLaticinioComprador("");
+      setVendaLaticinioData(hoje);
+      setVendaLaticinioPago(false);
+      setVendaLaticinioFormaPagamento("dinheiro");
+      queryClient.invalidateQueries({ queryKey: ["vendas"] });
+      queryClient.invalidateQueries({ queryKey: ["financeiro"] });
+      queryClient.invalidateQueries({ queryKey: ["inicio-resumo"] });
+    },
+    onError: (erro: Error) =>
+      toast.error(erro.message || "Não conseguimos registrar a venda."),
   });
 
   // ---- Destinação e venda do dia ----------------------------------------
@@ -426,128 +491,296 @@ function Leite() {
           )}
 
           <div className="mt-5 border-t border-border pt-4">
-            <p className="text-sm font-medium">Venda avulsa</p>
+            <p className="text-sm font-medium">Venda</p>
             <p className="mt-1 text-xs text-muted-foreground">
-              Pra vender uma quantidade com um preço diferente do vigente (outro comprador,
-              ocasião especial etc.) sem mudar o preço padrão do leite.
+              Venda avulsa: preço digitado na hora, pra uma ocasião específica. Venda para
+              laticínio: usa o preço do leite vigente na data escolhida, sem digitar de novo.
             </p>
 
-            {mostrarFormVendaAvulsa ? (
-              <form
-                className="mt-3 grid gap-3 sm:grid-cols-2"
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  salvarVendaAvulsa.mutate();
-                }}
-              >
-                <div className="space-y-1.5">
-                  <Label htmlFor="va-litros">Quantidade (L)</Label>
-                  <Input
-                    id="va-litros"
-                    type="number"
-                    step="0.1"
-                    min="0"
-                    value={vendaAvulsaLitros}
-                    onChange={(e) => setVendaAvulsaLitros(e.target.value)}
-                    required
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="va-preco">Preço (R$/L)</Label>
-                  <Input
-                    id="va-preco"
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    value={vendaAvulsaPreco}
-                    onChange={(e) => setVendaAvulsaPreco(e.target.value)}
-                    required
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="va-comprador">Comprador</Label>
-                  <Input
-                    id="va-comprador"
-                    value={vendaAvulsaComprador}
-                    onChange={(e) => setVendaAvulsaComprador(e.target.value)}
-                    placeholder="Opcional"
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="va-data">Data</Label>
-                  <Input
-                    id="va-data"
-                    type="date"
-                    value={vendaAvulsaData}
-                    onChange={(e) => setVendaAvulsaData(e.target.value)}
-                    required
-                  />
-                </div>
-
-                <div className="space-y-1.5 sm:col-span-2">
-                  <Label>Pagamento</Label>
-                  <div className="flex gap-2">
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant={vendaAvulsaPago ? "outline" : "default"}
-                      onClick={() => setVendaAvulsaPago(false)}
-                    >
-                      A receber
-                    </Button>
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant={vendaAvulsaPago ? "default" : "outline"}
-                      onClick={() => setVendaAvulsaPago(true)}
-                    >
-                      Pago agora
-                    </Button>
-                  </div>
-                </div>
-
-                {vendaAvulsaPago ? (
-                  <div className="space-y-1.5">
-                    <Label htmlFor="va-forma-pagamento">Forma de pagamento</Label>
-                    <select
-                      id="va-forma-pagamento"
-                      value={vendaAvulsaFormaPagamento}
-                      onChange={(e) => setVendaAvulsaFormaPagamento(e.target.value)}
-                      className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
-                    >
-                      <option value="dinheiro">Dinheiro</option>
-                      <option value="pix">Pix</option>
-                      <option value="cartao">Cartão</option>
-                      <option value="boleto">Boleto</option>
-                      <option value="transferencia">Transferência</option>
-                    </select>
-                  </div>
-                ) : null}
-
-                <div className="flex gap-2 sm:col-span-2">
-                  <Button type="submit" size="sm" disabled={salvarVendaAvulsa.isPending}>
-                    <Coins className="size-4" aria-hidden="true" />
-                    Registrar venda
+            {mostrarFormVenda ? (
+              <div className="mt-3">
+                <div className="flex gap-2">
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant={modoVenda === "avulsa" ? "default" : "outline"}
+                    onClick={() => setModoVenda("avulsa")}
+                  >
+                    Venda avulsa
                   </Button>
                   <Button
                     type="button"
-                    variant="outline"
                     size="sm"
-                    onClick={() => setMostrarFormVendaAvulsa(false)}
+                    variant={modoVenda === "laticinio" ? "default" : "outline"}
+                    onClick={() => setModoVenda("laticinio")}
                   >
-                    Cancelar
+                    Venda para laticínio
                   </Button>
                 </div>
-              </form>
+
+                {modoVenda === "avulsa" ? (
+                  <form
+                    className="mt-3 grid gap-3 sm:grid-cols-2"
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      salvarVendaAvulsa.mutate();
+                    }}
+                  >
+                    <div className="space-y-1.5">
+                      <Label htmlFor="va-litros">Quantidade (L)</Label>
+                      <Input
+                        id="va-litros"
+                        type="number"
+                        step="0.1"
+                        min="0"
+                        value={vendaAvulsaLitros}
+                        onChange={(e) => setVendaAvulsaLitros(e.target.value)}
+                        required
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label htmlFor="va-preco">Preço (R$/L)</Label>
+                      <Input
+                        id="va-preco"
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        value={vendaAvulsaPreco}
+                        onChange={(e) => setVendaAvulsaPreco(e.target.value)}
+                        required
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label htmlFor="va-comprador">Comprador</Label>
+                      <Input
+                        id="va-comprador"
+                        value={vendaAvulsaComprador}
+                        onChange={(e) => setVendaAvulsaComprador(e.target.value)}
+                        placeholder="Opcional"
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label htmlFor="va-data">Data</Label>
+                      <Input
+                        id="va-data"
+                        type="date"
+                        value={vendaAvulsaData}
+                        onChange={(e) => setVendaAvulsaData(e.target.value)}
+                        required
+                      />
+                    </div>
+
+                    <div className="space-y-1.5 sm:col-span-2">
+                      <Label>Pagamento</Label>
+                      <div className="flex gap-2">
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant={vendaAvulsaPago ? "outline" : "default"}
+                          onClick={() => setVendaAvulsaPago(false)}
+                        >
+                          A receber
+                        </Button>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant={vendaAvulsaPago ? "default" : "outline"}
+                          onClick={() => setVendaAvulsaPago(true)}
+                        >
+                          Pago agora
+                        </Button>
+                      </div>
+                    </div>
+
+                    {vendaAvulsaPago ? (
+                      <div className="space-y-1.5">
+                        <Label htmlFor="va-forma-pagamento">Forma de pagamento</Label>
+                        <select
+                          id="va-forma-pagamento"
+                          value={vendaAvulsaFormaPagamento}
+                          onChange={(e) => setVendaAvulsaFormaPagamento(e.target.value)}
+                          className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+                        >
+                          {FORMAS_PAGAMENTO.map((f) => (
+                            <option key={f.valor} value={f.valor}>
+                              {f.rotulo}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    ) : null}
+
+                    <div className="flex gap-2 sm:col-span-2">
+                      <Button type="submit" size="sm" disabled={salvarVendaAvulsa.isPending}>
+                        <Coins className="size-4" aria-hidden="true" />
+                        Registrar venda
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setMostrarFormVenda(false)}
+                      >
+                        Cancelar
+                      </Button>
+                    </div>
+                  </form>
+                ) : (
+                  <form
+                    className="mt-3 grid gap-3 sm:grid-cols-2"
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      salvarVendaLaticinio.mutate();
+                    }}
+                  >
+                    <div className="space-y-1.5">
+                      <Label htmlFor="vl-litros">Quantidade (L)</Label>
+                      <Input
+                        id="vl-litros"
+                        type="number"
+                        step="0.1"
+                        min="0"
+                        value={vendaLaticinioLitros}
+                        onChange={(e) => setVendaLaticinioLitros(e.target.value)}
+                        required
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label htmlFor="vl-preco">Preço vigente (R$/L)</Label>
+                      <Input
+                        id="vl-preco"
+                        readOnly
+                        disabled
+                        value={
+                          precoNaDataLaticinio ? moeda(Number(precoNaDataLaticinio.valor)) : "—"
+                        }
+                      />
+                    </div>
+
+                    {precoNaDataLaticinio?.comprador ? (
+                      <div className="space-y-1.5">
+                        <Label htmlFor="vl-comprador">Comprador</Label>
+                        <Input
+                          id="vl-comprador"
+                          readOnly
+                          disabled
+                          value={precoNaDataLaticinio.comprador}
+                        />
+                      </div>
+                    ) : (
+                      <div className="space-y-1.5">
+                        <Label htmlFor="vl-comprador">Comprador</Label>
+                        <Input
+                          id="vl-comprador"
+                          value={vendaLaticinioComprador}
+                          onChange={(e) => setVendaLaticinioComprador(e.target.value)}
+                          placeholder="Opcional"
+                        />
+                      </div>
+                    )}
+
+                    <div className="space-y-1.5">
+                      <Label htmlFor="vl-data">Data</Label>
+                      <Input
+                        id="vl-data"
+                        type="date"
+                        value={vendaLaticinioData}
+                        onChange={(e) => setVendaLaticinioData(e.target.value)}
+                        required
+                      />
+                    </div>
+
+                    {!precoNaDataLaticinio ? (
+                      <p
+                        role="alert"
+                        className="rounded-lg bg-destructive/10 px-3 py-2 text-xs text-destructive sm:col-span-2"
+                      >
+                        Nenhum preço do leite cadastrado para esta data. Atualize o preço do
+                        leite antes de registrar a venda.
+                      </p>
+                    ) : (
+                      <div className="space-y-1.5">
+                        <Label>Total</Label>
+                        <p className="font-display text-lg font-extrabold">
+                          {moeda(vendaLaticinioTotal)}
+                        </p>
+                      </div>
+                    )}
+
+                    <div className="space-y-1.5 sm:col-span-2">
+                      <Label>Pagamento</Label>
+                      <div className="flex gap-2">
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant={vendaLaticinioPago ? "outline" : "default"}
+                          onClick={() => setVendaLaticinioPago(false)}
+                        >
+                          A receber
+                        </Button>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant={vendaLaticinioPago ? "default" : "outline"}
+                          onClick={() => setVendaLaticinioPago(true)}
+                        >
+                          Pago agora
+                        </Button>
+                      </div>
+                    </div>
+
+                    {vendaLaticinioPago ? (
+                      <div className="space-y-1.5">
+                        <Label htmlFor="vl-forma-pagamento">Forma de pagamento</Label>
+                        <select
+                          id="vl-forma-pagamento"
+                          value={vendaLaticinioFormaPagamento}
+                          onChange={(e) => setVendaLaticinioFormaPagamento(e.target.value)}
+                          className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+                        >
+                          {FORMAS_PAGAMENTO.map((f) => (
+                            <option key={f.valor} value={f.valor}>
+                              {f.rotulo}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    ) : null}
+
+                    <div className="flex gap-2 sm:col-span-2">
+                      <Button
+                        type="submit"
+                        size="sm"
+                        disabled={
+                          salvarVendaLaticinio.isPending ||
+                          !precoNaDataLaticinio ||
+                          !(Number(vendaLaticinioLitros) > 0)
+                        }
+                      >
+                        <Coins className="size-4" aria-hidden="true" />
+                        Registrar venda
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setMostrarFormVenda(false)}
+                      >
+                        Cancelar
+                      </Button>
+                    </div>
+                  </form>
+                )}
+              </div>
             ) : (
               <Button
                 type="button"
                 variant="outline"
                 size="sm"
                 className="mt-3"
-                onClick={() => setMostrarFormVendaAvulsa(true)}
+                onClick={() => setMostrarFormVenda(true)}
               >
-                Registrar venda avulsa
+                Registrar venda
               </Button>
             )}
           </div>
