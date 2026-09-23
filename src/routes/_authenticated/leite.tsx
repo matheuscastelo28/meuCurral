@@ -156,6 +156,39 @@ function Leite() {
     onError: () => toast.error("Não conseguimos salvar o preço agora."),
   });
 
+  // ---- Venda avulsa (preço diferente do vigente, pra uma ocasião só) ---
+  const [mostrarFormVendaAvulsa, setMostrarFormVendaAvulsa] = useState(false);
+  const [vendaAvulsaLitros, setVendaAvulsaLitros] = useState("");
+  const [vendaAvulsaPreco, setVendaAvulsaPreco] = useState("");
+  const [vendaAvulsaComprador, setVendaAvulsaComprador] = useState("");
+  const [vendaAvulsaData, setVendaAvulsaData] = useState(hoje);
+
+  const salvarVendaAvulsa = useMutation({
+    mutationFn: async () => {
+      const { error } = await db.leite.registrarVenda({
+        fazendaId: fazenda!.id,
+        quantidade: Number(vendaAvulsaLitros),
+        precoUnitario: Number(vendaAvulsaPreco),
+        comprador: vendaAvulsaComprador.trim() || null,
+        data: vendaAvulsaData,
+      });
+      if (error) throw new Error(error.message);
+    },
+    onSuccess: () => {
+      toast.success("Venda avulsa registrada.");
+      setMostrarFormVendaAvulsa(false);
+      setVendaAvulsaLitros("");
+      setVendaAvulsaPreco("");
+      setVendaAvulsaComprador("");
+      setVendaAvulsaData(hoje);
+      queryClient.invalidateQueries({ queryKey: ["vendas"] });
+      queryClient.invalidateQueries({ queryKey: ["financeiro"] });
+      queryClient.invalidateQueries({ queryKey: ["inicio-resumo"] });
+    },
+    onError: (erro: Error) =>
+      toast.error(erro.message || "Não conseguimos registrar a venda avulsa."),
+  });
+
   // ---- Destinação e venda do dia ----------------------------------------
   const destinacoesHoje = useQuery({
     queryKey: ["destinacoes-leite", fazenda?.id, hoje],
@@ -385,6 +418,92 @@ function Leite() {
               Atualizar preço
             </Button>
           )}
+
+          <div className="mt-5 border-t border-border pt-4">
+            <p className="text-sm font-medium">Venda avulsa</p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Pra vender uma quantidade com um preço diferente do vigente (outro comprador,
+              ocasião especial etc.) sem mudar o preço padrão do leite.
+            </p>
+
+            {mostrarFormVendaAvulsa ? (
+              <form
+                className="mt-3 grid gap-3 sm:grid-cols-2"
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  salvarVendaAvulsa.mutate();
+                }}
+              >
+                <div className="space-y-1.5">
+                  <Label htmlFor="va-litros">Quantidade (L)</Label>
+                  <Input
+                    id="va-litros"
+                    type="number"
+                    step="0.1"
+                    min="0"
+                    value={vendaAvulsaLitros}
+                    onChange={(e) => setVendaAvulsaLitros(e.target.value)}
+                    required
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="va-preco">Preço (R$/L)</Label>
+                  <Input
+                    id="va-preco"
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value={vendaAvulsaPreco}
+                    onChange={(e) => setVendaAvulsaPreco(e.target.value)}
+                    required
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="va-comprador">Comprador</Label>
+                  <Input
+                    id="va-comprador"
+                    value={vendaAvulsaComprador}
+                    onChange={(e) => setVendaAvulsaComprador(e.target.value)}
+                    placeholder="Opcional"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="va-data">Data</Label>
+                  <Input
+                    id="va-data"
+                    type="date"
+                    value={vendaAvulsaData}
+                    onChange={(e) => setVendaAvulsaData(e.target.value)}
+                    required
+                  />
+                </div>
+                <div className="flex gap-2 sm:col-span-2">
+                  <Button type="submit" size="sm" disabled={salvarVendaAvulsa.isPending}>
+                    <Coins className="size-4" aria-hidden="true" />
+                    Registrar venda
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setMostrarFormVendaAvulsa(false)}
+                  >
+                    Cancelar
+                  </Button>
+                </div>
+              </form>
+            ) : (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="mt-3"
+                onClick={() => setMostrarFormVendaAvulsa(true)}
+              >
+                Registrar venda avulsa
+              </Button>
+            )}
+          </div>
         </CartaoConfig>
 
         <CartaoConfig
