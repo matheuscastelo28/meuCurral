@@ -392,7 +392,7 @@ export const db = {
     async registrarDestinacao(params: {
       fazendaId: string;
       data: string;
-      destinos: { destino: string; quantidade: number }[];
+      destinos: { destino: string; quantidade: number; observacoes?: string | null }[];
     }) {
       return registrarDestinacaoLeite({ data: { token: tokenSessao(), ...params } });
     },

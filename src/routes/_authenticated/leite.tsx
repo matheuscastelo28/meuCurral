@@ -16,14 +16,22 @@ import { dataCurta, hojeISO, moeda as formatarMoeda } from "@/lib/formato";
 import { usePreferencias } from "@/hooks/use-preferencias";
 import { PRODUTOS_LEITE, rotuloProduto, unidadeProduto } from "@/lib/produtos-leite";
 
-const DESTINOS = [
-  { valor: "venda", rotulo: "Venda" },
+const CONSUMO_TIPOS = [
   { valor: "bezerros", rotulo: "Bezerros" },
-  { valor: "queijo", rotulo: "Queijo" },
-  { valor: "consumo", rotulo: "Consumo" },
-  { valor: "descarte", rotulo: "Descarte" },
-  { valor: "outro", rotulo: "Outro" },
+  { valor: "consumo_familiar", rotulo: "Consumo familiar" },
+  { valor: "derivados", rotulo: "Derivados" },
+  { valor: "outros", rotulo: "Outros" },
 ] as const;
+
+const DERIVADOS = PRODUTOS_LEITE.filter((p) => p.valor !== "leite");
+
+/** Rótulos usados antes desta tela existir — mapeia pro novo tipo de consumo. */
+const MIGRAR_TIPO_CONSUMO: Record<string, (typeof CONSUMO_TIPOS)[number]["valor"]> = {
+  queijo: "derivados",
+  consumo: "consumo_familiar",
+  outro: "outros",
+  descarte: "outros",
+};
 
 const FORMAS_PAGAMENTO = [
   { valor: "dinheiro", rotulo: "Dinheiro" },
@@ -205,6 +213,8 @@ function Leite() {
       toast.error(erro.message || "Não conseguimos registrar a venda avulsa."),
   });
 
+  const vendaAvulsaTotal = (Number(vendaAvulsaLitros) || 0) * (Number(vendaAvulsaPreco) || 0);
+
   // ---- Venda para laticínio (usa o preço vigente na data da venda) -----
   const [vendaLaticinioLitros, setVendaLaticinioLitros] = useState("");
   const [vendaLaticinioComprador, setVendaLaticinioComprador] = useState("");
@@ -290,31 +300,101 @@ function Leite() {
     },
   });
 
-  const [destinos, setDestinos] = useState<Record<string, string>>({});
+  type ConsumoEntry = {
+    id: string;
+    tipo: (typeof CONSUMO_TIPOS)[number]["valor"];
+    derivado?: string | undefined;
+    nome?: string | undefined;
+    quantidade: string;
+  };
+
+  const [consumoEntries, setConsumoEntries] = useState<ConsumoEntry[]>([]);
+  const [mostrarFormConsumo, setMostrarFormConsumo] = useState(false);
+  const [consumoTipo, setConsumoTipo] = useState<ConsumoEntry["tipo"]>("bezerros");
+  const [consumoDerivado, setConsumoDerivado] = useState<string>(DERIVADOS[0]?.valor ?? "queijo");
+  const [consumoNome, setConsumoNome] = useState("");
+  const [consumoQuantidade, setConsumoQuantidade] = useState("");
 
   useEffect(() => {
     if (!destinacoesHoje.data) return;
-    const preenchido: Record<string, string> = {};
-    for (const d of destinacoesHoje.data) preenchido[d.destino] = String(d.quantidade);
-    setDestinos(preenchido);
+    const entradas: ConsumoEntry[] = destinacoesHoje.data
+      .filter((d) => d.destino !== "venda")
+      .map((d) => {
+        const tipo = (MIGRAR_TIPO_CONSUMO[d.destino] ?? d.destino) as ConsumoEntry["tipo"];
+        return {
+          id: d.id,
+          tipo,
+          derivado: tipo === "derivados" ? (d.observacoes ?? undefined) : undefined,
+          nome: tipo === "outros" ? (d.observacoes ?? undefined) : undefined,
+          quantidade: String(d.quantidade),
+        };
+      });
+    setConsumoEntries(entradas);
   }, [destinacoesHoje.data]);
 
-  const totalDestinado = DESTINOS.reduce(
-    (soma, d) => soma + (Number(destinos[d.valor]) || 0),
-    0,
-  );
+  const vendaLitrosHoje = (vendasHoje.data ?? []).reduce((s, v) => s + Number(v.quantidade), 0);
+  const totalConsumo = consumoEntries.reduce((s, e) => s + (Number(e.quantidade) || 0), 0);
+  const totalDestinado = vendaLitrosHoje + totalConsumo;
   const restante = totalHoje - totalDestinado;
   const valorGeradoHoje = (vendasHoje.data ?? []).reduce(
     (s, v) => s + Number(v.valor_total),
     0,
   );
 
+  function rotuloConsumoEntry(e: ConsumoEntry) {
+    const base = CONSUMO_TIPOS.find((t) => t.valor === e.tipo)?.rotulo ?? e.tipo;
+    if (e.tipo === "derivados" && e.derivado) return `${base} — ${rotuloProduto(e.derivado)}`;
+    if (e.tipo === "outros" && e.nome) return e.nome;
+    return base;
+  }
+
+  function adicionarConsumo() {
+    const quantidadeNum = Number(consumoQuantidade);
+    if (!(quantidadeNum > 0)) {
+      toast.error("Informe uma quantidade maior que zero.");
+      return;
+    }
+    if (consumoTipo === "outros" && !consumoNome.trim()) {
+      toast.error("Informe o nome do destino.");
+      return;
+    }
+    setConsumoEntries((atual): ConsumoEntry[] => [
+      ...atual,
+      {
+        id: crypto.randomUUID(),
+        tipo: consumoTipo,
+        derivado: consumoTipo === "derivados" ? consumoDerivado : undefined,
+        nome: consumoTipo === "outros" ? consumoNome.trim() : undefined,
+        quantidade: consumoQuantidade,
+      },
+    ]);
+    setConsumoQuantidade("");
+    setConsumoNome("");
+  }
+
+  function removerConsumo(id: string) {
+    setConsumoEntries((atual) => atual.filter((e) => e.id !== id));
+  }
+
   const salvarDestinacao = useMutation({
     mutationFn: async () => {
-      const lista = DESTINOS.map((d) => ({
-        destino: d.valor,
-        quantidade: Number(destinos[d.valor]) || 0,
-      })).filter((d) => d.quantidade > 0);
+      const lista = [
+        ...(vendaLitrosHoje > 0 ? [{ destino: "venda", quantidade: vendaLitrosHoje }] : []),
+        ...consumoEntries
+          .map((e) => ({
+            destino: e.tipo,
+            quantidade: Number(e.quantidade) || 0,
+            observacoes:
+              e.tipo === "derivados"
+                ? e.derivado
+                  ? rotuloProduto(e.derivado)
+                  : null
+                : e.tipo === "outros"
+                  ? e.nome || null
+                  : null,
+          }))
+          .filter((d) => d.quantidade > 0),
+      ];
 
       const { error } = await db.leite.registrarDestinacao({
         fazendaId: fazenda!.id,
@@ -322,30 +402,10 @@ function Leite() {
         destinos: lista,
       });
       if (error) throw new Error(error.message);
-
-      const vendaLitros = Number(destinos["venda"]) || 0;
-      const jaTemVenda = (vendasHoje.data ?? []).length > 0;
-      if (vendaLitros > 0 && !jaTemVenda) {
-        if (!precoVigente) {
-          throw new Error(
-            "Cadastre o preço do leite antes de destinar litros para venda.",
-          );
-        }
-        const { error: erroVenda } = await db.leite.registrarVenda({
-          fazendaId: fazenda!.id,
-          quantidade: vendaLitros,
-          precoUnitario: Number(precoVigente.valor),
-          comprador: precoVigente.comprador,
-          data: hoje,
-        });
-        if (erroVenda) throw new Error(erroVenda.message);
-      }
     },
     onSuccess: () => {
       toast.success("Destinação salva.");
       queryClient.invalidateQueries({ queryKey: ["destinacoes-leite"] });
-      queryClient.invalidateQueries({ queryKey: ["vendas"] });
-      queryClient.invalidateQueries({ queryKey: ["financeiro"] });
       queryClient.invalidateQueries({ queryKey: ["inicio-resumo"] });
     },
     onError: (erro: Error) =>
@@ -491,8 +551,8 @@ function Leite() {
           )}
 
           <div className="mt-5 border-t border-border pt-4">
-            <p className="text-sm font-medium">Venda</p>
-            <p className="mt-1 text-xs text-muted-foreground">
+            <h3 className="text-base font-semibold">Venda</h3>
+            <p className="mt-1 text-sm text-muted-foreground">
               Venda avulsa: preço digitado na hora, pra uma ocasião específica. Venda para
               laticínio: usa o preço do leite vigente na data escolhida, sem digitar de novo.
             </p>
@@ -568,6 +628,12 @@ function Leite() {
                         onChange={(e) => setVendaAvulsaData(e.target.value)}
                         required
                       />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label>Total</Label>
+                      <p className="font-display text-lg font-extrabold">
+                        {moeda(vendaAvulsaTotal)}
+                      </p>
                     </div>
 
                     <div className="space-y-1.5 sm:col-span-2">
@@ -789,7 +855,7 @@ function Leite() {
         <CartaoConfig
           id="destinacao-leite"
           titulo="Destinação de hoje"
-          descricao="Nem todo litro produzido é vendido — separe aqui o que foi pra venda, bezerros, queijo etc. Só a parte vendida vira receita."
+          descricao="Nem todo litro produzido é vendido — a venda vem das vendas já registradas, e o resto você separa em consumo. Só a parte vendida vira receita."
         >
           <div className="mb-3 grid grid-cols-3 gap-3 text-sm">
             <div>
@@ -823,39 +889,173 @@ function Leite() {
             </p>
           ) : null}
 
-          <form
-            className="grid grid-cols-2 gap-3 sm:grid-cols-3"
-            onSubmit={(e) => {
-              e.preventDefault();
-              salvarDestinacao.mutate();
-            }}
-          >
-            {DESTINOS.map((d) => (
-              <div key={d.valor} className="space-y-1.5">
-                <Label htmlFor={`destino-${d.valor}`}>{d.rotulo} (L)</Label>
-                <Input
-                  id={`destino-${d.valor}`}
-                  type="number"
-                  step="0.1"
-                  min="0"
-                  value={destinos[d.valor] ?? ""}
-                  onChange={(e) =>
-                    setDestinos((atual) => ({ ...atual, [d.valor]: e.target.value }))
-                  }
-                />
+          <div className="space-y-3">
+            <div className="flex items-center justify-between gap-3 rounded-lg border border-border px-3 py-2">
+              <div>
+                <p className="text-sm font-medium">Venda</p>
+                <p className="text-xs text-muted-foreground">
+                  Somado das vendas já registradas hoje.
+                </p>
               </div>
-            ))}
-            <div className="col-span-2 flex items-end sm:col-span-3">
+              <div className="flex items-center gap-2">
+                <span className="font-display text-sm font-extrabold">
+                  {vendaLitrosHoje.toLocaleString("pt-BR")} L
+                </span>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon"
+                  className="size-7"
+                  aria-label="Registrar venda"
+                  onClick={() => {
+                    setMostrarFormVenda(true);
+                    document
+                      .getElementById("preco-leite")
+                      ?.scrollIntoView({ behavior: "smooth", block: "start" });
+                  }}
+                >
+                  <Plus className="size-3.5" aria-hidden="true" />
+                </Button>
+              </div>
+            </div>
+
+            <div className="rounded-lg border border-border px-3 py-2">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-sm font-medium">Consumo</p>
+                  <p className="text-xs text-muted-foreground">
+                    Bezerros, consumo familiar, derivados ou outros.
+                  </p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="font-display text-sm font-extrabold">
+                    {totalConsumo.toLocaleString("pt-BR")} L
+                  </span>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="icon"
+                    className="size-7"
+                    aria-label="Adicionar consumo"
+                    onClick={() => setMostrarFormConsumo((v) => !v)}
+                  >
+                    <Plus className="size-3.5" aria-hidden="true" />
+                  </Button>
+                </div>
+              </div>
+
+              {consumoEntries.length > 0 ? (
+                <ul className="mt-2 space-y-1">
+                  {consumoEntries.map((e) => (
+                    <li key={e.id} className="flex items-center justify-between text-xs">
+                      <span>{rotuloConsumoEntry(e)}</span>
+                      <span className="flex items-center gap-2">
+                        <span className="font-medium">
+                          {Number(e.quantidade).toLocaleString("pt-BR")} L
+                        </span>
+                        <button
+                          type="button"
+                          className="text-muted-foreground hover:text-destructive"
+                          aria-label="Remover"
+                          onClick={() => removerConsumo(e.id)}
+                        >
+                          ×
+                        </button>
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
+
+              {mostrarFormConsumo ? (
+                <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="consumo-tipo">Tipo</Label>
+                    <select
+                      id="consumo-tipo"
+                      value={consumoTipo}
+                      onChange={(e) => setConsumoTipo(e.target.value as ConsumoEntry["tipo"])}
+                      className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+                    >
+                      {CONSUMO_TIPOS.map((t) => (
+                        <option key={t.valor} value={t.valor}>
+                          {t.rotulo}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {consumoTipo === "derivados" ? (
+                    <div className="space-y-1.5">
+                      <Label htmlFor="consumo-derivado">Qual derivado</Label>
+                      <select
+                        id="consumo-derivado"
+                        value={consumoDerivado}
+                        onChange={(e) => setConsumoDerivado(e.target.value)}
+                        className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+                      >
+                        {DERIVADOS.map((d) => (
+                          <option key={d.valor} value={d.valor}>
+                            {d.rotulo}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  ) : null}
+
+                  {consumoTipo === "outros" ? (
+                    <div className="space-y-1.5">
+                      <Label htmlFor="consumo-nome">Nome do destino</Label>
+                      <Input
+                        id="consumo-nome"
+                        value={consumoNome}
+                        onChange={(e) => setConsumoNome(e.target.value)}
+                        placeholder="Ex: Descarte"
+                      />
+                    </div>
+                  ) : null}
+
+                  <div className="space-y-1.5">
+                    <Label htmlFor="consumo-quantidade">Quantidade (L)</Label>
+                    <Input
+                      id="consumo-quantidade"
+                      type="number"
+                      step="0.1"
+                      min="0"
+                      value={consumoQuantidade}
+                      onChange={(e) => setConsumoQuantidade(e.target.value)}
+                    />
+                  </div>
+
+                  <div className="flex items-end gap-2">
+                    <Button type="button" size="sm" onClick={adicionarConsumo}>
+                      Adicionar
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setMostrarFormConsumo(false)}
+                    >
+                      Fechar
+                    </Button>
+                  </div>
+                </div>
+              ) : null}
+            </div>
+
+            <div className="flex justify-end">
               <Button
-                type="submit"
+                type="button"
                 size="sm"
                 disabled={salvarDestinacao.isPending || totalHoje === 0}
+                onClick={() => salvarDestinacao.mutate()}
               >
                 <Coins className="size-4" aria-hidden="true" />
                 Salvar destinação
               </Button>
             </div>
-          </form>
+          </div>
         </CartaoConfig>
       </div>
 

@@ -786,7 +786,7 @@ export const registrarDestinacaoLeite = createServerFn({ method: "POST" })
       token: string | null;
       fazendaId: string;
       data: string;
-      destinos: { destino: string; quantidade: number }[];
+      destinos: { destino: string; quantidade: number; observacoes?: string | null }[];
     }) => dados,
   )
   .handler(async ({ data }) => {
@@ -824,6 +824,7 @@ export const registrarDestinacaoLeite = createServerFn({ method: "POST" })
           data: data.data,
           destino: d.destino,
           quantidade: d.quantidade,
+          observacoes: d.observacoes ?? null,
         }));
         return await tx`insert into destinacoes_leite ${tx(entradas as any)} returning *`;
       });
