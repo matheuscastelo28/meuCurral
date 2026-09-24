@@ -72,7 +72,11 @@ function Inicio() {
   });
 
   const animais = resumo.data?.animais ?? [];
-  const porCategoria = animais.reduce<Record<string, number>>((acc, a) => {
+  // Vendido/morto não contam no rebanho ativo — mesmo critério de
+  // use-fazenda.ts e use-indices-rebanho.ts, só que este resumo ainda não
+  // seguia essa regra.
+  const animaisAtivos = animais.filter((a) => a.status !== "vendido" && a.status !== "morto");
+  const porCategoria = animaisAtivos.reduce<Record<string, number>>((acc, a) => {
     acc[a.categoria] = (acc[a.categoria] ?? 0) + 1;
     return acc;
   }, {});
@@ -104,7 +108,7 @@ function Inicio() {
       ) : (
         <div className="space-y-5">
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
-            <Cartao icon={Beef} rotulo="Cabeças no rebanho" valor={String(animais.length)} />
+            <Cartao icon={Beef} rotulo="Cabeças no rebanho" valor={String(animaisAtivos.length)} />
             <Link to="/engorda" className="block">
               <Cartao
                 icon={Weight}
@@ -144,7 +148,7 @@ function Inicio() {
                     <div className="mt-1 h-2 overflow-hidden rounded-full bg-muted">
                       <div
                         className="h-full bg-primary"
-                        style={{ width: `${(qtd / animais.length) * 100}%` }}
+                        style={{ width: `${(qtd / animaisAtivos.length) * 100}%` }}
                       />
                     </div>
                   </li>

@@ -345,8 +345,10 @@ const auth = {
     return enviarCodigoVerificacao({ data: { email: params.email } });
   },
 
-  async signOut(_opcoes?: { scope?: string }) {
-    await sair({ data: { token: tokenSessao() } });
+  async signOut(opcoes?: { scope?: string }) {
+    await sair({
+      data: { token: tokenSessao(), escopo: opcoes?.scope === "global" ? "global" : "local" },
+    });
     guardarToken(null);
     avisar("SIGNED_OUT");
     return { error: null };

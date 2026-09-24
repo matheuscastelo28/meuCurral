@@ -195,18 +195,30 @@ function Engorda() {
       });
       if (error) throw new Error(error.message);
 
+      // A venda já foi registrada nesse ponto — se marcar o animal como
+      // vendido falhar, não desfaz a venda nem trata como erro geral (senão
+      // o formulário fica aberto e o usuário pode reenviar, duplicando a
+      // venda). Só avisa que esse passo específico não completou.
+      let avisoAnimal: string | null = null;
       if (vendaAnimalId) {
         const { error: erroAnimal } = await db
           .from("animais")
           .update({ status: "vendido", peso_kg: pesoKg } as never)
           .eq("id", vendaAnimalId);
-        if (erroAnimal) throw erroAnimal;
+        if (erroAnimal) {
+          avisoAnimal = "Venda registrada, mas não conseguimos marcar o animal como vendido.";
+        }
       }
+      return { avisoAnimal };
     },
-    onSuccess: () => {
-      toast.success(
-        vendaAnimalId ? "Venda registrada e animal marcado como vendido." : "Venda registrada.",
-      );
+    onSuccess: ({ avisoAnimal }) => {
+      if (avisoAnimal) {
+        toast.warning(avisoAnimal);
+      } else {
+        toast.success(
+          vendaAnimalId ? "Venda registrada e animal marcado como vendido." : "Venda registrada.",
+        );
+      }
       setMostrarFormVendaAvulsa(false);
       setVendaAnimalId("");
       setVendaAvulsaPeso("");

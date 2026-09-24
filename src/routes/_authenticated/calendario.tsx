@@ -80,12 +80,16 @@ function Calendario() {
     },
   });
 
+  // e.data volta da API como ISO completo (ex: 2026-09-22T00:00:00.000Z) —
+  // normaliza pros 10 primeiros caracteres antes de comparar/montar Date.
   const marcados = useMemo(
-    () => (eventos.data ?? []).map((e) => new Date(`${e.data}T12:00:00`)),
+    () => (eventos.data ?? []).map((e) => new Date(`${String(e.data).slice(0, 10)}T12:00:00`)),
     [eventos.data],
   );
 
-  const doDia = (eventos.data ?? []).filter((e) => selecionado && e.data === paraISO(selecionado));
+  const doDia = (eventos.data ?? []).filter(
+    (e) => selecionado && String(e.data).slice(0, 10) === paraISO(selecionado),
+  );
 
   const concluir = useMutation({
     mutationFn: async (id: string) => {

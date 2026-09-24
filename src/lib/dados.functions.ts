@@ -695,13 +695,24 @@ export const usuarioAtual = createServerFn({ method: "POST" })
   });
 
 export const sair = createServerFn({ method: "POST" })
-  .inputValidator((dados: { token: string | null }) => dados)
+  .inputValidator((dados: { token: string | null; escopo?: "local" | "global" }) => dados)
   .handler(async ({ data }) => {
     if (data.token) {
       try {
         const { conexao } = await import("./pg.server");
         const sql = await conexao();
-        await sql`delete from sessoes where token = ${data.token}`;
+        if (data.escopo === "global") {
+          // "Sair de todos os aparelhos": apaga todas as sessões do usuário,
+          // não só a que fez a chamada.
+          const userId = await usuarioIdDaSessao(sql, data.token);
+          if (userId) {
+            await sql`delete from sessoes where user_id = ${userId}`;
+          } else {
+            await sql`delete from sessoes where token = ${data.token}`;
+          }
+        } else {
+          await sql`delete from sessoes where token = ${data.token}`;
+        }
       } catch {
         // ignorar — sair sempre funciona no navegador
       }
