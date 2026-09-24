@@ -132,6 +132,7 @@ function Rebanho() {
       setRacaCustom("");
       queryClient.invalidateQueries({ queryKey: ["animais"] });
       queryClient.invalidateQueries({ queryKey: ["animais-contagem"] });
+      queryClient.invalidateQueries({ queryKey: ["inicio-resumo"] });
     },
     onError: () => toast.error("Não conseguimos salvar agora. Confira os campos e tente de novo."),
   });

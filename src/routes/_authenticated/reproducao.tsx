@@ -92,10 +92,11 @@ function Reproducao() {
       if (error) throw error;
     },
     onSuccess: () => {
-      toast.success("Registro salvo. O calendário já foi atualizado.");
+      toast.success("Registro salvo.");
       setTouro("");
       queryClient.invalidateQueries({ queryKey: ["reproducao"] });
       queryClient.invalidateQueries({ queryKey: ["eventos"] });
+      queryClient.invalidateQueries({ queryKey: ["indices-rebanho"] });
     },
     onError: () => toast.error("Não conseguimos salvar agora. Tente novamente."),
   });
@@ -103,7 +104,7 @@ function Reproducao() {
   return (
     <AppShell
       titulo="Reprodução"
-      descricao="Cada registro gera automaticamente os avisos no calendário."
+      descricao="Registre coberturas, inseminações e partos para acompanhar a previsão de cada animal."
     >
       <form
         className="mb-5 grid gap-3 rounded-xl border border-border bg-card p-4 sm:grid-cols-5 lg:grid-cols-6"
@@ -182,7 +183,7 @@ function Reproducao() {
         <EmptyState
           icon={Stethoscope}
           titulo="Nenhum registro reprodutivo"
-          descricao="Registre uma cobertura ou inseminação e a previsão de parto entra sozinha no calendário."
+          descricao="Registre uma cobertura ou inseminação para calcular a previsão de parto."
         />
       ) : (
         <ul className="divide-y divide-border rounded-xl border border-border bg-card">
