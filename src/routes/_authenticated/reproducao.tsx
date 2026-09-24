@@ -29,6 +29,9 @@ export const Route = createFileRoute("/_authenticated/reproducao")({
 });
 
 const TIPOS = ["cobertura", "inseminacao", "diagnostico", "parto", "secagem"] as const;
+// Média bovina — o sistema ainda não distingue por espécie/raça. É só uma
+// estimativa: a UI deixa isso explícito e permite ajustar a data manualmente.
+// Único lugar onde essa constante existe no app.
 const DIAS_GESTACAO = 283;
 
 function previsaoPartoDe(data: string) {
@@ -79,26 +82,65 @@ function Reproducao() {
     },
   });
 
+  const [confirmarLactacao, setConfirmarLactacao] = useState<{
+    animalId: string;
+    nome: string;
+  } | null>(null);
+
   const salvar = useMutation({
-    mutationFn: async () => {
+    mutationFn: async (vars: {
+      tipo: string;
+      animalId: string;
+      data: string;
+      touro: string;
+      previsaoParto: string | null;
+    }) => {
       const { error } = await db.from("reproducao").insert({
         fazenda_id: fazenda!.id,
-        animal_id: animalId || null,
-        tipo,
-        data,
-        touro: touro.trim() || null,
-        previsao_parto: requerPrevisao ? previsaoParto : null,
+        animal_id: vars.animalId || null,
+        tipo: vars.tipo,
+        data: vars.data,
+        touro: vars.touro.trim() || null,
+        previsao_parto: vars.previsaoParto,
       } as never);
       if (error) throw error;
+      return vars;
     },
-    onSuccess: () => {
+    onSuccess: (vars) => {
       toast.success("Registro salvo.");
       setTouro("");
       queryClient.invalidateQueries({ queryKey: ["reproducao"] });
       queryClient.invalidateQueries({ queryKey: ["eventos"] });
       queryClient.invalidateQueries({ queryKey: ["indices-rebanho"] });
+      if (vars.tipo === "parto" && vars.animalId) {
+        const animal = animais.data?.find((a) => a.id === vars.animalId);
+        setConfirmarLactacao({
+          animalId: vars.animalId,
+          nome: animal?.nome || animal?.brinco || "Esse animal",
+        });
+      }
     },
     onError: () => toast.error("Não conseguimos salvar agora. Tente novamente."),
+  });
+
+  const marcarLactacao = useMutation({
+    mutationFn: async (animalId: string) => {
+      const { error } = await db
+        .from("animais")
+        .update({ status: "lactacao" } as never)
+        .eq("id", animalId);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      toast.success("Animal atualizado para lactação.");
+      setConfirmarLactacao(null);
+      queryClient.invalidateQueries({ queryKey: ["animais"] });
+      queryClient.invalidateQueries({ queryKey: ["animais-simples"] });
+      queryClient.invalidateQueries({ queryKey: ["animais-lactantes"] });
+      queryClient.invalidateQueries({ queryKey: ["indices-rebanho"] });
+      queryClient.invalidateQueries({ queryKey: ["inicio-resumo"] });
+    },
+    onError: () => toast.error("Não conseguimos atualizar o status agora."),
   });
 
   return (
@@ -110,7 +152,13 @@ function Reproducao() {
         className="mb-5 grid gap-3 rounded-xl border border-border bg-card p-4 sm:grid-cols-5 lg:grid-cols-6"
         onSubmit={(e) => {
           e.preventDefault();
-          salvar.mutate();
+          salvar.mutate({
+            tipo,
+            animalId,
+            data,
+            touro,
+            previsaoParto: requerPrevisao ? previsaoParto : null,
+          });
         }}
       >
         <div className="space-y-1.5">
@@ -162,13 +210,17 @@ function Reproducao() {
         </div>
         {requerPrevisao ? (
           <div className="space-y-1.5">
-            <Label htmlFor="previsao-parto">Previsão de parto</Label>
+            <Label htmlFor="previsao-parto">Previsão estimada de parto</Label>
             <Input
               id="previsao-parto"
               type="date"
               value={previsaoParto}
               onChange={(e) => setPrevisaoParto(e.target.value)}
             />
+            <p className="text-xs text-muted-foreground">
+              Calculada com base em uma gestação média de {DIAS_GESTACAO} dias — ajuste se souber de
+              uma data mais precisa.
+            </p>
           </div>
         ) : null}
         <div className="flex items-end">
@@ -178,6 +230,35 @@ function Reproducao() {
           </Button>
         </div>
       </form>
+
+      {confirmarLactacao ? (
+        <div className="mb-5 rounded-xl border border-border bg-card p-4">
+          <p className="text-sm font-medium">
+            Após este parto, {confirmarLactacao.nome} entrou em lactação?
+          </p>
+          <p className="mt-1 text-xs text-muted-foreground">
+            Se sim, o status do animal muda pra "lactação" e ele passa a aparecer na lista de
+            registro de leite por vaca.
+          </p>
+          <div className="mt-3 flex gap-2">
+            <Button
+              size="sm"
+              disabled={marcarLactacao.isPending}
+              onClick={() => marcarLactacao.mutate(confirmarLactacao.animalId)}
+            >
+              Sim
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={marcarLactacao.isPending}
+              onClick={() => setConfirmarLactacao(null)}
+            >
+              Não
+            </Button>
+          </div>
+        </div>
+      ) : null}
 
       {(registros.data?.length ?? 0) === 0 ? (
         <EmptyState
@@ -201,7 +282,7 @@ function Reproducao() {
               </span>
               <span className="text-xs text-muted-foreground">
                 {dataCurta(r.data)}
-                {r.previsao_parto ? ` · previsão de parto ${dataCurta(r.previsao_parto)}` : ""}
+                {r.previsao_parto ? ` · previsão estimada ${dataCurta(r.previsao_parto)}` : ""}
               </span>
             </li>
           ))}

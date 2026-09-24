@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { db } from "@/lib/local-db";
+import { dataISO, diasAtrasISO } from "@/lib/formato";
 
 export interface IndicesEngorda {
   totalEngorda: number;
@@ -7,12 +8,6 @@ export interface IndicesEngorda {
   arrobasTotais: number;
   gmdMedio: number | null;
   ganho30d: number;
-}
-
-function diasAtrasISO(dias: number) {
-  const d = new Date();
-  d.setDate(d.getDate() - dias);
-  return d.toISOString().slice(0, 10);
 }
 
 export function useIndicesEngorda(fazendaId: string | undefined) {
@@ -65,7 +60,7 @@ export function useIndicesEngorda(fazendaId: string | undefined) {
         );
         gmds.push((ultimo.valor - primeiro.valor) / dias);
 
-        const recentes = registros.filter((r) => r.data >= limite30);
+        const recentes = registros.filter((r) => dataISO(r.data) >= limite30);
         if (recentes.length >= 2) {
           ganho30d += recentes[recentes.length - 1]!.valor - recentes[0]!.valor;
         }

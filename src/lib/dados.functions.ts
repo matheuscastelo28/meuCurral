@@ -868,6 +868,10 @@ export const registrarVenda = createServerFn({ method: "POST" })
       // Sem informar, mantém o comportamento de sempre: nasce "a receber".
       pago?: boolean;
       formaPagamento?: string;
+      // Venda de um animal específico (Engorda): marca ele como vendido na
+      // mesma transação da venda — ou tudo persiste, ou nada persiste.
+      animalId?: string | undefined;
+      pesoAtualizado?: number;
     }) => dados,
   )
   .handler(async ({ data }) => {
@@ -912,6 +916,24 @@ export const registrarVenda = createServerFn({ method: "POST" })
             ${valorTotal}, ${data.comprador ?? null}, ${data.data}, ${financeiroId}
           )
           returning *`;
+
+        if (data.animalId) {
+          // Só marca como vendido quem ainda está em "engorda" — protege
+          // contra reenvio/duplo clique: uma segunda tentativa pro mesmo
+          // animal não acha mais nenhuma linha pra atualizar e a transação
+          // inteira (venda + financeiro) é desfeita.
+          const animaisAtualizados: { id: string }[] = await tx`
+            update animais set status = 'vendido',
+              peso_kg = coalesce(${data.pesoAtualizado ?? null}::numeric, peso_kg)
+            where id = ${data.animalId} and fazenda_id = ${data.fazendaId} and status = 'engorda'
+            returning id`;
+          if (animaisAtualizados.length === 0) {
+            throw new Error(
+              "Esse animal já foi vendido ou não está mais em engorda — venda não registrada.",
+            );
+          }
+        }
+
         return vendas[0];
       });
 

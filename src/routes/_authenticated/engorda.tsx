@@ -15,6 +15,7 @@ import { useIndicesRebanho } from "@/hooks/use-indices-rebanho";
 import { useIndicesEngorda } from "@/hooks/use-indices-engorda";
 import { dataCurta, hojeISO, moeda as formatarMoeda, pesoTexto } from "@/lib/formato";
 import { usePreferencias } from "@/hooks/use-preferencias";
+import { encontrarPrecoVigente } from "@/lib/precos-produto";
 
 const KG_POR_ARROBA = 15;
 
@@ -125,13 +126,7 @@ function Engorda() {
     },
   });
 
-  const precoVigente = useMemo(() => {
-    return (precos.data ?? []).find((p) => {
-      const inicio = String(p.data_inicio).slice(0, 10);
-      const fim = p.data_fim ? String(p.data_fim).slice(0, 10) : null;
-      return inicio <= hoje && (!fim || fim >= hoje);
-    });
-  }, [precos.data, hoje]);
+  const precoVigente = useMemo(() => encontrarPrecoVigente(precos.data, hoje), [precos.data, hoje]);
 
   const [mostrarFormPreco, setMostrarFormPreco] = useState(false);
   const [precoValor, setPrecoValor] = useState("");
@@ -182,6 +177,11 @@ function Engorda() {
     mutationFn: async () => {
       const pesoKg = Number(vendaAvulsaPeso);
       const arrobas = pesoKg / KG_POR_ARROBA;
+      // Venda + (se tiver animal vinculado) a mudança de status pra
+      // "vendido" acontecem numa transação só no servidor — ou as duas
+      // coisas persistem, ou nenhuma. Se o animal já não estiver mais em
+      // "engorda" (venda duplicada, reenvio, outro aparelho), o servidor
+      // recusa a transação inteira em vez de gravar uma venda solta.
       const { error } = await db.leite.registrarVenda({
         fazendaId: fazenda!.id,
         produto: "boi",
@@ -192,33 +192,15 @@ function Engorda() {
         data: vendaAvulsaData,
         pago: vendaAvulsaPago,
         formaPagamento: vendaAvulsaFormaPagamento,
+        animalId: vendaAnimalId || undefined,
+        pesoAtualizado: pesoKg,
       });
       if (error) throw new Error(error.message);
-
-      // A venda já foi registrada nesse ponto — se marcar o animal como
-      // vendido falhar, não desfaz a venda nem trata como erro geral (senão
-      // o formulário fica aberto e o usuário pode reenviar, duplicando a
-      // venda). Só avisa que esse passo específico não completou.
-      let avisoAnimal: string | null = null;
-      if (vendaAnimalId) {
-        const { error: erroAnimal } = await db
-          .from("animais")
-          .update({ status: "vendido", peso_kg: pesoKg } as never)
-          .eq("id", vendaAnimalId);
-        if (erroAnimal) {
-          avisoAnimal = "Venda registrada, mas não conseguimos marcar o animal como vendido.";
-        }
-      }
-      return { avisoAnimal };
     },
-    onSuccess: ({ avisoAnimal }) => {
-      if (avisoAnimal) {
-        toast.warning(avisoAnimal);
-      } else {
-        toast.success(
-          vendaAnimalId ? "Venda registrada e animal marcado como vendido." : "Venda registrada.",
-        );
-      }
+    onSuccess: () => {
+      toast.success(
+        vendaAnimalId ? "Venda registrada e animal marcado como vendido." : "Venda registrada.",
+      );
       setMostrarFormVendaAvulsa(false);
       setVendaAnimalId("");
       setVendaAvulsaPeso("");

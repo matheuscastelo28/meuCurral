@@ -21,11 +21,36 @@ export function dataCurta(iso: string | Date | null | undefined) {
   return `${dia}/${mes}/${ano}`;
 }
 
-export function hojeISO() {
-  const d = new Date();
+/** Formata um Date como "YYYY-MM-DD" no fuso local (não UTC). */
+export function paraDataISO(d: Date) {
   const mes = String(d.getMonth() + 1).padStart(2, "0");
   const dia = String(d.getDate()).padStart(2, "0");
   return `${d.getFullYear()}-${mes}-${dia}`;
+}
+
+export function hojeISO() {
+  return paraDataISO(new Date());
+}
+
+/**
+ * Normaliza uma data pra "YYYY-MM-DD". Datas que vêm da API sempre chegam
+ * como ISO completo (ex: "2026-09-24T00:00:00.000Z" — o driver do Postgres
+ * devolve Date, e o servidor faz `.toISOString()`), nunca como data curta.
+ * Comparar/agrupar por dia sem passar por aqui foi a causa de mais de um bug
+ * nesse app (calendário, preço vigente, produção do dia) — use sempre que
+ * for comparar uma data vinda do banco com `hojeISO()` ou outra data curta.
+ */
+export function dataISO(valor: string | Date | null | undefined): string {
+  if (!valor) return "";
+  const texto = valor instanceof Date ? valor.toISOString() : String(valor);
+  return texto.slice(0, 10);
+}
+
+/** Data de N dias atrás, em "YYYY-MM-DD", no fuso local (não UTC). */
+export function diasAtrasISO(dias: number) {
+  const d = new Date();
+  d.setDate(d.getDate() - dias);
+  return paraDataISO(d);
 }
 
 export function idadeEmMeses(nascimento: string | Date | null | undefined) {

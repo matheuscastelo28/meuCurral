@@ -399,7 +399,12 @@ export const db = {
     }) {
       return registrarDestinacaoLeite({ data: { token: tokenSessao(), ...params } });
     },
-    /** Registra a venda e já cria o "a receber" no financeiro. */
+    /**
+     * Registra a venda e já cria o "a receber" no financeiro. Se `animalId`
+     * for informado, marca o animal como vendido na mesma transação — ou
+     * tudo persiste, ou nada persiste (sem venda "órfã" se essa etapa
+     * falhar).
+     */
     async registrarVenda(params: {
       fazendaId: string;
       produto?: string;
@@ -410,6 +415,8 @@ export const db = {
       data: string;
       pago?: boolean;
       formaPagamento?: string;
+      animalId?: string | undefined;
+      pesoAtualizado?: number;
     }) {
       return registrarVenda({ data: { token: tokenSessao(), ...params } });
     },

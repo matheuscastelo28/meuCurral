@@ -12,9 +12,10 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useFazenda } from "@/hooks/use-fazenda";
 import { useIndicesRebanho } from "@/hooks/use-indices-rebanho";
-import { dataCurta, hojeISO, moeda as formatarMoeda } from "@/lib/formato";
+import { dataCurta, dataISO, hojeISO, moeda as formatarMoeda } from "@/lib/formato";
 import { usePreferencias } from "@/hooks/use-preferencias";
 import { PRODUTOS_LEITE, rotuloProduto, unidadeProduto } from "@/lib/produtos-leite";
+import { encontrarPrecoVigente } from "@/lib/precos-produto";
 
 const CONSUMO_TIPOS = [
   { valor: "bezerros", rotulo: "Bezerros" },
@@ -40,15 +41,6 @@ const FORMAS_PAGAMENTO = [
   { valor: "boleto", rotulo: "Boleto" },
   { valor: "transferencia", rotulo: "Transferência" },
 ] as const;
-
-/** Preço vigente pra uma data: data_inicio <= dataAlvo && (data_fim == null || data_fim >= dataAlvo). */
-function encontrarPrecoVigente(precos: any[] | undefined, dataAlvo: string) {
-  return (precos ?? []).find((p: any) => {
-    const inicio = String(p.data_inicio).slice(0, 10);
-    const fim = p.data_fim ? String(p.data_fim).slice(0, 10) : null;
-    return inicio <= dataAlvo && (!fim || fim >= dataAlvo);
-  });
-}
 
 export const Route = createFileRoute("/_authenticated/leite")({
   head: () => ({
@@ -180,11 +172,11 @@ function Leite() {
     .reduce((s, r) => s + Number(r.litros), 0);
 
   const totalHoje = (registros.data ?? [])
-    .filter((r) => r.produto === "leite" && String(r.data).slice(0, 10) === hoje)
+    .filter((r) => r.produto === "leite" && dataISO(r.data) === hoje)
     .reduce((s, r) => s + Number(r.litros), 0);
 
   const registrosHoje = (registros.data ?? []).filter(
-    (r) => r.produto === "leite" && String(r.data).slice(0, 10) === hoje,
+    (r) => r.produto === "leite" && dataISO(r.data) === hoje,
   );
   const temIndividualHoje = registrosHoje.some((r) => r.animal_id);
   const temLoteHoje = registrosHoje.some((r) => r.lote);

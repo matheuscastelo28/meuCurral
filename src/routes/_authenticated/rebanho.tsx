@@ -79,6 +79,7 @@ function Rebanho() {
   const [especie, setEspecie] = useState<string>(ESPECIES[0]);
   const [raca, setRaca] = useState<string>(RACAS[ESPECIES[0]]![0]!);
   const [racaCustom, setRacaCustom] = useState("");
+  const [editando, setEditando] = useState<any>(null);
 
   const animais = useQuery({
     queryKey: ["animais", fazenda?.id],
@@ -137,12 +138,68 @@ function Rebanho() {
     onError: () => toast.error("Não conseguimos salvar agora. Confira os campos e tente de novo."),
   });
 
+  const editar = useMutation({
+    mutationFn: async (form: FormData) => {
+      const racaFinal = raca === OUTRA_RACA ? racaCustom.trim() : raca;
+      const payload = {
+        nome: String(form.get("nome") ?? "").trim(),
+        brinco: String(form.get("brinco") ?? "").trim() || null,
+        especie,
+        raca: racaFinal || null,
+        sexo: String(form.get("sexo") ?? "femea"),
+        categoria: String(form.get("categoria") ?? "vaca"),
+        status: String(form.get("status") ?? "ativo"),
+        nascimento: String(form.get("nascimento") ?? "") || null,
+        peso_kg: form.get("peso_kg") ? Number(form.get("peso_kg")) : null,
+        lote: String(form.get("lote") ?? "").trim() || null,
+        mae: String(form.get("mae") ?? "").trim() || null,
+        observacoes: String(form.get("observacoes") ?? "").trim() || null,
+      };
+      const { error } = await db
+        .from("animais")
+        .update(payload as never)
+        .eq("id", editando!.id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      toast.success("Animal atualizado.");
+      setEditando(null);
+      queryClient.invalidateQueries({ queryKey: ["animais"] });
+      queryClient.invalidateQueries({ queryKey: ["animais-contagem"] });
+      queryClient.invalidateQueries({ queryKey: ["inicio-resumo"] });
+      queryClient.invalidateQueries({ queryKey: ["animais-simples"] });
+      queryClient.invalidateQueries({ queryKey: ["animais-lactantes"] });
+      queryClient.invalidateQueries({ queryKey: ["animais-engorda"] });
+      queryClient.invalidateQueries({ queryKey: ["indices-rebanho"] });
+      queryClient.invalidateQueries({ queryKey: ["indices-engorda"] });
+    },
+    onError: () => toast.error("Não conseguimos salvar agora. Confira os campos e tente de novo."),
+  });
+
   function novoAnimal() {
     if (atingiu) {
       setUpgrade(true);
       return;
     }
+    setEditando(null);
     setAberto(true);
+  }
+
+  function abrirEdicao(a: any) {
+    setAberto(false);
+    setEspecie(a.especie ?? ESPECIES[0]);
+    const racasDaEspecie = RACAS[a.especie] ?? RACAS["bovino"]!;
+    if (a.raca && racasDaEspecie.includes(a.raca)) {
+      setRaca(a.raca);
+      setRacaCustom("");
+    } else if (a.raca) {
+      setRaca(OUTRA_RACA);
+      setRacaCustom(a.raca);
+    } else {
+      setRaca(racasDaEspecie[0]!);
+      setRacaCustom("");
+    }
+    setEditando(a);
   }
 
   return (
@@ -210,6 +267,14 @@ function Rebanho() {
                   <dd className="font-medium">{dataCurta(a.created_at)}</dd>
                 </div>
               </dl>
+              <Button
+                variant="outline"
+                size="sm"
+                className="mt-3 w-full"
+                onClick={() => abrirEdicao(a)}
+              >
+                Editar
+              </Button>
             </article>
           ))}
         </div>
@@ -314,6 +379,160 @@ function Rebanho() {
               {criar.isPending ? "Salvando..." : "Salvar animal"}
             </Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={editando !== null} onOpenChange={(v) => !v && setEditando(null)}>
+        <DialogContent className="max-h-[85vh] overflow-y-auto" key={editando?.id}>
+          <DialogHeader>
+            <DialogTitle>Editar animal</DialogTitle>
+            <DialogDescription>
+              Corrija os dados do cadastro. O histórico de produção, reprodução, pesagens e vendas
+              continua vinculado a este animal.
+            </DialogDescription>
+          </DialogHeader>
+          {editando ? (
+            <>
+              <form
+                id="form-editar-animal"
+                className="space-y-4"
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  editar.mutate(new FormData(e.currentTarget));
+                }}
+              >
+                <div className="space-y-1.5">
+                  <Label htmlFor="edit-nome">Nome ou identificação</Label>
+                  <Input
+                    id="edit-nome"
+                    name="nome"
+                    required
+                    defaultValue={editando.nome ?? ""}
+                    placeholder="Ex: Mimosa"
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="edit-brinco">Brinco</Label>
+                    <Input id="edit-brinco" name="brinco" defaultValue={editando.brinco ?? ""} />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="edit-lote">Lote</Label>
+                    <Input id="edit-lote" name="lote" defaultValue={editando.lote ?? ""} />
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="edit-especie">Espécie</Label>
+                    <select
+                      id="edit-especie"
+                      name="especie"
+                      value={especie}
+                      onChange={(e) => {
+                        const novaEspecie = e.target.value;
+                        setEspecie(novaEspecie);
+                        setRaca(RACAS[novaEspecie]![0]!);
+                        setRacaCustom("");
+                      }}
+                      className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm capitalize"
+                    >
+                      {ESPECIES.map((o) => (
+                        <option key={o} value={o} className="capitalize">
+                          {o}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <Selecao id="sexo" nome="Sexo" opcoes={SEXOS} padrao={editando.sexo} />
+                  <Selecao
+                    id="categoria"
+                    nome="Categoria"
+                    opcoes={CATEGORIAS}
+                    padrao={editando.categoria ?? "vaca"}
+                  />
+                  <Selecao
+                    id="status"
+                    nome="Situação"
+                    opcoes={STATUS}
+                    padrao={editando.status ?? "ativo"}
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="edit-nascimento">Nascimento</Label>
+                    <Input
+                      id="edit-nascimento"
+                      name="nascimento"
+                      type="date"
+                      defaultValue={
+                        editando.nascimento ? String(editando.nascimento).slice(0, 10) : ""
+                      }
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="edit-peso_kg">Peso (kg)</Label>
+                    <Input
+                      id="edit-peso_kg"
+                      name="peso_kg"
+                      type="number"
+                      step="0.1"
+                      min="0"
+                      defaultValue={editando.peso_kg ?? ""}
+                    />
+                  </div>
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="edit-raca">Raça</Label>
+                  <select
+                    id="edit-raca"
+                    value={raca}
+                    onChange={(e) => setRaca(e.target.value)}
+                    className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+                  >
+                    {(RACAS[especie] ?? RACAS["bovino"]!).map((r) => (
+                      <option key={r} value={r}>
+                        {r}
+                      </option>
+                    ))}
+                  </select>
+                  {raca === OUTRA_RACA ? (
+                    <Input
+                      className="mt-1.5"
+                      placeholder="Informe a raça"
+                      value={racaCustom}
+                      onChange={(e) => setRacaCustom(e.target.value)}
+                      aria-label="Raça (informe)"
+                    />
+                  ) : null}
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="edit-mae">Mãe</Label>
+                  <Input
+                    id="edit-mae"
+                    name="mae"
+                    defaultValue={editando.mae ?? ""}
+                    placeholder="Nome ou brinco da mãe (opcional)"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="edit-observacoes">Observações</Label>
+                  <Input
+                    id="edit-observacoes"
+                    name="observacoes"
+                    defaultValue={editando.observacoes ?? ""}
+                  />
+                </div>
+              </form>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setEditando(null)} type="button">
+                  Cancelar
+                </Button>
+                <Button type="submit" form="form-editar-animal" disabled={editar.isPending}>
+                  {editar.isPending ? "Salvando..." : "Salvar alterações"}
+                </Button>
+              </DialogFooter>
+            </>
+          ) : null}
         </DialogContent>
       </Dialog>
 

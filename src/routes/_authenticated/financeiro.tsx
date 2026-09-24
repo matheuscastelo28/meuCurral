@@ -46,6 +46,9 @@ function Financeiro() {
   const [formaPagamento, setFormaPagamento] = useState("dinheiro");
   const [parcelas, setParcelas] = useState("1");
   const [selecionados, setSelecionados] = useState<Set<string>>(new Set());
+  // Só se aplica a receita — despesa lançada na mão ainda não distingue
+  // "a pagar" de "paga" (ver comentário no cálculo do Saldo, mais abaixo).
+  const [receitaRecebida, setReceitaRecebida] = useState(true);
 
   const lancamentos = useQuery({
     queryKey: ["financeiro", fazenda?.id],
@@ -71,6 +74,9 @@ function Financeiro() {
         data,
         forma_pagamento: formaPagamento,
         parcelas: formaPagamento === "cartao" ? Number(parcelas) || 1 : null,
+        // Despesa lançada na mão não tem como marcar "a pagar" ainda — só
+        // receita usa o status pra distinguir do que já entrou no caixa.
+        ...(tipo === "receita" ? { status: receitaRecebida ? "recebido" : "a_receber" } : {}),
       } as never);
       if (error) throw error;
     },
@@ -80,6 +86,7 @@ function Financeiro() {
       setValor("");
       setFormaPagamento("dinheiro");
       setParcelas("1");
+      setReceitaRecebida(true);
       queryClient.invalidateQueries({ queryKey: ["financeiro"] });
       queryClient.invalidateQueries({ queryKey: ["inicio-resumo"] });
     },
@@ -99,15 +106,27 @@ function Financeiro() {
     onError: () => toast.error("Não conseguimos confirmar o recebimento agora."),
   });
 
-  const receitas = (lancamentos.data ?? [])
+  // Receita do período: tudo que foi faturado (vendido/lançado), inclusive o
+  // que ainda não entrou no caixa — é o faturamento, não o saldo em caixa.
+  const receitaPeriodo = (lancamentos.data ?? [])
     .filter((l) => l.tipo === "receita")
     .reduce((s, l) => s + Number(l.valor), 0);
+  // Despesas: o app ainda não distingue "a pagar" de "paga" (todo lançamento
+  // manual de despesa nasce com status "confirmado", sem opção de escolher)
+  // — então toda despesa lançada já é tratada como dinheiro que saiu.
   const despesas = (lancamentos.data ?? [])
     .filter((l) => l.tipo === "despesa")
     .reduce((s, l) => s + Number(l.valor), 0);
   const aReceber = (lancamentos.data ?? [])
-    .filter((l) => l.status === "a_receber")
+    .filter((l) => l.tipo === "receita" && l.status === "a_receber")
     .reduce((s, l) => s + Number(l.valor), 0);
+  const recebido = (lancamentos.data ?? [])
+    .filter((l) => l.tipo === "receita" && l.status === "recebido")
+    .reduce((s, l) => s + Number(l.valor), 0);
+  // Saldo realizado: dinheiro que efetivamente entrou e saiu — não é
+  // "receita faturada menos despesa", que mistura o que ainda não foi
+  // recebido com o caixa de verdade.
+  const saldoRealizado = recebido - despesas;
 
   function alternarSelecao(id: string) {
     setSelecionados((atual) => {
@@ -120,11 +139,22 @@ function Financeiro() {
 
   return (
     <AppShell titulo="Financeiro" descricao="Entradas e saídas da fazenda, sem planilha.">
-      <div className="mb-5 grid gap-3 sm:grid-cols-4">
-        <Resumo rotulo="Receitas" valor={moeda(receitas)} classe="text-success" />
-        <Resumo rotulo="Despesas" valor={moeda(despesas)} classe="text-destructive" />
-        <Resumo rotulo="Saldo" valor={moeda(receitas - despesas)} classe="" />
+      <div className="mb-5 grid gap-3 sm:grid-cols-3 lg:grid-cols-5">
+        <Resumo
+          rotulo="Receita do período"
+          valor={moeda(receitaPeriodo)}
+          classe="text-success"
+          nota="Faturado, inclusive o que ainda não caiu na conta"
+        />
+        <Resumo rotulo="Recebido" valor={moeda(recebido)} classe="text-success" />
         <Resumo rotulo="A receber" valor={moeda(aReceber)} classe="text-warning" />
+        <Resumo rotulo="Despesas" valor={moeda(despesas)} classe="text-destructive" />
+        <Resumo
+          rotulo="Saldo realizado"
+          valor={moeda(saldoRealizado)}
+          classe=""
+          nota="Recebido menos despesas — dinheiro de verdade"
+        />
       </div>
 
       {selecionados.size > 0 ? (
@@ -193,6 +223,29 @@ function Financeiro() {
             required
           />
         </div>
+        {tipo === "receita" ? (
+          <div className="space-y-1.5">
+            <Label>Situação</Label>
+            <div className="flex gap-2">
+              <Button
+                type="button"
+                size="sm"
+                variant={receitaRecebida ? "default" : "outline"}
+                onClick={() => setReceitaRecebida(true)}
+              >
+                Recebido
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant={receitaRecebida ? "outline" : "default"}
+                onClick={() => setReceitaRecebida(false)}
+              >
+                A receber
+              </Button>
+            </div>
+          </div>
+        ) : null}
         <div className="space-y-1.5">
           <Label htmlFor="forma-pagamento">Forma de pagamento</Label>
           <select
@@ -281,11 +334,22 @@ function Financeiro() {
   );
 }
 
-function Resumo({ rotulo, valor, classe }: { rotulo: string; valor: string; classe: string }) {
+function Resumo({
+  rotulo,
+  valor,
+  classe,
+  nota,
+}: {
+  rotulo: string;
+  valor: string;
+  classe: string;
+  nota?: string;
+}) {
   return (
     <div className="rounded-xl border border-border bg-card p-4">
       <p className="text-xs text-muted-foreground">{rotulo}</p>
       <p className={`font-display text-2xl font-extrabold ${classe}`}>{valor}</p>
+      {nota ? <p className="mt-1 text-[11px] text-muted-foreground">{nota}</p> : null}
     </div>
   );
 }
