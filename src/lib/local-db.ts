@@ -70,6 +70,7 @@ const PADROES: Record<string, () => Registro> = {
     produto: "leite",
     observacoes: null,
     animal_id: null,
+    lote: null,
   }),
   reproducao: () => ({
     previsao_parto: null,

@@ -158,6 +158,10 @@ create table if not exists producao_leite (
   id uuid primary key default gen_random_uuid(),
   fazenda_id uuid references fazendas(id) on delete cascade,
   animal_id uuid references animais(id) on delete set null,
+  -- Nome do lote (mesmo texto livre de animais.lote — não existe uma
+  -- tabela de lotes própria). Um registro é por vaca (animal_id) OU por
+  -- lote (lote), nunca os dois.
+  lote text,
   data date default current_date,
   litros numeric,
   turno text default 'manha',
@@ -166,6 +170,8 @@ create table if not exists producao_leite (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
+
+alter table producao_leite add column if not exists lote text;
 
 create table if not exists reproducao (
   id uuid primary key default gen_random_uuid(),

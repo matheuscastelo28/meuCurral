@@ -872,6 +872,13 @@ export const registrarVenda = createServerFn({ method: "POST" })
       }
 
       const produto = data.produto ?? "leite";
+      // Comprador é obrigatório só pra leite — a venda de gado (Engorda) continua opcional.
+      if (produto === "leite" && !data.comprador?.trim()) {
+        return {
+          data: null,
+          error: { message: "Informe o comprador para registrar esta venda." },
+        };
+      }
       const unidade = data.unidade ?? "litro";
       const valorTotal = Math.round(data.quantidade * data.precoUnitario * 100) / 100;
       const descricao = `Venda de ${produto}${data.comprador ? ` — ${data.comprador}` : ""}`;
