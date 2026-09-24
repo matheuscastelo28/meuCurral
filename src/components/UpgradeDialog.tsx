@@ -41,7 +41,7 @@ export function UpgradeDialog({
         </div>
         <div className="flex flex-wrap gap-2">
           <Button asChild>
-            <a href="mailto:contato@meucurraldigital.com.br?subject=Quero%20mais%20espaço%20no%20meu%20plano">
+            <a href="mailto:contato@curralonline.com?subject=Quero%20mais%20espaço%20no%20meu%20plano">
               Falar com a gente
             </a>
           </Button>

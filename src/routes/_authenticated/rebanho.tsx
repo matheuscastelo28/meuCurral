@@ -19,7 +19,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { useLimitePlano } from "@/hooks/use-fazenda";
-import { dataCurta, idadeTexto, pesoTexto } from "@/lib/formato";
+import { dataCurta, dataISO, idadeTexto, pesoTexto } from "@/lib/formato";
 import { usePreferencias } from "@/hooks/use-preferencias";
 
 export const Route = createFileRoute("/_authenticated/rebanho")({
@@ -182,6 +182,9 @@ function Rebanho() {
       return;
     }
     setEditando(null);
+    setEspecie(ESPECIES[0]);
+    setRaca(RACAS[ESPECIES[0]]![0]!);
+    setRacaCustom("");
     setAberto(true);
   }
 
@@ -464,9 +467,7 @@ function Rebanho() {
                       id="edit-nascimento"
                       name="nascimento"
                       type="date"
-                      defaultValue={
-                        editando.nascimento ? String(editando.nascimento).slice(0, 10) : ""
-                      }
+                      defaultValue={editando.nascimento ? dataISO(editando.nascimento) : ""}
                     />
                   </div>
                   <div className="space-y-1.5">

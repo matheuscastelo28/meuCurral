@@ -10,7 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useFazenda } from "@/hooks/use-fazenda";
-import { dataCurta, hojeISO } from "@/lib/formato";
+import { dataCurta, dataISO, hojeISO } from "@/lib/formato";
 
 export const Route = createFileRoute("/_authenticated/reproducao")({
   head: () => ({
@@ -35,7 +35,7 @@ const TIPOS = ["cobertura", "inseminacao", "diagnostico", "parto", "secagem"] as
 const DIAS_GESTACAO = 283;
 
 function previsaoPartoDe(data: string) {
-  return new Date(new Date(data).getTime() + DIAS_GESTACAO * 86400000).toISOString().slice(0, 10);
+  return dataISO(new Date(new Date(data).getTime() + DIAS_GESTACAO * 86400000));
 }
 
 function Reproducao() {
@@ -224,12 +224,22 @@ function Reproducao() {
           </div>
         ) : null}
         <div className="flex items-end">
-          <Button type="submit" className="w-full" disabled={salvar.isPending}>
+          <Button
+            type="submit"
+            className="w-full"
+            disabled={salvar.isPending || confirmarLactacao !== null}
+          >
             <Plus className="size-4" aria-hidden="true" />
             Registrar
           </Button>
         </div>
       </form>
+
+      {confirmarLactacao ? (
+        <p className="mb-3 text-xs text-muted-foreground">
+          Responda a pergunta abaixo antes de registrar outro parto.
+        </p>
+      ) : null}
 
       {confirmarLactacao ? (
         <div className="mb-5 rounded-xl border border-border bg-card p-4">
