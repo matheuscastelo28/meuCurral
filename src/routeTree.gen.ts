@@ -25,6 +25,7 @@ import { Route as AuthenticatedLeiteRouteImport } from './routes/_authenticated/
 import { Route as AuthenticatedPlanosRouteImport } from './routes/_authenticated/planos'
 import { Route as AuthenticatedRebanhoRouteImport } from './routes/_authenticated/rebanho'
 import { Route as AuthenticatedReproducaoRouteImport } from './routes/_authenticated/reproducao'
+import { Route as AuthenticatedRebanhoAnimalIdRouteImport } from './routes/_authenticated/rebanho_.$animalId'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -105,6 +106,12 @@ const AuthenticatedReproducaoRoute = AuthenticatedReproducaoRouteImport.update({
   path: '/reproducao',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
+const AuthenticatedRebanhoAnimalIdRoute =
+  AuthenticatedRebanhoAnimalIdRouteImport.update({
+    id: '/rebanho_/$animalId',
+    path: '/rebanho/$animalId',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -122,6 +129,7 @@ export interface FileRoutesByFullPath {
   '/planos': typeof AuthenticatedPlanosRoute
   '/rebanho': typeof AuthenticatedRebanhoRoute
   '/reproducao': typeof AuthenticatedReproducaoRoute
+  '/rebanho/$animalId': typeof AuthenticatedRebanhoAnimalIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -139,6 +147,7 @@ export interface FileRoutesByTo {
   '/planos': typeof AuthenticatedPlanosRoute
   '/rebanho': typeof AuthenticatedRebanhoRoute
   '/reproducao': typeof AuthenticatedReproducaoRoute
+  '/rebanho/$animalId': typeof AuthenticatedRebanhoAnimalIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -158,6 +167,7 @@ export interface FileRoutesById {
   '/_authenticated/planos': typeof AuthenticatedPlanosRoute
   '/_authenticated/rebanho': typeof AuthenticatedRebanhoRoute
   '/_authenticated/reproducao': typeof AuthenticatedReproducaoRoute
+  '/_authenticated/rebanho_/$animalId': typeof AuthenticatedRebanhoAnimalIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -177,6 +187,7 @@ export interface FileRouteTypes {
     | '/planos'
     | '/rebanho'
     | '/reproducao'
+    | '/rebanho/$animalId'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -194,6 +205,7 @@ export interface FileRouteTypes {
     | '/planos'
     | '/rebanho'
     | '/reproducao'
+    | '/rebanho/$animalId'
   id:
     | '__root__'
     | '/'
@@ -212,6 +224,7 @@ export interface FileRouteTypes {
     | '/_authenticated/planos'
     | '/_authenticated/rebanho'
     | '/_authenticated/reproducao'
+    | '/_authenticated/rebanho_/$animalId'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -338,6 +351,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedReproducaoRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/rebanho_/$animalId': {
+      id: '/_authenticated/rebanho_/$animalId'
+      path: '/rebanho/$animalId'
+      fullPath: '/rebanho/$animalId'
+      preLoaderRoute: typeof AuthenticatedRebanhoAnimalIdRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
   }
 }
 
@@ -351,6 +371,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedPlanosRoute: typeof AuthenticatedPlanosRoute
   AuthenticatedRebanhoRoute: typeof AuthenticatedRebanhoRoute
   AuthenticatedReproducaoRoute: typeof AuthenticatedReproducaoRoute
+  AuthenticatedRebanhoAnimalIdRoute: typeof AuthenticatedRebanhoAnimalIdRoute
 }
 
 const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
@@ -363,6 +384,7 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedPlanosRoute: AuthenticatedPlanosRoute,
   AuthenticatedRebanhoRoute: AuthenticatedRebanhoRoute,
   AuthenticatedReproducaoRoute: AuthenticatedReproducaoRoute,
+  AuthenticatedRebanhoAnimalIdRoute: AuthenticatedRebanhoAnimalIdRoute,
 }
 
 const AuthenticatedRouteRouteWithChildren =

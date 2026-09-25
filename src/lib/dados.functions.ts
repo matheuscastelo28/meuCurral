@@ -97,7 +97,11 @@ export const consultar = createServerFn({ method: "POST" })
         return { data: [], error: { message: "Tabela não permitida." }, count: 0 };
       }
       if (pedido.modo !== "select" && TABELAS_SOMENTE_LEITURA.has(pedido.tabela)) {
-        return { data: [], error: { message: "Use a função específica para alterar esta tabela." }, count: 0 };
+        return {
+          data: [],
+          error: { message: "Use a função específica para alterar esta tabela." },
+          count: 0,
+        };
       }
       const { conexao } = await import("./pg.server");
       const sql = await conexao();
@@ -451,8 +455,12 @@ export const entrar = createServerFn({ method: "POST" })
       if (!usuario) {
         // Sem conta confirmada com essa senha — mas pode existir um
         // cadastro pendente (ainda não virou usuário de verdade).
-        const pendentes: { email: string; nome: string | null; expira_em: Date; enviado_em: Date }[] =
-          await sql`
+        const pendentes: {
+          email: string;
+          nome: string | null;
+          expira_em: Date;
+          enviado_em: Date;
+        }[] = await sql`
             select email, nome, expira_em, enviado_em from cadastros_pendentes
             where email = ${email} and senha_hash = ${senhaHash} limit 1`;
         const pendente = pendentes[0];
@@ -494,7 +502,8 @@ export const entrar = createServerFn({ method: "POST" })
         return {
           data: { user: null, session: null },
           error: {
-            message: "Esse cadastro não foi concluído. Cadastre-se novamente para receber um novo código.",
+            message:
+              "Esse cadastro não foi concluído. Cadastre-se novamente para receber um novo código.",
             code: "cadastro_incompleto",
           },
         };
@@ -584,7 +593,10 @@ export const verificarCodigoEmail = createServerFn({ method: "POST" })
         | { tipo: "expirado" }
         | { tipo: "muitas_tentativas" }
         | { tipo: "codigo_errado"; restantes: number }
-        | { tipo: "ok"; usuario: { id: string; email: string; nome: string | null; objetivo: string | null } };
+        | {
+            tipo: "ok";
+            usuario: { id: string; email: string; nome: string | null; objetivo: string | null };
+          };
 
       const resultado: Resultado = await sql.begin(async (tx) => {
         const linhas: {
@@ -613,7 +625,12 @@ export const verificarCodigoEmail = createServerFn({ method: "POST" })
           return { tipo: "codigo_errado", restantes: MAX_TENTATIVAS_CODIGO - novasTentativas };
         }
 
-        const usuarios: { id: string; email: string; nome: string | null; objetivo: string | null }[] = await tx`
+        const usuarios: {
+          id: string;
+          email: string;
+          nome: string | null;
+          objetivo: string | null;
+        }[] = await tx`
           insert into usuarios (email, senha_hash, nome, objetivo, email_verificado)
           values (${email}, ${pendente.senha_hash}, ${pendente.nome}, ${pendente.objetivo}, true)
           returning id, email, nome, objetivo`;
@@ -883,7 +900,10 @@ export const registrarVenda = createServerFn({ method: "POST" })
         return { data: null, error: { message: "Não autenticado ou fazenda inválida." } };
       }
       if (data.quantidade <= 0 || data.precoUnitario <= 0) {
-        return { data: null, error: { message: "Quantidade e preço precisam ser maiores que zero." } };
+        return {
+          data: null,
+          error: { message: "Quantidade e preço precisam ser maiores que zero." },
+        };
       }
 
       const produto = data.produto ?? "leite";
@@ -909,11 +929,11 @@ export const registrarVenda = createServerFn({ method: "POST" })
 
         const vendas: any[] = await tx`
           insert into vendas (
-            fazenda_id, produto, quantidade, unidade, preco_unitario, valor_total, comprador, data, financeiro_id
+            fazenda_id, produto, quantidade, unidade, preco_unitario, valor_total, comprador, data, financeiro_id, animal_id
           )
           values (
             ${data.fazendaId}, ${produto}, ${data.quantidade}, ${unidade}, ${data.precoUnitario},
-            ${valorTotal}, ${data.comprador ?? null}, ${data.data}, ${financeiroId}
+            ${valorTotal}, ${data.comprador ?? null}, ${data.data}, ${financeiroId}, ${data.animalId ?? null}
           )
           returning *`;
 
@@ -971,6 +991,159 @@ export const marcarLancamentosRecebidos = createServerFn({ method: "POST" })
       return {
         data: null,
         error: { message: erro instanceof Error ? erro.message : "Erro ao marcar como recebido." },
+      };
+    }
+  });
+
+// ---------------------------------------------------------------------------
+// Engorda por lote: pesagem em massa e venda do lote inteiro
+// ---------------------------------------------------------------------------
+
+/**
+ * Registra a pesagem de vários animais de um lote de uma vez — um manejo
+ * "pesagem" por animal + atualização do peso_kg, tudo na mesma transação.
+ * Se um dos animais não pertencer à fazenda, a operação inteira é desfeita
+ * (evita atualizar 5 animais e falhar silenciosamente no 6º).
+ */
+export const registrarPesagemLote = createServerFn({ method: "POST" })
+  .inputValidator(
+    (dados: {
+      token: string | null;
+      fazendaId: string;
+      data: string;
+      pesagens: { animalId: string; peso: number }[];
+    }) => dados,
+  )
+  .handler(async ({ data }) => {
+    try {
+      const { conexao } = await import("./pg.server");
+      const sql = await conexao();
+      const userId = await fazendaDoUsuario(sql, data.token, data.fazendaId);
+      if (!userId) {
+        return { data: null, error: { message: "Não autenticado ou fazenda inválida." } };
+      }
+      const validas = data.pesagens.filter((p) => p.peso > 0);
+      if (validas.length === 0) {
+        return { data: null, error: { message: "Informe ao menos um peso maior que zero." } };
+      }
+
+      const total = await sql.begin(async (tx) => {
+        let registrados = 0;
+        for (const p of validas) {
+          const atualizados: { id: string }[] = await tx`
+            update animais set peso_kg = ${p.peso}
+            where id = ${p.animalId} and fazenda_id = ${data.fazendaId}
+            returning id`;
+          if (atualizados.length === 0) {
+            throw new Error("Um dos animais do lote não foi encontrado — pesagem não registrada.");
+          }
+          await tx`
+            insert into manejos (fazenda_id, animal_id, tipo, data, valor)
+            values (${data.fazendaId}, ${p.animalId}, 'pesagem', ${data.data}, ${p.peso})`;
+          registrados++;
+        }
+        return registrados;
+      });
+
+      return { data: { registrados: total } as any, error: null };
+    } catch (erro) {
+      return {
+        data: null,
+        error: {
+          message: erro instanceof Error ? erro.message : "Erro ao registrar pesagem do lote.",
+        },
+      };
+    }
+  });
+
+/**
+ * Vende todos os animais de um lote (que ainda estejam em "engorda") numa
+ * venda só: um lançamento financeiro, uma linha em vendas (com o peso e
+ * valor somados do lote) e todos os animais marcados como vendidos — tudo
+ * na mesma transação, ou nada persiste.
+ */
+export const registrarVendaLote = createServerFn({ method: "POST" })
+  .inputValidator(
+    (dados: {
+      token: string | null;
+      fazendaId: string;
+      lote: string;
+      precoUnitario: number;
+      comprador?: string | null;
+      data: string;
+      pago?: boolean;
+      formaPagamento?: string;
+    }) => dados,
+  )
+  .handler(async ({ data }) => {
+    try {
+      const { conexao } = await import("./pg.server");
+      const sql = await conexao();
+      const userId = await fazendaDoUsuario(sql, data.token, data.fazendaId);
+      if (!userId) {
+        return { data: null, error: { message: "Não autenticado ou fazenda inválida." } };
+      }
+      if (data.precoUnitario <= 0) {
+        return { data: null, error: { message: "Informe um preço maior que zero." } };
+      }
+
+      const resultado = await sql.begin(async (tx) => {
+        // Trava as linhas do lote pra evitar duas vendas simultâneas do
+        // mesmo lote (duplo clique, reenvio) contarem os mesmos animais.
+        const animaisLote: { id: string; peso_kg: string | null }[] = await tx`
+          select id, peso_kg from animais
+          where fazenda_id = ${data.fazendaId} and lote = ${data.lote} and status = 'engorda'
+          for update`;
+        if (animaisLote.length === 0) {
+          throw new Error("Não há animais em engorda nesse lote — venda não registrada.");
+        }
+        const pesoTotal = animaisLote.reduce((s, a) => s + Number(a.peso_kg ?? 0), 0);
+        if (pesoTotal <= 0) {
+          throw new Error(
+            "Os animais do lote não têm peso registrado — registre uma pesagem antes de vender.",
+          );
+        }
+        const arrobas = pesoTotal / 15;
+        const valorTotal = Math.round(arrobas * data.precoUnitario * 100) / 100;
+        const status = data.pago ? "recebido" : "a_receber";
+        const formaPagamento = data.pago ? (data.formaPagamento ?? "dinheiro") : "dinheiro";
+        const descricao = `Venda do lote ${data.lote}${data.comprador ? ` — ${data.comprador}` : ""} (${animaisLote.length} cab)`;
+
+        const financeiros: { id: string }[] = await tx`
+          insert into financeiro_lancamentos (fazenda_id, tipo, descricao, valor, data, categoria, status, forma_pagamento, lote)
+          values (${data.fazendaId}, 'receita', ${descricao}, ${valorTotal}, ${data.data}, 'venda_boi', ${status}, ${formaPagamento}, ${data.lote})
+          returning id`;
+        const financeiroId = financeiros[0]!.id;
+
+        const vendas: any[] = await tx`
+          insert into vendas (
+            fazenda_id, produto, quantidade, unidade, preco_unitario, valor_total, comprador, data, financeiro_id, lote
+          )
+          values (
+            ${data.fazendaId}, 'boi', ${arrobas}, 'arroba', ${data.precoUnitario},
+            ${valorTotal}, ${data.comprador ?? null}, ${data.data}, ${financeiroId}, ${data.lote}
+          )
+          returning *`;
+
+        const idsLote = animaisLote.map((a) => a.id);
+        const vendidos: { id: string }[] = await tx`
+          update animais set status = 'vendido'
+          where id = any(${idsLote}) and fazenda_id = ${data.fazendaId} and status = 'engorda'
+          returning id`;
+
+        return { venda: vendas[0], qtdAnimais: vendidos.length, pesoTotal, arrobas, valorTotal };
+      });
+
+      return {
+        data: { ...resultado, venda: normalizarLinha(resultado.venda) } as any,
+        error: null,
+      };
+    } catch (erro) {
+      return {
+        data: null,
+        error: {
+          message: erro instanceof Error ? erro.message : "Erro ao registrar venda do lote.",
+        },
       };
     }
   });

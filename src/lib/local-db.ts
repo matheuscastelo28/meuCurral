@@ -21,6 +21,8 @@ import {
   registrarDestinacaoLeite,
   registrarVenda,
   marcarLancamentosRecebidos,
+  registrarPesagemLote,
+  registrarVendaLote,
   type FiltroRemoto,
 } from "@/lib/dados.functions";
 
@@ -82,6 +84,7 @@ const PADROES: Record<string, () => Registro> = {
     categoria: null,
     forma_pagamento: "dinheiro",
     parcelas: null,
+    lote: null,
   }),
   eventos_agenda: () => ({
     concluido: false,
@@ -423,6 +426,32 @@ export const db = {
     /** Marca um ou mais lançamentos "a receber" como recebidos de uma vez. */
     async marcarRecebido(ids: string[]) {
       return marcarLancamentosRecebidos({ data: { token: tokenSessao(), ids } });
+    },
+  },
+  engorda: {
+    /** Registra a pesagem de vários animais do lote numa transação só. */
+    async registrarPesagemLote(params: {
+      fazendaId: string;
+      data: string;
+      pesagens: { animalId: string; peso: number }[];
+    }) {
+      return registrarPesagemLote({ data: { token: tokenSessao(), ...params } });
+    },
+    /**
+     * Vende todos os animais em engorda de um lote numa venda só (um
+     * lançamento financeiro, uma linha em vendas, todos os animais do lote
+     * marcados como vendidos) — ou tudo persiste, ou nada persiste.
+     */
+    async registrarVendaLote(params: {
+      fazendaId: string;
+      lote: string;
+      precoUnitario: number;
+      comprador?: string | null;
+      data: string;
+      pago?: boolean;
+      formaPagamento?: string;
+    }) {
+      return registrarVendaLote({ data: { token: tokenSessao(), ...params } });
     },
   },
 };

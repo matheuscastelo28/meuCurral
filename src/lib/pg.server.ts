@@ -253,13 +253,29 @@ create table if not exists vendas (
   comprador text,
   data date not null default current_date,
   financeiro_id uuid references financeiro_lancamentos(id) on delete set null,
+  -- Preenchido quando a venda é de um animal específico (Engorda avulsa) —
+  -- permite mostrar a venda na ficha daquele animal.
+  animal_id uuid references animais(id) on delete set null,
+  -- Preenchido quando a venda é de um lote inteiro (Engorda por lote) —
+  -- nesse caso animal_id fica nulo, pois a venda cobre vários animais.
+  lote text,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
 
+alter table vendas add column if not exists animal_id uuid references animais(id) on delete set null;
+alter table vendas add column if not exists lote text;
+
+-- Despesas de um lote em engorda (ração, sanidade etc.) usam o mesmo texto
+-- livre de animais.lote, igual à produção de leite por lote — não existe
+-- uma tabela de lotes própria.
+alter table financeiro_lancamentos add column if not exists lote text;
+
 create index if not exists idx_precos_produto_fazenda on precos_produto(fazenda_id, produto, data_inicio);
 create index if not exists idx_destinacoes_leite_fazenda on destinacoes_leite(fazenda_id, data);
 create index if not exists idx_vendas_fazenda on vendas(fazenda_id, data);
+create index if not exists idx_vendas_animal on vendas(animal_id);
+create index if not exists idx_financeiro_lote on financeiro_lancamentos(fazenda_id, lote);
 
 create table if not exists eventos_agenda (
   id uuid primary key default gen_random_uuid(),

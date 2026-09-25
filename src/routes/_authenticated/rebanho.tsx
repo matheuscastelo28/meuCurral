@@ -1,5 +1,5 @@
-import { createFileRoute } from "@tanstack/react-router";
-import { useMemo, useState } from "react";
+import { createFileRoute, Link } from "@tanstack/react-router";
+import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Beef, Plus, Search } from "lucide-react";
 import { toast } from "sonner";
@@ -32,6 +32,10 @@ export const Route = createFileRoute("/_authenticated/rebanho")({
       { name: "robots", content: "noindex" },
     ],
   }),
+  validateSearch: (search: Record<string, unknown>): { editar?: string } => {
+    const editar = typeof search["editar"] === "string" ? search["editar"] : undefined;
+    return editar ? { editar } : {};
+  },
   component: Rebanho,
 });
 
@@ -73,6 +77,8 @@ function Rebanho() {
   const prefs = usePreferencias();
   const { fazenda, atingiu, usados, limite, plano } = useLimitePlano();
   const queryClient = useQueryClient();
+  const { editar: editarId } = Route.useSearch();
+  const navigate = Route.useNavigate();
   const [busca, setBusca] = useState("");
   const [aberto, setAberto] = useState(false);
   const [upgrade, setUpgrade] = useState(false);
@@ -105,6 +111,16 @@ function Rebanho() {
         (a.lote ?? "").toLowerCase().includes(termo),
     );
   }, [animais.data, busca]);
+
+  // Permite abrir a edição direto de outra tela (ex: "Editar dados do
+  // animal" na ficha) navegando para /rebanho?editar=<id>.
+  useEffect(() => {
+    if (!editarId || !animais.data) return;
+    const alvo = animais.data.find((a) => a.id === editarId);
+    if (alvo) abrirEdicao(alvo);
+    navigate({ search: {}, replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editarId, animais.data]);
 
   const criar = useMutation({
     mutationFn: async (form: FormData) => {
@@ -270,14 +286,21 @@ function Rebanho() {
                   <dd className="font-medium">{dataCurta(a.created_at)}</dd>
                 </div>
               </dl>
-              <Button
-                variant="outline"
-                size="sm"
-                className="mt-3 w-full"
-                onClick={() => abrirEdicao(a)}
-              >
-                Editar
-              </Button>
+              <div className="mt-3 flex gap-2">
+                <Button variant="outline" size="sm" className="flex-1" asChild>
+                  <Link to="/rebanho/$animalId" params={{ animalId: a.id }}>
+                    Ver ficha
+                  </Link>
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="flex-1"
+                  onClick={() => abrirEdicao(a)}
+                >
+                  Editar
+                </Button>
+              </div>
             </article>
           ))}
         </div>
