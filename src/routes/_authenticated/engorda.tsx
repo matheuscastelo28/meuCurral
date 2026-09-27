@@ -238,9 +238,11 @@ function Engorda() {
   const [vendaAvulsaData, setVendaAvulsaData] = useState(hoje);
   const [vendaAvulsaPago, setVendaAvulsaPago] = useState(false);
   const [vendaAvulsaFormaPagamento, setVendaAvulsaFormaPagamento] = useState("dinheiro");
+  const [vendaAvulsaParcelas, setVendaAvulsaParcelas] = useState("1");
 
   const arrobasVendaAvulsa =
     Number(vendaAvulsaPeso) > 0 ? Number(vendaAvulsaPeso) / KG_POR_ARROBA : 0;
+  const vendaAvulsaTotal = arrobasVendaAvulsa * (Number(vendaAvulsaPreco) || 0);
 
   function selecionarAnimalVenda(id: string) {
     setVendaAnimalId(id);
@@ -262,6 +264,7 @@ function Engorda() {
         data: vendaAvulsaData,
         pago: vendaAvulsaPago,
         formaPagamento: vendaAvulsaFormaPagamento,
+        parcelas: vendaAvulsaFormaPagamento === "cartao" ? Number(vendaAvulsaParcelas) || 1 : null,
         animalId: vendaAnimalId || undefined,
         pesoAtualizado: pesoKg,
       });
@@ -279,6 +282,7 @@ function Engorda() {
       setVendaAvulsaData(hoje);
       setVendaAvulsaPago(false);
       setVendaAvulsaFormaPagamento("dinheiro");
+      setVendaAvulsaParcelas("1");
       invalidarEngordaGeral();
     },
     onError: (erro: Error) => toast.error(erro.message || "Não conseguimos registrar a venda."),
@@ -856,6 +860,24 @@ function Engorda() {
                         <option value="cartao">Cartão</option>
                         <option value="boleto">Boleto</option>
                         <option value="transferencia">Transferência</option>
+                      </select>
+                    </div>
+                  ) : null}
+
+                  {vendaAvulsaPago && vendaAvulsaFormaPagamento === "cartao" ? (
+                    <div className="space-y-1.5">
+                      <Label htmlFor="venda-boi-parcelas">Parcelas</Label>
+                      <select
+                        id="venda-boi-parcelas"
+                        value={vendaAvulsaParcelas}
+                        onChange={(ev) => setVendaAvulsaParcelas(ev.target.value)}
+                        className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+                      >
+                        {[1, 2, 3].map((n) => (
+                          <option key={n} value={n}>
+                            {n}x de {moeda(vendaAvulsaTotal / n)}
+                          </option>
+                        ))}
                       </select>
                     </div>
                   ) : null}
