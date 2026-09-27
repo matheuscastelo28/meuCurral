@@ -29,6 +29,9 @@ export const Route = createFileRoute("/_authenticated/reproducao")({
 });
 
 const TIPOS = ["cobertura", "inseminacao", "diagnostico", "parto", "secagem"] as const;
+// Touro não entra como "Animal" (o animal sendo coberto/inseminado/secado/
+// parindo) nesses tipos — só faz sentido escolher um touro ali em diagnóstico.
+const TIPOS_SEM_TOURO_NO_ANIMAL = new Set(["cobertura", "inseminacao", "secagem", "parto"]);
 // Média bovina — o sistema ainda não distingue por espécie/raça. É só uma
 // estimativa: a UI deixa isso explícito e permite ajustar a data manualmente.
 // Único lugar onde essa constante existe no app.
@@ -62,13 +65,22 @@ function Reproducao() {
     queryFn: async () => {
       const { data, error } = await db
         .from("animais")
-        .select("id, nome, brinco")
+        .select("id, nome, brinco, categoria")
         .eq("fazenda_id", fazenda!.id)
         .order("nome");
       if (error) throw error;
       return data;
     },
   });
+
+  const animaisParaSelecao = (animais.data ?? []).filter(
+    (a) => !TIPOS_SEM_TOURO_NO_ANIMAL.has(tipo) || a.categoria !== "touro",
+  );
+
+  useEffect(() => {
+    if (animalId && !animaisParaSelecao.some((a) => a.id === animalId)) setAnimalId("");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tipo, animais.data]);
 
   // Touros cadastrados no rebanho da fazenda — o campo de texto livre fica
   // só pra quando o touro/sêmen doador não é um animal cadastrado aqui.
@@ -212,7 +224,7 @@ function Reproducao() {
             required
           >
             <option value="">Selecione</option>
-            {animais.data?.map((a) => (
+            {animaisParaSelecao.map((a) => (
               <option key={a.id} value={a.id}>
                 {a.nome}
                 {a.brinco ? ` (${a.brinco})` : ""}
