@@ -572,7 +572,7 @@ function Leite() {
         />
       </div>
 
-      <div className="mb-5 grid items-start gap-4 lg:grid-cols-2">
+      <div className="mb-5 grid gap-4 lg:grid-cols-2">
         <CartaoConfig
           id="preco-leite"
           titulo="Preço do leite"
@@ -748,14 +748,14 @@ function Leite() {
                         {moeda(vendaAvulsaTotal)}
                       </p>
                     </div>
-                    <div className="space-y-1.5">
+
+                    <div className="space-y-1.5 sm:col-span-2">
                       <Label>Pagamento</Label>
                       <div className="flex gap-2">
                         <Button
                           type="button"
                           size="sm"
                           variant={vendaAvulsaPago ? "outline" : "default"}
-                          className="flex-1"
                           onClick={() => setVendaAvulsaPago(false)}
                         >
                           A receber
@@ -764,7 +764,6 @@ function Leite() {
                           type="button"
                           size="sm"
                           variant={vendaAvulsaPago ? "default" : "outline"}
-                          className="flex-1"
                           onClick={() => setVendaAvulsaPago(true)}
                         >
                           Pago agora
@@ -773,36 +772,39 @@ function Leite() {
                     </div>
 
                     {vendaAvulsaPago ? (
-                      <>
-                        <div className="space-y-1.5">
-                          <Label htmlFor="va-forma-pagamento">Forma de pagamento</Label>
-                          <select
-                            id="va-forma-pagamento"
-                            value={vendaAvulsaFormaPagamento}
-                            onChange={(e) => setVendaAvulsaFormaPagamento(e.target.value)}
-                            className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
-                          >
-                            {FORMAS_PAGAMENTO.map((f) => (
-                              <option key={f.valor} value={f.valor}>
-                                {f.rotulo}
-                              </option>
-                            ))}
-                          </select>
-                        </div>
-                        {vendaAvulsaFormaPagamento === "cartao" ? (
-                          <div className="space-y-1.5">
-                            <Label htmlFor="va-parcelas">Quantidade de parcelas</Label>
-                            <Input
-                              id="va-parcelas"
-                              type="number"
-                              min="1"
-                              step="1"
-                              value={vendaAvulsaParcelas}
-                              onChange={(e) => setVendaAvulsaParcelas(e.target.value)}
-                            />
-                          </div>
-                        ) : null}
-                      </>
+                      <div className="space-y-1.5">
+                        <Label htmlFor="va-forma-pagamento">Forma de pagamento</Label>
+                        <select
+                          id="va-forma-pagamento"
+                          value={vendaAvulsaFormaPagamento}
+                          onChange={(e) => setVendaAvulsaFormaPagamento(e.target.value)}
+                          className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+                        >
+                          {FORMAS_PAGAMENTO.map((f) => (
+                            <option key={f.valor} value={f.valor}>
+                              {f.rotulo}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    ) : null}
+
+                    {vendaAvulsaPago && vendaAvulsaFormaPagamento === "cartao" ? (
+                      <div className="space-y-1.5">
+                        <Label htmlFor="va-parcelas">Parcelas</Label>
+                        <select
+                          id="va-parcelas"
+                          value={vendaAvulsaParcelas}
+                          onChange={(e) => setVendaAvulsaParcelas(e.target.value)}
+                          className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+                        >
+                          {[1, 2, 3].map((n) => (
+                            <option key={n} value={n}>
+                              {n}x de {moeda(vendaAvulsaTotal / n)}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
                     ) : null}
 
                     <div className="flex gap-2 sm:col-span-2">
@@ -906,14 +908,13 @@ function Leite() {
                         </p>
                       </div>
                     )}
-                    <div className="space-y-1.5">
+                    <div className="space-y-1.5 sm:col-span-2">
                       <Label>Pagamento</Label>
                       <div className="flex gap-2">
                         <Button
                           type="button"
                           size="sm"
                           variant={vendaLaticinioPago ? "outline" : "default"}
-                          className="flex-1"
                           onClick={() => setVendaLaticinioPago(false)}
                         >
                           A receber
@@ -922,7 +923,6 @@ function Leite() {
                           type="button"
                           size="sm"
                           variant={vendaLaticinioPago ? "default" : "outline"}
-                          className="flex-1"
                           onClick={() => setVendaLaticinioPago(true)}
                         >
                           Pago agora
@@ -931,36 +931,39 @@ function Leite() {
                     </div>
 
                     {vendaLaticinioPago ? (
-                      <>
-                        <div className="space-y-1.5">
-                          <Label htmlFor="vl-forma-pagamento">Forma de pagamento</Label>
-                          <select
-                            id="vl-forma-pagamento"
-                            value={vendaLaticinioFormaPagamento}
-                            onChange={(e) => setVendaLaticinioFormaPagamento(e.target.value)}
-                            className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
-                          >
-                            {FORMAS_PAGAMENTO.map((f) => (
-                              <option key={f.valor} value={f.valor}>
-                                {f.rotulo}
-                              </option>
-                            ))}
-                          </select>
-                        </div>
-                        {vendaLaticinioFormaPagamento === "cartao" ? (
-                          <div className="space-y-1.5">
-                            <Label htmlFor="vl-parcelas">Quantidade de parcelas</Label>
-                            <Input
-                              id="vl-parcelas"
-                              type="number"
-                              min="1"
-                              step="1"
-                              value={vendaLaticinioParcelas}
-                              onChange={(e) => setVendaLaticinioParcelas(e.target.value)}
-                            />
-                          </div>
-                        ) : null}
-                      </>
+                      <div className="space-y-1.5">
+                        <Label htmlFor="vl-forma-pagamento">Forma de pagamento</Label>
+                        <select
+                          id="vl-forma-pagamento"
+                          value={vendaLaticinioFormaPagamento}
+                          onChange={(e) => setVendaLaticinioFormaPagamento(e.target.value)}
+                          className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+                        >
+                          {FORMAS_PAGAMENTO.map((f) => (
+                            <option key={f.valor} value={f.valor}>
+                              {f.rotulo}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    ) : null}
+
+                    {vendaLaticinioPago && vendaLaticinioFormaPagamento === "cartao" ? (
+                      <div className="space-y-1.5">
+                        <Label htmlFor="vl-parcelas">Parcelas</Label>
+                        <select
+                          id="vl-parcelas"
+                          value={vendaLaticinioParcelas}
+                          onChange={(e) => setVendaLaticinioParcelas(e.target.value)}
+                          className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+                        >
+                          {[1, 2, 3].map((n) => (
+                            <option key={n} value={n}>
+                              {n}x de {moeda(vendaLaticinioTotal / n)}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
                     ) : null}
 
                     <div className="flex gap-2 sm:col-span-2">
@@ -1203,8 +1206,7 @@ function Leite() {
                 <div>
                   <p className="text-sm font-medium">Descarte</p>
                   <p className="text-xs text-muted-foreground">
-                    Leite com antibiótico, mastite ou outro motivo de descarte — não vira receita
-                    nem consumo.
+                    Leite com antibiótico, mastite ou outro motivo de descarte.
                   </p>
                 </div>
                 <div className="flex items-center gap-2">
