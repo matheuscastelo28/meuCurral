@@ -44,7 +44,9 @@ function Reproducao() {
   const [tipo, setTipo] = useState<string>("cobertura");
   const [data, setData] = useState(hojeISO());
   const [animalId, setAnimalId] = useState("");
-  const [touro, setTouro] = useState("");
+  // "" = nenhum, "outro" = touro não cadastrado (usa touroCustom), senão é o id do animal touro.
+  const [touroId, setTouroId] = useState("");
+  const [touroCustom, setTouroCustom] = useState("");
   const [previsaoParto, setPrevisaoParto] = useState(() => previsaoPartoDe(hojeISO()));
 
   const requerPrevisao = tipo === "cobertura" || tipo === "inseminacao";
@@ -67,6 +69,29 @@ function Reproducao() {
       return data;
     },
   });
+
+  // Touros cadastrados no rebanho da fazenda — o campo de texto livre fica
+  // só pra quando o touro/sêmen doador não é um animal cadastrado aqui.
+  const touros = useQuery({
+    queryKey: ["animais-touros", fazenda?.id],
+    enabled: !!fazenda?.id,
+    queryFn: async () => {
+      const { data, error } = await db
+        .from("animais")
+        .select("id, nome, brinco")
+        .eq("fazenda_id", fazenda!.id)
+        .eq("categoria", "touro")
+        .order("nome");
+      if (error) throw error;
+      return data;
+    },
+  });
+
+  function touroTextoAtual() {
+    if (touroId === "outro") return touroCustom.trim();
+    const t = touros.data?.find((a) => a.id === touroId);
+    return t ? `${t.nome}${t.brinco ? ` (${t.brinco})` : ""}` : "";
+  }
 
   const registros = useQuery({
     queryKey: ["reproducao", fazenda?.id],
@@ -108,7 +133,8 @@ function Reproducao() {
     },
     onSuccess: (vars) => {
       toast.success("Registro salvo.");
-      setTouro("");
+      setTouroId("");
+      setTouroCustom("");
       queryClient.invalidateQueries({ queryKey: ["reproducao"] });
       queryClient.invalidateQueries({ queryKey: ["eventos"] });
       queryClient.invalidateQueries({ queryKey: ["indices-rebanho"] });
@@ -149,19 +175,19 @@ function Reproducao() {
       descricao="Registre coberturas, inseminações e partos para acompanhar a previsão de cada animal."
     >
       <form
-        className="mb-5 grid gap-3 rounded-xl border border-border bg-card p-4 sm:grid-cols-5 lg:grid-cols-6"
+        className="mb-5 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-card p-4"
         onSubmit={(e) => {
           e.preventDefault();
           salvar.mutate({
             tipo,
             animalId,
             data,
-            touro,
+            touro: touroTextoAtual(),
             previsaoParto: requerPrevisao ? previsaoParto : null,
           });
         }}
       >
-        <div className="space-y-1.5">
+        <div className="min-w-[150px] flex-1 space-y-1.5">
           <Label htmlFor="tipo">Tipo</Label>
           <select
             id="tipo"
@@ -176,7 +202,7 @@ function Reproducao() {
             ))}
           </select>
         </div>
-        <div className="space-y-1.5">
+        <div className="min-w-[150px] flex-1 space-y-1.5">
           <Label htmlFor="animal">Animal</Label>
           <select
             id="animal"
@@ -194,7 +220,7 @@ function Reproducao() {
             ))}
           </select>
         </div>
-        <div className="space-y-1.5">
+        <div className="min-w-[150px] flex-1 space-y-1.5">
           <Label htmlFor="data-repro">Data</Label>
           <Input
             id="data-repro"
@@ -204,12 +230,37 @@ function Reproducao() {
             required
           />
         </div>
-        <div className="space-y-1.5">
+        <div className="min-w-[150px] flex-1 space-y-1.5">
           <Label htmlFor="touro">Touro / sêmen</Label>
-          <Input id="touro" value={touro} onChange={(e) => setTouro(e.target.value)} />
+          <select
+            id="touro"
+            value={touroId}
+            onChange={(e) => setTouroId(e.target.value)}
+            className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+          >
+            <option value="">Nenhum</option>
+            {touros.data?.map((t) => (
+              <option key={t.id} value={t.id}>
+                {t.nome}
+                {t.brinco ? ` (${t.brinco})` : ""}
+              </option>
+            ))}
+            <option value="outro">Outro (não cadastrado)</option>
+          </select>
         </div>
+        {touroId === "outro" ? (
+          <div className="min-w-[150px] flex-1 space-y-1.5">
+            <Label htmlFor="touro-custom">Nome do touro/sêmen</Label>
+            <Input
+              id="touro-custom"
+              value={touroCustom}
+              onChange={(e) => setTouroCustom(e.target.value)}
+              placeholder="Ex: Touro emprestado — Fazenda X"
+            />
+          </div>
+        ) : null}
         {requerPrevisao ? (
-          <div className="space-y-1.5">
+          <div className="min-w-[150px] flex-1 space-y-1.5">
             <Label htmlFor="previsao-parto">Previsão estimada de parto</Label>
             <Input
               id="previsao-parto"
@@ -218,12 +269,12 @@ function Reproducao() {
               onChange={(e) => setPrevisaoParto(e.target.value)}
             />
             <p className="text-xs text-muted-foreground">
-              Calculada com base em uma gestação média de {DIAS_GESTACAO} dias — ajuste se souber de
-              uma data mais precisa.
+              Calculada com base em uma gestação média de {DIAS_GESTACAO} dias.
             </p>
           </div>
         ) : null}
-        <div className="flex items-end">
+        <div className="w-full space-y-1.5 sm:w-auto sm:min-w-[150px]">
+          <Label className="invisible hidden sm:block">Registrar</Label>
           <Button
             type="submit"
             className="w-full"
