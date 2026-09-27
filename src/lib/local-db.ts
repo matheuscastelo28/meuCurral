@@ -418,6 +418,7 @@ export const db = {
       data: string;
       pago?: boolean;
       formaPagamento?: string;
+      parcelas?: number | null;
       animalId?: string | undefined;
       pesoAtualizado?: number;
     }) {

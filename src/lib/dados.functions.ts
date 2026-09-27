@@ -885,6 +885,8 @@ export const registrarVenda = createServerFn({ method: "POST" })
       // Sem informar, mantém o comportamento de sempre: nasce "a receber".
       pago?: boolean;
       formaPagamento?: string;
+      // Só relevante pra forma de pagamento "cartao" — as outras não parcelam.
+      parcelas?: number | null;
       // Venda de um animal específico (Engorda): marca ele como vendido na
       // mesma transação da venda — ou tudo persiste, ou nada persiste.
       animalId?: string | undefined;
@@ -919,11 +921,12 @@ export const registrarVenda = createServerFn({ method: "POST" })
       const descricao = `Venda de ${produto}${data.comprador ? ` — ${data.comprador}` : ""}`;
       const status = data.pago ? "recebido" : "a_receber";
       const formaPagamento = data.pago ? (data.formaPagamento ?? "dinheiro") : "dinheiro";
+      const parcelas = data.pago && formaPagamento === "cartao" ? (data.parcelas ?? 1) : null;
 
       const venda = await sql.begin(async (tx) => {
         const financeiros: { id: string }[] = await tx`
-          insert into financeiro_lancamentos (fazenda_id, tipo, descricao, valor, data, categoria, status, forma_pagamento)
-          values (${data.fazendaId}, 'receita', ${descricao}, ${valorTotal}, ${data.data}, ${`venda_${produto}`}, ${status}, ${formaPagamento})
+          insert into financeiro_lancamentos (fazenda_id, tipo, descricao, valor, data, categoria, status, forma_pagamento, parcelas)
+          values (${data.fazendaId}, 'receita', ${descricao}, ${valorTotal}, ${data.data}, ${`venda_${produto}`}, ${status}, ${formaPagamento}, ${parcelas})
           returning id`;
         const financeiroId = financeiros[0]!.id;
 

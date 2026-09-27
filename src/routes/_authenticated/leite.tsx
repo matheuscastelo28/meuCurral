@@ -21,7 +21,6 @@ const CONSUMO_TIPOS = [
   { valor: "bezerros", rotulo: "Bezerros" },
   { valor: "consumo_familiar", rotulo: "Consumo familiar" },
   { valor: "derivados", rotulo: "Derivados" },
-  { valor: "descarte", rotulo: "Descarte" },
   { valor: "outros", rotulo: "Outros" },
 ] as const;
 
@@ -237,6 +236,7 @@ function Leite() {
   const [vendaAvulsaData, setVendaAvulsaData] = useState(hoje);
   const [vendaAvulsaPago, setVendaAvulsaPago] = useState(false);
   const [vendaAvulsaFormaPagamento, setVendaAvulsaFormaPagamento] = useState("dinheiro");
+  const [vendaAvulsaParcelas, setVendaAvulsaParcelas] = useState("1");
 
   const salvarVendaAvulsa = useMutation({
     mutationFn: async () => {
@@ -251,6 +251,7 @@ function Leite() {
         data: vendaAvulsaData,
         pago: vendaAvulsaPago,
         formaPagamento: vendaAvulsaFormaPagamento,
+        parcelas: vendaAvulsaFormaPagamento === "cartao" ? Number(vendaAvulsaParcelas) || 1 : null,
       });
       if (error) throw new Error(error.message);
     },
@@ -263,6 +264,7 @@ function Leite() {
       setVendaAvulsaData(hoje);
       setVendaAvulsaPago(false);
       setVendaAvulsaFormaPagamento("dinheiro");
+      setVendaAvulsaParcelas("1");
       queryClient.invalidateQueries({ queryKey: ["vendas"] });
       queryClient.invalidateQueries({ queryKey: ["financeiro"] });
       queryClient.invalidateQueries({ queryKey: ["inicio-resumo"] });
@@ -279,6 +281,7 @@ function Leite() {
   const [vendaLaticinioData, setVendaLaticinioData] = useState(hoje);
   const [vendaLaticinioPago, setVendaLaticinioPago] = useState(false);
   const [vendaLaticinioFormaPagamento, setVendaLaticinioFormaPagamento] = useState("dinheiro");
+  const [vendaLaticinioParcelas, setVendaLaticinioParcelas] = useState("1");
 
   const precoNaDataLaticinio = useMemo(
     () => encontrarPrecoVigente(precos.data, vendaLaticinioData),
@@ -312,6 +315,8 @@ function Leite() {
         data: vendaLaticinioData,
         pago: vendaLaticinioPago,
         formaPagamento: vendaLaticinioFormaPagamento,
+        parcelas:
+          vendaLaticinioFormaPagamento === "cartao" ? Number(vendaLaticinioParcelas) || 1 : null,
       });
       if (error) throw new Error(error.message);
     },
@@ -323,12 +328,12 @@ function Leite() {
       setVendaLaticinioData(hoje);
       setVendaLaticinioPago(false);
       setVendaLaticinioFormaPagamento("dinheiro");
+      setVendaLaticinioParcelas("1");
       queryClient.invalidateQueries({ queryKey: ["vendas"] });
       queryClient.invalidateQueries({ queryKey: ["financeiro"] });
       queryClient.invalidateQueries({ queryKey: ["inicio-resumo"] });
     },
-    onError: (erro: Error) =>
-      toast.error(erro.message || "Não conseguimos registrar a venda."),
+    onError: (erro: Error) => toast.error(erro.message || "Não conseguimos registrar a venda."),
   });
 
   // ---- Destinação e venda do dia ----------------------------------------
@@ -369,6 +374,12 @@ function Leite() {
     quantidade: string;
   };
 
+  type DescarteEntry = {
+    id: string;
+    observacao?: string | undefined;
+    quantidade: string;
+  };
+
   const [consumoEntries, setConsumoEntries] = useState<ConsumoEntry[]>([]);
   const [mostrarFormConsumo, setMostrarFormConsumo] = useState(false);
   const [consumoTipo, setConsumoTipo] = useState<ConsumoEntry["tipo"]>("bezerros");
@@ -376,30 +387,43 @@ function Leite() {
   const [consumoNome, setConsumoNome] = useState("");
   const [consumoQuantidade, setConsumoQuantidade] = useState("");
 
+  const [descarteEntries, setDescarteEntries] = useState<DescarteEntry[]>([]);
+  const [mostrarFormDescarte, setMostrarFormDescarte] = useState(false);
+  const [descarteObservacao, setDescarteObservacao] = useState("");
+  const [descarteQuantidade, setDescarteQuantidade] = useState("");
+
   useEffect(() => {
     if (!destinacoesHoje.data) return;
-    const entradas: ConsumoEntry[] = destinacoesHoje.data
-      .filter((d) => d.destino !== "venda")
-      .map((d) => {
-        const tipo = (MIGRAR_TIPO_CONSUMO[d.destino] ?? d.destino) as ConsumoEntry["tipo"];
-        return {
+    const consumo: ConsumoEntry[] = [];
+    const descarte: DescarteEntry[] = [];
+    for (const d of destinacoesHoje.data) {
+      if (d.destino === "venda") continue;
+      if (d.destino === "descarte") {
+        descarte.push({
           id: d.id,
-          tipo,
-          derivado: tipo === "derivados" ? (d.observacoes ?? undefined) : undefined,
-          nome: tipo === "outros" ? (d.observacoes ?? undefined) : undefined,
+          observacao: d.observacoes ?? undefined,
           quantidade: String(d.quantidade),
-        };
+        });
+        continue;
+      }
+      const tipo = (MIGRAR_TIPO_CONSUMO[d.destino] ?? d.destino) as ConsumoEntry["tipo"];
+      consumo.push({
+        id: d.id,
+        tipo,
+        derivado: tipo === "derivados" ? (d.observacoes ?? undefined) : undefined,
+        nome: tipo === "outros" ? (d.observacoes ?? undefined) : undefined,
+        quantidade: String(d.quantidade),
       });
-    setConsumoEntries(entradas);
+    }
+    setConsumoEntries(consumo);
+    setDescarteEntries(descarte);
   }, [destinacoesHoje.data]);
 
   const vendaLitrosHoje = (vendasHoje.data ?? []).reduce((s, v) => s + Number(v.quantidade), 0);
   const totalConsumo = consumoEntries.reduce((s, e) => s + (Number(e.quantidade) || 0), 0);
-  const semDestinacao = totalHoje - vendaLitrosHoje - totalConsumo;
-  const valorGeradoHoje = (vendasHoje.data ?? []).reduce(
-    (s, v) => s + Number(v.valor_total),
-    0,
-  );
+  const totalDescarte = descarteEntries.reduce((s, e) => s + (Number(e.quantidade) || 0), 0);
+  const semDestinacao = totalHoje - vendaLitrosHoje - totalConsumo - totalDescarte;
+  const valorGeradoHoje = (vendasHoje.data ?? []).reduce((s, v) => s + Number(v.valor_total), 0);
 
   function rotuloConsumoEntry(e: ConsumoEntry) {
     const base = CONSUMO_TIPOS.find((t) => t.valor === e.tipo)?.rotulo ?? e.tipo;
@@ -436,6 +460,28 @@ function Leite() {
     setConsumoEntries((atual) => atual.filter((e) => e.id !== id));
   }
 
+  function adicionarDescarte() {
+    const quantidadeNum = Number(descarteQuantidade);
+    if (!(quantidadeNum > 0)) {
+      toast.error("Informe uma quantidade maior que zero.");
+      return;
+    }
+    setDescarteEntries((atual): DescarteEntry[] => [
+      ...atual,
+      {
+        id: crypto.randomUUID(),
+        observacao: descarteObservacao.trim() || undefined,
+        quantidade: descarteQuantidade,
+      },
+    ]);
+    setDescarteQuantidade("");
+    setDescarteObservacao("");
+  }
+
+  function removerDescarte(id: string) {
+    setDescarteEntries((atual) => atual.filter((e) => e.id !== id));
+  }
+
   const salvarDestinacao = useMutation({
     mutationFn: async () => {
       const lista = [
@@ -454,6 +500,13 @@ function Leite() {
                   : null,
           }))
           .filter((d) => d.quantidade > 0),
+        ...descarteEntries
+          .map((e) => ({
+            destino: "descarte",
+            quantidade: Number(e.quantidade) || 0,
+            observacoes: e.observacao || null,
+          }))
+          .filter((d) => d.quantidade > 0),
       ];
 
       const { error } = await db.leite.registrarDestinacao({
@@ -468,8 +521,7 @@ function Leite() {
       queryClient.invalidateQueries({ queryKey: ["destinacoes-leite"] });
       queryClient.invalidateQueries({ queryKey: ["inicio-resumo"] });
     },
-    onError: (erro: Error) =>
-      toast.error(erro.message || "Não conseguimos salvar a destinação."),
+    onError: (erro: Error) => toast.error(erro.message || "Não conseguimos salvar a destinação."),
   });
 
   const i = indices.data;
@@ -520,7 +572,7 @@ function Leite() {
         />
       </div>
 
-      <div className="mb-5 grid gap-4 lg:grid-cols-2">
+      <div className="mb-5 grid items-start gap-4 lg:grid-cols-2">
         <CartaoConfig
           id="preco-leite"
           titulo="Preço do leite"
@@ -696,14 +748,14 @@ function Leite() {
                         {moeda(vendaAvulsaTotal)}
                       </p>
                     </div>
-
-                    <div className="space-y-1.5 sm:col-span-2">
+                    <div className="space-y-1.5">
                       <Label>Pagamento</Label>
                       <div className="flex gap-2">
                         <Button
                           type="button"
                           size="sm"
                           variant={vendaAvulsaPago ? "outline" : "default"}
+                          className="flex-1"
                           onClick={() => setVendaAvulsaPago(false)}
                         >
                           A receber
@@ -712,6 +764,7 @@ function Leite() {
                           type="button"
                           size="sm"
                           variant={vendaAvulsaPago ? "default" : "outline"}
+                          className="flex-1"
                           onClick={() => setVendaAvulsaPago(true)}
                         >
                           Pago agora
@@ -720,21 +773,36 @@ function Leite() {
                     </div>
 
                     {vendaAvulsaPago ? (
-                      <div className="space-y-1.5">
-                        <Label htmlFor="va-forma-pagamento">Forma de pagamento</Label>
-                        <select
-                          id="va-forma-pagamento"
-                          value={vendaAvulsaFormaPagamento}
-                          onChange={(e) => setVendaAvulsaFormaPagamento(e.target.value)}
-                          className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
-                        >
-                          {FORMAS_PAGAMENTO.map((f) => (
-                            <option key={f.valor} value={f.valor}>
-                              {f.rotulo}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
+                      <>
+                        <div className="space-y-1.5">
+                          <Label htmlFor="va-forma-pagamento">Forma de pagamento</Label>
+                          <select
+                            id="va-forma-pagamento"
+                            value={vendaAvulsaFormaPagamento}
+                            onChange={(e) => setVendaAvulsaFormaPagamento(e.target.value)}
+                            className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+                          >
+                            {FORMAS_PAGAMENTO.map((f) => (
+                              <option key={f.valor} value={f.valor}>
+                                {f.rotulo}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                        {vendaAvulsaFormaPagamento === "cartao" ? (
+                          <div className="space-y-1.5">
+                            <Label htmlFor="va-parcelas">Quantidade de parcelas</Label>
+                            <Input
+                              id="va-parcelas"
+                              type="number"
+                              min="1"
+                              step="1"
+                              value={vendaAvulsaParcelas}
+                              onChange={(e) => setVendaAvulsaParcelas(e.target.value)}
+                            />
+                          </div>
+                        ) : null}
+                      </>
                     ) : null}
 
                     <div className="flex gap-2 sm:col-span-2">
@@ -827,8 +895,8 @@ function Leite() {
                         role="alert"
                         className="rounded-lg bg-destructive/10 px-3 py-2 text-xs text-destructive sm:col-span-2"
                       >
-                        Nenhum preço do leite cadastrado para esta data. Atualize o preço do
-                        leite antes de registrar a venda.
+                        Nenhum preço do leite cadastrado para esta data. Atualize o preço do leite
+                        antes de registrar a venda.
                       </p>
                     ) : (
                       <div className="space-y-1.5">
@@ -838,14 +906,14 @@ function Leite() {
                         </p>
                       </div>
                     )}
-
-                    <div className="space-y-1.5 sm:col-span-2">
+                    <div className="space-y-1.5">
                       <Label>Pagamento</Label>
                       <div className="flex gap-2">
                         <Button
                           type="button"
                           size="sm"
                           variant={vendaLaticinioPago ? "outline" : "default"}
+                          className="flex-1"
                           onClick={() => setVendaLaticinioPago(false)}
                         >
                           A receber
@@ -854,6 +922,7 @@ function Leite() {
                           type="button"
                           size="sm"
                           variant={vendaLaticinioPago ? "default" : "outline"}
+                          className="flex-1"
                           onClick={() => setVendaLaticinioPago(true)}
                         >
                           Pago agora
@@ -862,21 +931,36 @@ function Leite() {
                     </div>
 
                     {vendaLaticinioPago ? (
-                      <div className="space-y-1.5">
-                        <Label htmlFor="vl-forma-pagamento">Forma de pagamento</Label>
-                        <select
-                          id="vl-forma-pagamento"
-                          value={vendaLaticinioFormaPagamento}
-                          onChange={(e) => setVendaLaticinioFormaPagamento(e.target.value)}
-                          className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
-                        >
-                          {FORMAS_PAGAMENTO.map((f) => (
-                            <option key={f.valor} value={f.valor}>
-                              {f.rotulo}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
+                      <>
+                        <div className="space-y-1.5">
+                          <Label htmlFor="vl-forma-pagamento">Forma de pagamento</Label>
+                          <select
+                            id="vl-forma-pagamento"
+                            value={vendaLaticinioFormaPagamento}
+                            onChange={(e) => setVendaLaticinioFormaPagamento(e.target.value)}
+                            className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+                          >
+                            {FORMAS_PAGAMENTO.map((f) => (
+                              <option key={f.valor} value={f.valor}>
+                                {f.rotulo}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                        {vendaLaticinioFormaPagamento === "cartao" ? (
+                          <div className="space-y-1.5">
+                            <Label htmlFor="vl-parcelas">Quantidade de parcelas</Label>
+                            <Input
+                              id="vl-parcelas"
+                              type="number"
+                              min="1"
+                              step="1"
+                              value={vendaLaticinioParcelas}
+                              onChange={(e) => setVendaLaticinioParcelas(e.target.value)}
+                            />
+                          </div>
+                        ) : null}
+                      </>
                     ) : null}
 
                     <div className="flex gap-2 sm:col-span-2">
@@ -924,7 +1008,7 @@ function Leite() {
           titulo="Destinação de hoje"
           descricao="Nem todo litro produzido é vendido — a venda vem das vendas já registradas, e o resto você separa em consumo. Só a parte vendida vira receita."
         >
-          <div className="mb-3 grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
+          <div className="mb-3 grid grid-cols-2 gap-3 text-sm sm:grid-cols-5">
             <div>
               <p className="text-xs text-muted-foreground">Produzido hoje</p>
               <p className="font-display text-lg font-extrabold">
@@ -938,9 +1022,15 @@ function Leite() {
               </p>
             </div>
             <div>
-              <p className="text-xs text-muted-foreground">Consumo/destinação</p>
+              <p className="text-xs text-muted-foreground">Consumo</p>
               <p className="font-display text-lg font-extrabold">
                 {totalConsumo.toLocaleString("pt-BR")} L
+              </p>
+            </div>
+            <div>
+              <p className="text-xs text-muted-foreground">Descarte</p>
+              <p className="font-display text-lg font-extrabold">
+                {totalDescarte.toLocaleString("pt-BR")} L
               </p>
             </div>
             <div>
@@ -961,8 +1051,8 @@ function Leite() {
               role="alert"
               className="mb-3 rounded-lg bg-destructive/10 px-3 py-2 text-xs text-destructive"
             >
-              Vendido + consumo/destinação passou {Math.abs(semDestinacao).toLocaleString("pt-BR")}{" "}
-              L do que foi produzido hoje — confira as vendas e os consumos registrados.
+              Vendido + consumo + descarte passou {Math.abs(semDestinacao).toLocaleString("pt-BR")}{" "}
+              L do que foi produzido hoje — confira as vendas, o consumo e o descarte registrados.
             </p>
           ) : totalHoje > 0 && semDestinacao > 0 ? (
             <p className="mb-3 text-xs text-muted-foreground">
@@ -1074,7 +1164,7 @@ function Leite() {
                         id="consumo-nome"
                         value={consumoNome}
                         onChange={(e) => setConsumoNome(e.target.value)}
-                        placeholder="Ex: Descarte"
+                        placeholder="Ex: Doação"
                       />
                     </div>
                   ) : null}
@@ -1100,6 +1190,95 @@ function Leite() {
                       variant="outline"
                       size="sm"
                       onClick={() => setMostrarFormConsumo(false)}
+                    >
+                      Fechar
+                    </Button>
+                  </div>
+                </div>
+              ) : null}
+            </div>
+
+            <div className="rounded-lg border border-border px-3 py-2">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-sm font-medium">Descarte</p>
+                  <p className="text-xs text-muted-foreground">
+                    Leite com antibiótico, mastite ou outro motivo de descarte — não vira receita
+                    nem consumo.
+                  </p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="font-display text-sm font-extrabold">
+                    {totalDescarte.toLocaleString("pt-BR")} L
+                  </span>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="icon"
+                    className="size-7"
+                    aria-label="Adicionar descarte"
+                    onClick={() => setMostrarFormDescarte((v) => !v)}
+                  >
+                    <Plus className="size-3.5" aria-hidden="true" />
+                  </Button>
+                </div>
+              </div>
+
+              {descarteEntries.length > 0 ? (
+                <ul className="mt-2 space-y-1">
+                  {descarteEntries.map((e) => (
+                    <li key={e.id} className="flex items-center justify-between text-xs">
+                      <span>{e.observacao || "Descarte"}</span>
+                      <span className="flex items-center gap-2">
+                        <span className="font-medium">
+                          {Number(e.quantidade).toLocaleString("pt-BR")} L
+                        </span>
+                        <button
+                          type="button"
+                          className="text-muted-foreground hover:text-destructive"
+                          aria-label="Remover"
+                          onClick={() => removerDescarte(e.id)}
+                        >
+                          ×
+                        </button>
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
+
+              {mostrarFormDescarte ? (
+                <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="descarte-motivo">Motivo (opcional)</Label>
+                    <Input
+                      id="descarte-motivo"
+                      value={descarteObservacao}
+                      onChange={(e) => setDescarteObservacao(e.target.value)}
+                      placeholder="Ex: Mastite, antibiótico"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="descarte-quantidade">Quantidade (L)</Label>
+                    <Input
+                      id="descarte-quantidade"
+                      type="number"
+                      step="0.1"
+                      min="0"
+                      value={descarteQuantidade}
+                      onChange={(e) => setDescarteQuantidade(e.target.value)}
+                    />
+                  </div>
+
+                  <div className="flex items-end gap-2 sm:col-span-2">
+                    <Button type="button" size="sm" onClick={adicionarDescarte}>
+                      Adicionar
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setMostrarFormDescarte(false)}
                     >
                       Fechar
                     </Button>
