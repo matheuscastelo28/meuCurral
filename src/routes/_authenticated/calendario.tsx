@@ -19,7 +19,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { useFazenda } from "@/hooks/use-fazenda";
-import { dataCurta, hojeISO } from "@/lib/formato";
+import { dataCurta, dataISO, hojeISO, paraDataISO } from "@/lib/formato";
 import { usePreferencias } from "@/hooks/use-preferencias";
 
 const TIPOS_EVENTO = [
@@ -39,21 +39,15 @@ export const Route = createFileRoute("/_authenticated/calendario")({
       { title: "Calendário — Curral Online" },
       {
         name: "description",
-        content: "Vacinação, pesagem, partos e lançamentos marcados automaticamente no calendário.",
+        content: "Agenda de vacinação, pesagem, partos e outros compromissos da fazenda.",
       },
       { property: "og:title", content: "Calendário — Curral Online" },
-      { property: "og:description", content: "Agenda automática da fazenda." },
+      { property: "og:description", content: "Agenda da fazenda." },
       { name: "robots", content: "noindex" },
     ],
   }),
   component: Calendario,
 });
-
-function paraISO(d: Date) {
-  const mes = String(d.getMonth() + 1).padStart(2, "0");
-  const dia = String(d.getDate()).padStart(2, "0");
-  return `${d.getFullYear()}-${mes}-${dia}`;
-}
 
 function Calendario() {
   const { data: fazenda } = useFazenda();
@@ -81,11 +75,13 @@ function Calendario() {
   });
 
   const marcados = useMemo(
-    () => (eventos.data ?? []).map((e) => new Date(`${e.data}T12:00:00`)),
+    () => (eventos.data ?? []).map((e) => new Date(`${dataISO(e.data)}T12:00:00`)),
     [eventos.data],
   );
 
-  const doDia = (eventos.data ?? []).filter((e) => selecionado && e.data === paraISO(selecionado));
+  const doDia = (eventos.data ?? []).filter(
+    (e) => selecionado && dataISO(e.data) === paraDataISO(selecionado),
+  );
 
   const concluir = useMutation({
     mutationFn: async (id: string) => {
@@ -106,7 +102,7 @@ function Calendario() {
   function novoEvento() {
     setTitulo("");
     setTipoEvento("manual");
-    setDataEvento(selecionado ? paraISO(selecionado) : hojeISO());
+    setDataEvento(selecionado ? paraDataISO(selecionado) : hojeISO());
     setDescricaoEvento("");
     setAberto(true);
   }
@@ -135,7 +131,7 @@ function Calendario() {
   return (
     <AppShell
       titulo="Calendário"
-      descricao="As marcações aparecem sozinhas conforme você registra manejo, reprodução e financeiro — e você também pode adicionar um evento manualmente."
+      descricao="Adicione vacinas, pesagens e outros compromissos manualmente pra acompanhar a agenda da fazenda."
       acao={
         <Button onClick={novoEvento}>
           <Plus className="size-4" aria-hidden="true" />
@@ -164,13 +160,13 @@ function Calendario() {
 
         <section className="rounded-xl border border-border bg-card p-5">
           <h2 className="text-base font-semibold">
-            {selecionado ? dataCurta(paraISO(selecionado)) : "Selecione um dia"}
+            {selecionado ? dataCurta(paraDataISO(selecionado)) : "Selecione um dia"}
           </h2>
           {doDia.length === 0 ? (
             <EmptyState
               icon={CalendarDays}
               titulo="Nada marcado nesse dia"
-              descricao="Registre uma vacinação, pesagem, cobertura ou lançamento e a marcação aparece aqui automaticamente."
+              descricao='Use "Novo evento" pra marcar uma vacinação, pesagem ou outro compromisso nesse dia.'
             />
           ) : (
             <ul className="mt-4 space-y-3">
@@ -205,9 +201,7 @@ function Calendario() {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Novo evento</DialogTitle>
-            <DialogDescription>
-              Adicione um compromisso manualmente. Os eventos automáticos continuam sendo gerados.
-            </DialogDescription>
+            <DialogDescription>Adicione um compromisso à agenda da fazenda.</DialogDescription>
           </DialogHeader>
           <form
             id="form-evento"

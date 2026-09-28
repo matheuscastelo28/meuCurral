@@ -18,6 +18,11 @@ import {
   excluirConta,
   enviarCodigoVerificacao,
   verificarCodigoEmail,
+  registrarDestinacaoLeite,
+  registrarVenda,
+  marcarLancamentosRecebidos,
+  registrarPesagemLote,
+  registrarVendaLote,
   type FiltroRemoto,
 } from "@/lib/dados.functions";
 
@@ -67,6 +72,7 @@ const PADROES: Record<string, () => Registro> = {
     produto: "leite",
     observacoes: null,
     animal_id: null,
+    lote: null,
   }),
   reproducao: () => ({
     previsao_parto: null,
@@ -78,6 +84,7 @@ const PADROES: Record<string, () => Registro> = {
     categoria: null,
     forma_pagamento: "dinheiro",
     parcelas: null,
+    lote: null,
   }),
   eventos_agenda: () => ({
     concluido: false,
@@ -341,8 +348,10 @@ const auth = {
     return enviarCodigoVerificacao({ data: { email: params.email } });
   },
 
-  async signOut(_opcoes?: { scope?: string }) {
-    await sair({ data: { token: tokenSessao() } });
+  async signOut(opcoes?: { scope?: string }) {
+    await sair({
+      data: { token: tokenSessao(), escopo: opcoes?.scope === "global" ? "global" : "local" },
+    });
     guardarToken(null);
     avisar("SIGNED_OUT");
     return { error: null };
@@ -384,6 +393,68 @@ export const db = {
     return new Consulta(tabela);
   },
   auth,
+  leite: {
+    /** Substitui a destinação do dia inteiro pela lista enviada. */
+    async registrarDestinacao(params: {
+      fazendaId: string;
+      data: string;
+      destinos: { destino: string; quantidade: number; observacoes?: string | null }[];
+    }) {
+      return registrarDestinacaoLeite({ data: { token: tokenSessao(), ...params } });
+    },
+    /**
+     * Registra a venda e já cria o "a receber" no financeiro. Se `animalId`
+     * for informado, marca o animal como vendido na mesma transação — ou
+     * tudo persiste, ou nada persiste (sem venda "órfã" se essa etapa
+     * falhar).
+     */
+    async registrarVenda(params: {
+      fazendaId: string;
+      produto?: string;
+      quantidade: number;
+      unidade?: string;
+      precoUnitario: number;
+      comprador?: string | null;
+      data: string;
+      pago?: boolean;
+      formaPagamento?: string;
+      parcelas?: number | null;
+      animalId?: string | undefined;
+      pesoAtualizado?: number;
+    }) {
+      return registrarVenda({ data: { token: tokenSessao(), ...params } });
+    },
+    /** Marca um ou mais lançamentos "a receber" como recebidos de uma vez. */
+    async marcarRecebido(ids: string[]) {
+      return marcarLancamentosRecebidos({ data: { token: tokenSessao(), ids } });
+    },
+  },
+  engorda: {
+    /** Registra a pesagem de vários animais do lote numa transação só. */
+    async registrarPesagemLote(params: {
+      fazendaId: string;
+      data: string;
+      pesagens: { animalId: string; peso: number }[];
+    }) {
+      return registrarPesagemLote({ data: { token: tokenSessao(), ...params } });
+    },
+    /**
+     * Vende todos os animais em engorda de um lote numa venda só (um
+     * lançamento financeiro, uma linha em vendas, todos os animais do lote
+     * marcados como vendidos) — ou tudo persiste, ou nada persiste.
+     */
+    async registrarVendaLote(params: {
+      fazendaId: string;
+      lote: string;
+      precoUnitario: number;
+      comprador?: string | null;
+      data: string;
+      pago?: boolean;
+      formaPagamento?: string;
+    }) {
+      return registrarVendaLote({ data: { token: tokenSessao(), ...params } });
+    },
+  },
 };
 
 /** Apaga a conta atual e todos os dados das fazendas em que ela é dona. */

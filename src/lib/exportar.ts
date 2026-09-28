@@ -1,13 +1,33 @@
 import { zipSync, strToU8 } from "fflate";
 import { db } from "@/lib/local-db";
 
-const TABELAS = [
+// Tudo que é exportado. Inclui vendas/destinacoes_leite, que só podem ser
+// *lidas* pela consulta genérica (consultar.ts as trata como somente
+// leitura) — por isso elas entram aqui, mas não em TABELAS_APAGAR abaixo.
+const TABELAS_EXPORTAR = [
   "animais",
   "manejos",
   "producao_leite",
   "reproducao",
   "financeiro_lancamentos",
   "eventos_agenda",
+  "precos_produto",
+  "destinacoes_leite",
+  "vendas",
+] as const;
+
+// "Apagar todos os registros" some só com o que dá pra apagar pela consulta
+// genérica. vendas/destinacoes_leite ficam de fora porque essas tabelas são
+// somente-leitura ali (ver TABELAS_SOMENTE_LEITURA em dados.functions.ts) —
+// apagar em massa exigiria uma função dedicada, que ainda não existe.
+const TABELAS_APAGAR = [
+  "animais",
+  "manejos",
+  "producao_leite",
+  "reproducao",
+  "financeiro_lancamentos",
+  "eventos_agenda",
+  "precos_produto",
 ] as const;
 
 function paraCSV(linhas: Record<string, unknown>[]) {
@@ -25,7 +45,7 @@ function paraCSV(linhas: Record<string, unknown>[]) {
 
 export async function exportarDadosDaFazenda(fazendaId: string, nomeFazenda: string) {
   const arquivos: Record<string, Uint8Array> = {};
-  for (const tabela of TABELAS) {
+  for (const tabela of TABELAS_EXPORTAR) {
     const { data, error } = await db.from(tabela).select("*").eq("fazenda_id", fazendaId);
     if (error) throw error;
     arquivos[`${tabela}.csv`] = strToU8(paraCSV((data ?? []) as Record<string, unknown>[]));
@@ -42,7 +62,7 @@ export async function exportarDadosDaFazenda(fazendaId: string, nomeFazenda: str
 }
 
 export async function apagarRegistrosDaFazenda(fazendaId: string) {
-  for (const tabela of TABELAS) {
+  for (const tabela of TABELAS_APAGAR) {
     const { error } = await db.from(tabela).delete().eq("fazenda_id", fazendaId);
     if (error) throw error;
   }

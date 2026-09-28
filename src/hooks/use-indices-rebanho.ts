@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { db } from "@/lib/local-db";
+import { dataISO, diasAtrasISO } from "@/lib/formato";
 
 export interface IndicesRebanho {
   totalRebanho: number;
@@ -14,12 +15,6 @@ export interface IndicesRebanho {
   mediaUltimoControle: number;
   totalUltimoControle: number;
   dataUltimoControle: string | null;
-}
-
-function diasAtrasISO(dias: number) {
-  const d = new Date();
-  d.setDate(d.getDate() - dias);
-  return d.toISOString().slice(0, 10);
 }
 
 export function useIndicesRebanho(fazendaId: string | undefined) {
@@ -60,7 +55,7 @@ export function useIndicesRebanho(fazendaId: string | undefined) {
       const vacas = ativos.filter((a) => a.categoria === "vaca").length;
 
       const partos = partosRes.data ?? [];
-      const partos30d = partos.filter((p) => p.data >= limite30).length;
+      const partos30d = partos.filter((p) => dataISO(p.data) >= limite30).length;
 
       const ultimoPartoPorAnimal = new Map<string, string>();
       for (const p of partos) {
@@ -78,9 +73,9 @@ export function useIndicesRebanho(fazendaId: string | undefined) {
           : null;
 
       const leite = leiteRes.data ?? [];
-      const dataUltimoControle = leite[0]?.data ?? null;
+      const dataUltimoControle = leite[0]?.data ? dataISO(leite[0].data) : null;
       const doUltimoControle = dataUltimoControle
-        ? leite.filter((l) => l.data === dataUltimoControle)
+        ? leite.filter((l) => dataISO(l.data) === dataUltimoControle)
         : [];
       const totalUltimoControle = doUltimoControle.reduce((s, l) => s + Number(l.litros), 0);
       const animaisNoControle = new Set(doUltimoControle.map((l) => l.animal_id).filter(Boolean))

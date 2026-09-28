@@ -49,9 +49,9 @@ export function SecaoPlano() {
         Precisa de mais espaço ou de algum recurso bloqueado? Fale com a gente em{" "}
         <a
           className="text-primary underline underline-offset-4"
-          href="mailto:contato@meucurraldigital.com.br"
+          href="mailto:contato@curralonline.com"
         >
-          contato@meucurraldigital.com.br
+          contato@curralonline.com
         </a>
         .
       </p>
