@@ -16,7 +16,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { db } from "@/lib/local-db";
 import { useLimitePlano } from "@/hooks/use-fazenda";
 import { limiteTexto } from "@/lib/planos";
@@ -79,10 +79,29 @@ export function AppShell({
     return window.localStorage.getItem("curral-sidebar-colapsada") === "1";
   });
   const [producaoAberta, setProducaoAberta] = useState(true);
+  const [producaoFlyoutAberto, setProducaoFlyoutAberto] = useState(false);
+  const [producaoFlyoutPos, setProducaoFlyoutPos] = useState({ top: 0, left: 0 });
+  const producaoGrupoRef = useRef<HTMLDivElement>(null);
+  const producaoBtnRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     window.localStorage.setItem("curral-sidebar-colapsada", colapsada ? "1" : "0");
   }, [colapsada]);
+
+  useEffect(() => {
+    setProducaoFlyoutAberto(false);
+  }, [colapsada]);
+
+  useEffect(() => {
+    if (!producaoFlyoutAberto) return;
+    function aoClicarFora(evento: MouseEvent) {
+      if (!producaoGrupoRef.current?.contains(evento.target as Node)) {
+        setProducaoFlyoutAberto(false);
+      }
+    }
+    document.addEventListener("mousedown", aoClicarFora);
+    return () => document.removeEventListener("mousedown", aoClicarFora);
+  }, [producaoFlyoutAberto]);
 
   async function sair() {
     await queryClient.cancelQueries();
@@ -101,8 +120,16 @@ export function AppShell({
           colapsada ? "w-[72px]" : "w-64",
         )}
       >
-        <div className="flex items-center gap-2 border-b border-border px-3 py-4">
-          <Link to="/inicio" className="flex min-w-0 flex-1 items-center gap-2">
+        <div
+          className={cn(
+            "flex gap-2 border-b border-border px-3 py-4",
+            colapsada ? "flex-col items-center" : "items-center",
+          )}
+        >
+          <Link
+            to="/inicio"
+            className={cn("flex min-w-0 items-center gap-2", colapsada ? "" : "flex-1")}
+          >
             <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground">
               <Sprout className="size-4" aria-hidden="true" />
             </span>
@@ -136,11 +163,23 @@ export function AppShell({
             if (isGroup(entry)) {
               const grupoAtivo = entry.items.some((item) => location.pathname.startsWith(item.to));
               return (
-                <div key={entry.label}>
+                <div key={entry.label} ref={producaoGrupoRef} className="relative">
                   <button
+                    ref={producaoBtnRef}
                     type="button"
-                    onClick={() => setProducaoAberta((v) => !v)}
-                    aria-expanded={producaoAberta}
+                    onClick={() => {
+                      if (!colapsada) {
+                        setProducaoAberta((v) => !v);
+                        return;
+                      }
+                      const rect = producaoBtnRef.current?.getBoundingClientRect();
+                      if (rect) setProducaoFlyoutPos({ top: rect.top, left: rect.right + 8 });
+                      setProducaoFlyoutAberto((v) => !v);
+                    }}
+                    aria-expanded={colapsada ? producaoFlyoutAberto : producaoAberta}
+                    aria-haspopup={colapsada ? "true" : undefined}
+                    aria-label={colapsada ? entry.label : undefined}
+                    title={colapsada ? entry.label : undefined}
                     className={cn(
                       "flex w-full items-center gap-2 rounded-lg px-3 py-2.5 text-sm font-medium transicao-suave hover:bg-accent",
                       grupoAtivo ? "text-primary" : "text-muted-foreground hover:text-foreground",
@@ -176,6 +215,28 @@ export function AppShell({
                       ))}
                     </div>
                   ) : null}
+                  {colapsada && producaoFlyoutAberto ? (
+                    <div
+                      style={{ top: producaoFlyoutPos.top, left: producaoFlyoutPos.left }}
+                      className="fixed z-40 min-w-[180px] rounded-xl border border-border bg-card p-1.5 shadow-md"
+                    >
+                      <p className="truncate px-2 py-1 text-xs font-semibold text-muted-foreground">
+                        {entry.label}
+                      </p>
+                      {entry.items.map((item) => (
+                        <Link
+                          key={item.to}
+                          to={item.to}
+                          onClick={() => setProducaoFlyoutAberto(false)}
+                          className="flex items-center gap-2 rounded-lg px-2 py-2 text-sm font-medium text-muted-foreground transicao-suave hover:bg-accent hover:text-foreground"
+                          activeProps={{ className: "bg-accent text-primary" }}
+                        >
+                          <item.icon className="size-4 shrink-0" aria-hidden="true" />
+                          {item.label}
+                        </Link>
+                      ))}
+                    </div>
+                  ) : null}
                 </div>
               );
             }
@@ -183,6 +244,8 @@ export function AppShell({
               <Link
                 key={entry.to}
                 to={entry.to}
+                aria-label={colapsada ? entry.label : undefined}
+                title={colapsada ? entry.label : undefined}
                 className={cn(
                   "flex items-center gap-2 rounded-lg px-3 py-2.5 text-sm font-medium text-muted-foreground transicao-suave hover:bg-accent hover:text-foreground",
                   colapsada ? "justify-center" : null,
