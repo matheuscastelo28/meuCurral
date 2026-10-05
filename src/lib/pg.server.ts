@@ -286,10 +286,17 @@ create table if not exists eventos_agenda (
   descricao text,
   data date default current_date,
   concluido boolean default false,
+  -- Cancelado é um status à parte de concluído: um evento cancelado não
+  -- aconteceu nem precisa mais acontecer, diferente de um feito (aconteceu)
+  -- ou pendente (ainda vai acontecer). "Atrasado" não tem coluna própria —
+  -- é calculado (data no passado e nem concluído nem cancelado).
+  cancelado boolean not null default false,
   observacoes text,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
+
+alter table eventos_agenda add column if not exists cancelado boolean not null default false;
 
 create index if not exists idx_animais_fazenda on animais(fazenda_id);
 create index if not exists idx_manejos_fazenda on manejos(fazenda_id);

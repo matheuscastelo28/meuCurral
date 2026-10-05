@@ -39,7 +39,7 @@ const NAV: (NavLink | NavGroup)[] = [
     ],
   },
   { to: "/financeiro", label: "Financeiro", icon: Wallet },
-  { to: "/calendario", label: "Calendário", icon: CalendarDays },
+  { to: "/calendario", label: "Agenda", icon: CalendarDays },
   { to: "/config", label: "Config", icon: Settings },
 ];
 
@@ -50,7 +50,7 @@ const NAV_MOBILE = [
   { to: "/engorda", label: "Engorda", icon: Weight },
   { to: "/reproducao", label: "Reprodução", icon: Stethoscope },
   { to: "/financeiro", label: "Financeiro", icon: Wallet },
-  { to: "/calendario", label: "Calendário", icon: CalendarDays },
+  { to: "/calendario", label: "Agenda", icon: CalendarDays },
   { to: "/config", label: "Config", icon: Settings },
 ] as const;
 

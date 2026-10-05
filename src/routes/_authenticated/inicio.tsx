@@ -41,6 +41,7 @@ function Inicio() {
           .select("id, titulo, data, tipo, concluido")
           .eq("fazenda_id", fazendaId!)
           .eq("concluido", false)
+          .eq("cancelado", false)
           .gte("data", hoje)
           .order("data")
           .limit(5),
