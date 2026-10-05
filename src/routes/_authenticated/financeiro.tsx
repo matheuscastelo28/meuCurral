@@ -46,6 +46,8 @@ function Financeiro() {
   const [formaPagamento, setFormaPagamento] = useState("dinheiro");
   const [parcelas, setParcelas] = useState("1");
   const [selecionados, setSelecionados] = useState<Set<string>>(new Set());
+  const [filtroTipo, setFiltroTipo] = useState<"todos" | "despesa" | "receita">("todos");
+  const [filtroData, setFiltroData] = useState("");
   // Só se aplica a receita — despesa lançada na mão ainda não distingue
   // "a pagar" de "paga" (ver comentário no cálculo do Saldo, mais abaixo).
   const [receitaRecebida, setReceitaRecebida] = useState(true);
@@ -137,6 +139,20 @@ function Financeiro() {
     });
   }
 
+  function aoMudarParcelas(valorDigitado: string) {
+    if (valorDigitado === "") {
+      setParcelas(valorDigitado);
+      return;
+    }
+    const numero = Math.max(1, Math.min(12, Number(valorDigitado) || 1));
+    setParcelas(String(numero));
+  }
+
+  const filtroAtivo = filtroTipo !== "todos" || filtroData !== "";
+  const lancamentosFiltrados = (lancamentos.data ?? []).filter(
+    (l) => (filtroTipo === "todos" || l.tipo === filtroTipo) && (!filtroData || l.data === filtroData),
+  );
+
   return (
     <AppShell titulo="Financeiro" descricao="Entradas e saídas da fazenda, sem planilha.">
       <div className="mb-5 grid gap-3 sm:grid-cols-3 lg:grid-cols-5">
@@ -173,108 +189,115 @@ function Financeiro() {
       ) : null}
 
       <form
-        className="mb-5 grid gap-3 rounded-xl border border-border bg-card p-4 sm:grid-cols-5 lg:grid-cols-7"
+        className="mb-5 rounded-xl border border-border bg-card p-4"
         onSubmit={(e) => {
           e.preventDefault();
           salvar.mutate();
         }}
       >
-        <div className="space-y-1.5">
-          <Label htmlFor="tipo-lanc">Tipo</Label>
-          <select
-            id="tipo-lanc"
-            value={tipo}
-            onChange={(e) => setTipo(e.target.value)}
-            className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
-          >
-            <option value="despesa">Despesa</option>
-            <option value="receita">Receita</option>
-          </select>
-        </div>
-        <div className="space-y-1.5 sm:col-span-2">
-          <Label htmlFor="descricao">Descrição</Label>
-          <Input
-            id="descricao"
-            value={descricao}
-            onChange={(e) => setDescricao(e.target.value)}
-            placeholder="Ex: Compra de ração"
-            required
-          />
-        </div>
-        <div className="space-y-1.5">
-          <Label htmlFor="valor">Valor (R$)</Label>
-          <Input
-            id="valor"
-            type="number"
-            step="0.01"
-            min="0"
-            value={valor}
-            onChange={(e) => setValor(e.target.value)}
-            required
-          />
-        </div>
-        <div className="space-y-1.5">
-          <Label htmlFor="data-lanc">Data</Label>
-          <Input
-            id="data-lanc"
-            type="date"
-            value={data}
-            onChange={(e) => setData(e.target.value)}
-            required
-          />
-        </div>
-        {tipo === "receita" ? (
-          <div className="space-y-1.5">
-            <Label>Situação</Label>
-            <div className="flex gap-2">
-              <Button
-                type="button"
-                size="sm"
-                variant={receitaRecebida ? "default" : "outline"}
-                onClick={() => setReceitaRecebida(true)}
-              >
-                Recebido
-              </Button>
-              <Button
-                type="button"
-                size="sm"
-                variant={receitaRecebida ? "outline" : "default"}
-                onClick={() => setReceitaRecebida(false)}
-              >
-                A receber
-              </Button>
-            </div>
+        <h2 className="text-base font-semibold">Novo lançamento</h2>
+        <p className="mt-1 text-sm text-muted-foreground">Registre uma despesa ou receita da fazenda.</p>
+
+        <div className="mt-4 flex flex-wrap items-start gap-3">
+          <div className="min-w-[140px] flex-1 space-y-1.5">
+            <Label htmlFor="tipo-lanc">Tipo</Label>
+            <select
+              id="tipo-lanc"
+              value={tipo}
+              onChange={(e) => setTipo(e.target.value)}
+              className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+            >
+              <option value="despesa">Despesa</option>
+              <option value="receita">Receita</option>
+            </select>
           </div>
-        ) : null}
-        <div className="space-y-1.5">
-          <Label htmlFor="forma-pagamento">Forma de pagamento</Label>
-          <select
-            id="forma-pagamento"
-            value={formaPagamento}
-            onChange={(e) => setFormaPagamento(e.target.value)}
-            className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
-          >
-            <option value="dinheiro">Dinheiro</option>
-            <option value="pix">Pix</option>
-            <option value="cartao">Cartão</option>
-            <option value="boleto">Boleto</option>
-            <option value="transferencia">Transferência</option>
-          </select>
-        </div>
-        {formaPagamento === "cartao" ? (
-          <div className="space-y-1.5">
-            <Label htmlFor="parcelas">Parcelas</Label>
+          <div className="min-w-[220px] flex-[2] space-y-1.5">
+            <Label htmlFor="descricao">Descrição</Label>
             <Input
-              id="parcelas"
-              type="number"
-              min="1"
-              step="1"
-              value={parcelas}
-              onChange={(e) => setParcelas(e.target.value)}
+              id="descricao"
+              value={descricao}
+              onChange={(e) => setDescricao(e.target.value)}
+              placeholder="Ex: Compra de ração"
+              required
             />
           </div>
-        ) : null}
-        <div className="sm:col-span-5 lg:col-span-7">
+          <div className="min-w-[140px] flex-1 space-y-1.5">
+            <Label htmlFor="valor">Valor (R$)</Label>
+            <Input
+              id="valor"
+              type="number"
+              step="0.01"
+              min="0"
+              value={valor}
+              onChange={(e) => setValor(e.target.value)}
+              required
+            />
+          </div>
+          <div className="min-w-[160px] flex-1 space-y-1.5">
+            <Label htmlFor="data-lanc">Data</Label>
+            <Input
+              id="data-lanc"
+              type="date"
+              value={data}
+              onChange={(e) => setData(e.target.value)}
+              required
+            />
+          </div>
+          {tipo === "receita" ? (
+            <div className="min-w-[200px] flex-1 space-y-1.5">
+              <Label>Situação</Label>
+              <div className="flex gap-2">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant={receitaRecebida ? "default" : "outline"}
+                  onClick={() => setReceitaRecebida(true)}
+                >
+                  Recebido
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant={receitaRecebida ? "outline" : "default"}
+                  onClick={() => setReceitaRecebida(false)}
+                >
+                  A receber
+                </Button>
+              </div>
+            </div>
+          ) : null}
+          <div className="min-w-[160px] flex-1 space-y-1.5">
+            <Label htmlFor="forma-pagamento">Forma de pagamento</Label>
+            <select
+              id="forma-pagamento"
+              value={formaPagamento}
+              onChange={(e) => setFormaPagamento(e.target.value)}
+              className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+            >
+              <option value="dinheiro">Dinheiro</option>
+              <option value="pix">Pix</option>
+              <option value="cartao">Cartão</option>
+              <option value="boleto">Boleto</option>
+              <option value="transferencia">Transferência</option>
+            </select>
+          </div>
+          {formaPagamento === "cartao" ? (
+            <div className="min-w-[110px] space-y-1.5">
+              <Label htmlFor="parcelas">Parcelas</Label>
+              <Input
+                id="parcelas"
+                type="number"
+                min="1"
+                max="12"
+                step="1"
+                value={parcelas}
+                onChange={(e) => aoMudarParcelas(e.target.value)}
+              />
+            </div>
+          ) : null}
+        </div>
+
+        <div className="mt-4">
           <Button type="submit" disabled={salvar.isPending}>
             <Plus className="size-4" aria-hidden="true" />
             Lançar
@@ -289,46 +312,89 @@ function Financeiro() {
           descricao="Registre a primeira despesa ou receita para acompanhar o resultado da fazenda."
         />
       ) : (
-        <ul className="divide-y divide-border rounded-xl border border-border bg-card">
-          {lancamentos.data?.map((l) => (
-            <li key={l.id} className="flex items-center justify-between gap-3 px-4 py-3 text-sm">
-              <span className="flex items-center gap-3">
-                {l.status === "a_receber" ? (
-                  <input
-                    type="checkbox"
-                    checked={selecionados.has(l.id)}
-                    onChange={() => alternarSelecao(l.id)}
-                    aria-label={`Selecionar ${l.descricao}`}
-                    className="size-4 accent-[var(--primary)]"
-                  />
-                ) : null}
-                <span>
-                  <span className="block font-medium">{l.descricao}</span>
-                  <span className="block text-xs text-muted-foreground">
-                    {dataCurta(l.data)} · {FORMAS_PAGAMENTO[l.forma_pagamento] ?? l.forma_pagamento}
-                    {l.forma_pagamento === "cartao" && l.parcelas && l.parcelas > 1
-                      ? ` em ${l.parcelas}x`
-                      : ""}
-                    {l.status === "a_receber" ? (
-                      <span className="ml-1.5 rounded-full bg-warning/15 px-1.5 py-0.5 text-warning">
-                        a receber
-                      </span>
-                    ) : null}
-                  </span>
-                </span>
-              </span>
-              <span
-                className={
-                  l.tipo === "receita"
-                    ? "font-semibold text-success"
-                    : "font-semibold text-destructive"
-                }
+        <div className="rounded-xl border border-border bg-card">
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border p-4">
+            <h2 className="text-base font-semibold">Lançamentos</h2>
+            <div className="flex flex-wrap items-center gap-2">
+              <select
+                aria-label="Filtrar por tipo"
+                value={filtroTipo}
+                onChange={(e) => setFiltroTipo(e.target.value as typeof filtroTipo)}
+                className="h-9 rounded-md border border-input bg-background px-2.5 text-sm"
               >
-                {l.tipo === "receita" ? "+" : "−"} {moeda(Number(l.valor))}
-              </span>
-            </li>
-          ))}
-        </ul>
+                <option value="todos">Todos os tipos</option>
+                <option value="despesa">Despesa</option>
+                <option value="receita">Receita</option>
+              </select>
+              <Input
+                type="date"
+                aria-label="Filtrar por data"
+                value={filtroData}
+                onChange={(e) => setFiltroData(e.target.value)}
+                className="h-9 w-auto"
+              />
+              {filtroAtivo ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setFiltroTipo("todos");
+                    setFiltroData("");
+                  }}
+                  className="text-xs font-medium text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
+                >
+                  Limpar filtros
+                </button>
+              ) : null}
+            </div>
+          </div>
+
+          {lancamentosFiltrados.length === 0 ? (
+            <p className="px-4 py-10 text-center text-sm text-muted-foreground">
+              Nenhum lançamento encontrado com esse filtro.
+            </p>
+          ) : (
+            <ul className="divide-y divide-border">
+              {lancamentosFiltrados.map((l) => (
+                <li key={l.id} className="flex items-center justify-between gap-3 px-4 py-3 text-sm">
+                  <span className="flex items-center gap-3">
+                    {l.status === "a_receber" ? (
+                      <input
+                        type="checkbox"
+                        checked={selecionados.has(l.id)}
+                        onChange={() => alternarSelecao(l.id)}
+                        aria-label={`Selecionar ${l.descricao}`}
+                        className="size-4 accent-[var(--primary)]"
+                      />
+                    ) : null}
+                    <span>
+                      <span className="block font-medium">{l.descricao}</span>
+                      <span className="block text-xs text-muted-foreground">
+                        {dataCurta(l.data)} · {FORMAS_PAGAMENTO[l.forma_pagamento] ?? l.forma_pagamento}
+                        {l.forma_pagamento === "cartao" && l.parcelas && l.parcelas > 1
+                          ? ` em ${l.parcelas}x`
+                          : ""}
+                        {l.status === "a_receber" ? (
+                          <span className="ml-1.5 rounded-full bg-warning/15 px-1.5 py-0.5 text-warning">
+                            a receber
+                          </span>
+                        ) : null}
+                      </span>
+                    </span>
+                  </span>
+                  <span
+                    className={
+                      l.tipo === "receita"
+                        ? "font-semibold text-success"
+                        : "font-semibold text-destructive"
+                    }
+                  >
+                    {l.tipo === "receita" ? "+" : "−"} {moeda(Number(l.valor))}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
       )}
     </AppShell>
   );
