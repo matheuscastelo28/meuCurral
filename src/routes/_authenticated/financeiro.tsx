@@ -10,7 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useFazenda } from "@/hooks/use-fazenda";
-import { dataCurta, hojeISO, moeda as formatarMoeda } from "@/lib/formato";
+import { dataCurta, dataISO, hojeISO, moeda as formatarMoeda } from "@/lib/formato";
 import { usePreferencias } from "@/hooks/use-preferencias";
 
 export const Route = createFileRoute("/_authenticated/financeiro")({
@@ -150,7 +150,9 @@ function Financeiro() {
 
   const filtroAtivo = filtroTipo !== "todos" || filtroData !== "";
   const lancamentosFiltrados = (lancamentos.data ?? []).filter(
-    (l) => (filtroTipo === "todos" || l.tipo === filtroTipo) && (!filtroData || l.data === filtroData),
+    (l) =>
+      (filtroTipo === "todos" || l.tipo === filtroTipo) &&
+      (!filtroData || dataISO(l.data) === filtroData),
   );
 
   return (
