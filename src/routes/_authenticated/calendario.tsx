@@ -33,6 +33,21 @@ import { dataCurta, dataISO, hojeISO, paraDataISO } from "@/lib/formato";
 import { usePreferencias } from "@/hooks/use-preferencias";
 import { cn } from "@/lib/utils";
 
+const MESES = [
+  "Janeiro",
+  "Fevereiro",
+  "Março",
+  "Abril",
+  "Maio",
+  "Junho",
+  "Julho",
+  "Agosto",
+  "Setembro",
+  "Outubro",
+  "Novembro",
+  "Dezembro",
+];
+
 const TIPOS_EVENTO = [
   "manual",
   "vacina",
@@ -67,7 +82,7 @@ const STATUS_INFO: Record<StatusEvento, { rotulo: string; classe: string }> = {
   feito: { rotulo: "Concluído", classe: "bg-success/15 text-success" },
   atrasado: { rotulo: "Atrasado", classe: "bg-destructive/15 text-destructive" },
   cancelado: { rotulo: "Cancelado", classe: "bg-muted text-muted-foreground" },
-  a_fazer: { rotulo: "A fazer", classe: "bg-accent text-foreground" },
+  a_fazer: { rotulo: "A fazer", classe: "bg-warning/15 text-warning" },
 };
 
 function StatusBadge({ status }: { status: StatusEvento }) {
@@ -112,7 +127,8 @@ function Calendario() {
 
   const [cancelando, setCancelando] = useState<EventoRow | null>(null);
 
-  const [filtroMes, setFiltroMes] = useState(hoje.slice(0, 7));
+  const [filtroMesNum, setFiltroMesNum] = useState(Number(hoje.slice(5, 7)));
+  const [filtroAno, setFiltroAno] = useState(Number(hoje.slice(0, 4)));
   const [filtroStatus, setFiltroStatus] = useState<"todos" | StatusEvento>("todos");
 
   const eventos = useQuery({
@@ -141,12 +157,22 @@ function Calendario() {
     (e) => selecionado && dataISO(e.data) === paraDataISO(selecionado),
   );
 
+  const filtroMes = `${filtroAno}-${String(filtroMesNum).padStart(2, "0")}`;
+
   const eventosDoMes = useMemo(() => {
     return (eventos.data ?? [])
       .filter((e) => dataISO(e.data).slice(0, 7) === filtroMes)
       .filter((e) => filtroStatus === "todos" || statusDoEvento(e, hoje) === filtroStatus)
       .sort((a, b) => dataISO(a.data).localeCompare(dataISO(b.data)));
   }, [eventos.data, filtroMes, filtroStatus, hoje]);
+
+  const anosDisponiveis = useMemo(() => {
+    const anos = new Set<number>([Number(hoje.slice(0, 4))]);
+    for (const e of eventos.data ?? []) {
+      anos.add(Number(dataISO(e.data).slice(0, 4)));
+    }
+    return Array.from(anos).sort((a, b) => a - b);
+  }, [eventos.data, hoje]);
 
   function invalidar() {
     queryClient.invalidateQueries({ queryKey: ["eventos"] });
@@ -244,7 +270,7 @@ function Calendario() {
         </Button>
       }
     >
-      <div className="grid gap-4 lg:grid-cols-2">
+      <div className="grid gap-4 lg:grid-cols-[25rem_1fr]">
         <div className="rounded-xl border border-border bg-card p-4">
           <Calendar
             mode="single"
@@ -256,7 +282,7 @@ function Calendario() {
               evento:
                 "relative font-semibold text-primary after:absolute after:bottom-1 after:left-1/2 after:size-1.5 after:-translate-x-1/2 after:rounded-full after:bg-primary data-[selected=true]:after:bg-primary-foreground",
             }}
-            className="w-full [--cell-size:2.75rem]"
+            className="w-full [--cell-size:2.25rem]"
           />
           <p className="mt-2 px-2 text-center text-xs text-muted-foreground">
             Os dias com bolinha têm compromissos registrados.
@@ -298,13 +324,30 @@ function Calendario() {
               <option value="atrasado">Atrasado</option>
               <option value="feito">Concluído</option>
             </select>
-            <Input
-              type="month"
+            <select
               aria-label="Filtrar por mês"
-              value={filtroMes}
-              onChange={(e) => setFiltroMes(e.target.value)}
-              className="h-9 w-auto"
-            />
+              value={filtroMesNum}
+              onChange={(e) => setFiltroMesNum(Number(e.target.value))}
+              className="h-9 rounded-md border border-input bg-background px-2.5 text-sm"
+            >
+              {MESES.map((m, i) => (
+                <option key={m} value={i + 1}>
+                  {m}
+                </option>
+              ))}
+            </select>
+            <select
+              aria-label="Filtrar por ano"
+              value={filtroAno}
+              onChange={(e) => setFiltroAno(Number(e.target.value))}
+              className="h-9 rounded-md border border-input bg-background px-2.5 text-sm"
+            >
+              {anosDisponiveis.map((ano) => (
+                <option key={ano} value={ano}>
+                  {ano}
+                </option>
+              ))}
+            </select>
           </div>
         </div>
 
