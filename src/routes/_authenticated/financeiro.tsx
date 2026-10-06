@@ -79,7 +79,9 @@ const STATUS_INFO_PARCELA: Record<StatusParcela, { rotulo: string; classe: strin
 
 // Lançamento simples não guarda um status no mesmo vocabulário de conta —
 // aqui ele "empresta" o vocabulário (pendente/pago/atrasado) só pra entrar
-// na lista única com o mesmo filtro de status das contas.
+// na lista única com o mesmo filtro de status das contas. Despesa lançada
+// na mão sempre nasce "pago": quem precisa de controle de "a pagar" agora
+// usa o próprio formulário com Situação = "A pagar" (vira conta).
 function statusUnificadoLancamento(
   l: { tipo: string; status: string; data: string | Date },
   hoje: string,
@@ -138,19 +140,10 @@ function Financeiro() {
   const queryClient = useQueryClient();
   const hoje = hojeISO();
 
-  const [tipo, setTipo] = useState("despesa");
-  const [descricao, setDescricao] = useState("");
-  const [valor, setValor] = useState("");
-  const [data, setData] = useState(hoje);
-  const [formaPagamento, setFormaPagamento] = useState("dinheiro");
-  const [parcelas, setParcelas] = useState("1");
   const [selecionados, setSelecionados] = useState<Set<string>>(new Set());
   const [filtroTipo, setFiltroTipo] = useState<"todos" | "despesa" | "receita">("todos");
   const [filtroStatus, setFiltroStatus] = useState<"todos" | StatusConta>("todos");
   const [filtroData, setFiltroData] = useState("");
-  // Só se aplica a receita — despesa lançada na mão ainda não distingue
-  // "a pagar" de "paga" (ver comentário no cálculo do Saldo, mais abaixo).
-  const [receitaRecebida, setReceitaRecebida] = useState(true);
 
   const lancamentos = useQuery({
     queryKey: ["financeiro", fazenda?.id],
@@ -166,35 +159,6 @@ function Financeiro() {
     },
   });
 
-  const salvar = useMutation({
-    mutationFn: async () => {
-      const { error } = await db.from("financeiro_lancamentos").insert({
-        fazenda_id: fazenda!.id,
-        tipo,
-        descricao: descricao.trim(),
-        valor: Number(valor),
-        data,
-        forma_pagamento: formaPagamento,
-        parcelas: formaPagamento === "cartao" ? Number(parcelas) || 1 : null,
-        // Despesa lançada na mão não tem como marcar "a pagar" ainda — só
-        // receita usa o status pra distinguir do que já entrou no caixa.
-        ...(tipo === "receita" ? { status: receitaRecebida ? "recebido" : "a_receber" } : {}),
-      } as never);
-      if (error) throw error;
-    },
-    onSuccess: () => {
-      toast.success("Lançamento registrado.");
-      setDescricao("");
-      setValor("");
-      setFormaPagamento("dinheiro");
-      setParcelas("1");
-      setReceitaRecebida(true);
-      queryClient.invalidateQueries({ queryKey: ["financeiro"] });
-      queryClient.invalidateQueries({ queryKey: ["inicio-resumo"] });
-    },
-    onError: () => toast.error("Não conseguimos salvar agora. Tente novamente."),
-  });
-
   const marcarRecebido = useMutation({
     mutationFn: async (ids: string[]) => {
       const { error } = await db.leite.marcarRecebido(ids);
@@ -203,32 +167,11 @@ function Financeiro() {
     onSuccess: () => {
       toast.success("Lançamentos marcados como recebidos.");
       setSelecionados(new Set());
+      setLancamentoDetalhe(null);
       queryClient.invalidateQueries({ queryKey: ["financeiro"] });
     },
     onError: () => toast.error("Não conseguimos confirmar o recebimento agora."),
   });
-
-  // Receita do período: tudo que foi faturado (vendido/lançado), inclusive o
-  // que ainda não entrou no caixa — é o faturamento, não o saldo em caixa.
-  const receitaPeriodo = (lancamentos.data ?? [])
-    .filter((l) => l.tipo === "receita")
-    .reduce((s, l) => s + Number(l.valor), 0);
-  // Despesas: o app ainda não distingue "a pagar" de "paga" (todo lançamento
-  // manual de despesa nasce com status "confirmado", sem opção de escolher)
-  // — então toda despesa lançada já é tratada como dinheiro que saiu.
-  const despesas = (lancamentos.data ?? [])
-    .filter((l) => l.tipo === "despesa")
-    .reduce((s, l) => s + Number(l.valor), 0);
-  const aReceberLancamentos = (lancamentos.data ?? [])
-    .filter((l) => l.tipo === "receita" && l.status === "a_receber")
-    .reduce((s, l) => s + Number(l.valor), 0);
-  const recebido = (lancamentos.data ?? [])
-    .filter((l) => l.tipo === "receita" && l.status === "recebido")
-    .reduce((s, l) => s + Number(l.valor), 0);
-  // Saldo realizado: dinheiro que efetivamente entrou e saiu — não é
-  // "receita faturada menos despesa", que mistura o que ainda não foi
-  // recebido com o caixa de verdade.
-  const saldoRealizado = recebido - despesas;
 
   function alternarSelecao(id: string) {
     setSelecionados((atual) => {
@@ -237,15 +180,6 @@ function Financeiro() {
       else novo.add(id);
       return novo;
     });
-  }
-
-  function aoMudarParcelas(valorDigitado: string) {
-    if (valorDigitado === "") {
-      setParcelas(valorDigitado);
-      return;
-    }
-    const numero = Math.max(1, Math.min(12, Number(valorDigitado) || 1));
-    setParcelas(String(numero));
   }
 
   // ---------------------------------------------------------------------
@@ -317,11 +251,10 @@ function Financeiro() {
   }, [contas.data, parcelasPorConta]);
 
   // Lançamentos simples e contas (com suas parcelas) entram na mesma lista,
-  // ordenados por data — "unificar as listas mantendo as funcionalidades":
-  // cada linha ainda se comporta do jeito do seu tipo (lançamento ganha a
-  // caixinha de seleção pra "marcar como recebido"; conta ganha o badge de
-  // status/parcelas e o "Ver detalhes"), só o contêiner e os filtros é que
-  // são um só.
+  // ordenados por data: cada linha se comporta do jeito do seu tipo
+  // (lançamento ganha a caixinha de seleção legada pra "marcar como
+  // recebido"; conta ganha o badge de parcelas), mas as duas têm "Ver
+  // detalhes" e o mesmo badge de status.
   const linhasFinanceiras = useMemo(() => {
     const doLancamentos = (lancamentos.data ?? []).map((l) => ({
       kind: "lancamento" as const,
@@ -350,7 +283,29 @@ function Financeiro() {
       (!filtroData || linha.dataOrdenacao === filtroData),
   );
 
-  const mesAtual = hoje.slice(0, 7);
+  // ---------------------------------------------------------------------
+  // Cards de resumo — uma linha só, somando lançamento simples e conta sem
+  // contar o mesmo dinheiro duas vezes: "recebido"/"despesas" olham pra
+  // parte já efetivada (lançamento confirmado + valor_total - valor_restante
+  // de cada conta); "a receber"/"a pagar" olham só pro saldo ainda pendente.
+  // ---------------------------------------------------------------------
+
+  const recebidoUnificado =
+    (lancamentos.data ?? [])
+      .filter((l) => l.tipo === "receita" && l.status === "recebido")
+      .reduce((s, l) => s + Number(l.valor), 0) +
+    contasComDados
+      .filter((c) => c.tipo === "a_receber")
+      .reduce((s, c) => s + (Number(c.valor_total) - Number(c.valor_restante)), 0);
+
+  const despesasUnificado =
+    (lancamentos.data ?? [])
+      .filter((l) => l.tipo === "despesa")
+      .reduce((s, l) => s + Number(l.valor), 0) +
+    contasComDados
+      .filter((c) => c.tipo === "a_pagar")
+      .reduce((s, c) => s + (Number(c.valor_total) - Number(c.valor_restante)), 0);
+
   const aReceberContas = contasComDados
     .filter(
       (c) =>
@@ -362,92 +317,119 @@ function Financeiro() {
       (c) => c.tipo === "a_pagar" && c.statusExibido !== "cancelado" && c.statusExibido !== "pago",
     )
     .reduce((s, c) => s + Number(c.valor_restante), 0);
-  const vencendoEsteMes = (parcelasConta.data ?? [])
-    .filter((p) => p.status === "pendente" && dataISO(p.vencimento).slice(0, 7) === mesAtual)
-    .reduce((s, p) => s + Number(p.valor), 0);
+  const aReceberUnificado =
+    (lancamentos.data ?? [])
+      .filter((l) => l.tipo === "receita" && l.status === "a_receber")
+      .reduce((s, l) => s + Number(l.valor), 0) + aReceberContas;
+
+  const saldoRealizadoUnificado = recebidoUnificado - despesasUnificado;
+
+  const emAtrasoLancamentos = (lancamentos.data ?? [])
+    .filter((l) => l.tipo === "receita" && l.status === "a_receber" && dataISO(l.data) < hoje)
+    .reduce((s, l) => s + Number(l.valor), 0);
   const emAtrasoContas = (parcelasConta.data ?? [])
     .filter((p) => statusExibicaoParcela(p) === "atrasado")
     .reduce((s, p) => s + Number(p.valor), 0);
+  const emAtrasoUnificado = emAtrasoContas + emAtrasoLancamentos;
 
-  // ----- Nova conta -----
-  const [abertoNovo, setAbertoNovo] = useState(false);
-  const [contaTipo, setContaTipo] = useState<"a_receber" | "a_pagar">("a_receber");
-  const [contaDescricao, setContaDescricao] = useState("");
-  const [valorTotal, setValorTotal] = useState("");
-  const [dataEmissao, setDataEmissao] = useState(hoje);
-  const [categoria, setCategoria] = useState("");
+  // ---------------------------------------------------------------------
+  // Formulário único de lançamento — um lançamento simples (já aconteceu,
+  // sem parcelas reais) vira uma linha em financeiro_lancamentos; qualquer
+  // coisa pendente ou parcelada vira uma conta (1 parcela quando à vista
+  // mas ainda não recebida/paga).
+  // ---------------------------------------------------------------------
+
+  const [tipo, setTipo] = useState<"despesa" | "receita">("despesa");
+  const [descricao, setDescricao] = useState("");
+  const [valor, setValor] = useState("");
+  const [data, setData] = useState(hoje);
+  const [formaPagamento, setFormaPagamento] = useState("dinheiro");
+  const [jaAconteceu, setJaAconteceu] = useState(true);
   const [pessoa, setPessoa] = useState("");
   const [animalId, setAnimalId] = useState("");
-  const [contaFormaPagamento, setContaFormaPagamento] = useState("");
-  const [observacoes, setObservacoes] = useState("");
-  const [pagamento, setPagamento] = useState<"avista" | "parcelado">("avista");
+  const [parcelado, setParcelado] = useState(false);
   const [numParcelas, setNumParcelas] = useState("2");
   const [primeiroVencimento, setPrimeiroVencimento] = useState(hoje);
   const [intervaloDias, setIntervaloDias] = useState("30");
 
-  function limparFormNovaConta() {
-    setContaTipo("a_receber");
-    setContaDescricao("");
-    setValorTotal("");
-    setDataEmissao(hoje);
-    setCategoria("");
+  function limparForm() {
+    setDescricao("");
+    setValor("");
+    setData(hoje);
+    setFormaPagamento("dinheiro");
+    setJaAconteceu(true);
     setPessoa("");
     setAnimalId("");
-    setContaFormaPagamento("");
-    setObservacoes("");
-    setPagamento("avista");
+    setParcelado(false);
     setNumParcelas("2");
     setPrimeiroVencimento(hoje);
     setIntervaloDias("30");
   }
 
-  const previewParcelas = useMemo(() => {
-    const valor = Number(valorTotal);
-    if (!Number.isFinite(valor) || valor <= 0) return [];
-    const n = pagamento === "avista" ? 1 : Math.max(1, Math.floor(Number(numParcelas) || 1));
-    const primeiraData = pagamento === "avista" ? dataEmissao : primeiroVencimento;
-    if (!primeiraData) return [];
-    const intervalo =
-      pagamento === "avista" ? 0 : Math.max(1, Math.floor(Number(intervaloDias) || 30));
-    return gerarParcelas(valor, n, primeiraData, intervalo);
-  }, [valorTotal, pagamento, numParcelas, dataEmissao, primeiroVencimento, intervaloDias]);
+  const vaiVirarConta = parcelado || !jaAconteceu;
 
-  const criarContaMutation = useMutation({
+  const previewParcelas = useMemo(() => {
+    if (!vaiVirarConta) return [];
+    const valorNum = Number(valor);
+    if (!Number.isFinite(valorNum) || valorNum <= 0) return [];
+    const n = parcelado ? Math.max(1, Math.floor(Number(numParcelas) || 1)) : 1;
+    const primeiraData = parcelado ? primeiroVencimento : data;
+    if (!primeiraData) return [];
+    const intervalo = parcelado ? Math.max(1, Math.floor(Number(intervaloDias) || 30)) : 0;
+    return gerarParcelas(valorNum, n, primeiraData, intervalo);
+  }, [vaiVirarConta, valor, parcelado, numParcelas, primeiroVencimento, intervaloDias, data]);
+
+  const salvar = useMutation({
     mutationFn: async () => {
-      const { error } = await db.financeiro.criarConta({
-        fazendaId: fazenda!.id,
-        tipo: contaTipo,
-        descricao: contaDescricao.trim(),
-        valorTotal: Number(valorTotal),
-        dataEmissao,
-        categoria: categoria.trim() || null,
-        pessoa: pessoa.trim() || null,
-        animalId: animalId || null,
-        formaPagamento: contaFormaPagamento || null,
-        observacoes: observacoes.trim() || null,
-        parcelamento:
-          pagamento === "parcelado"
+      const valorNum = Number(valor);
+      if (vaiVirarConta) {
+        const { error } = await db.financeiro.criarConta({
+          fazendaId: fazenda!.id,
+          tipo: tipo === "receita" ? "a_receber" : "a_pagar",
+          descricao: descricao.trim(),
+          valorTotal: valorNum,
+          dataEmissao: data,
+          categoria: null,
+          pessoa: pessoa.trim() || null,
+          animalId: animalId || null,
+          formaPagamento: formaPagamento || null,
+          observacoes: null,
+          parcelamento: parcelado
             ? {
                 numParcelas: Math.max(1, Math.floor(Number(numParcelas) || 1)),
                 primeiroVencimento,
                 intervaloDias: Math.max(1, Math.floor(Number(intervaloDias) || 30)),
               }
             : null,
-      });
-      if (error) throw new Error(error.message);
+        });
+        if (error) throw new Error(error.message);
+      } else {
+        const { error } = await db.from("financeiro_lancamentos").insert({
+          fazenda_id: fazenda!.id,
+          tipo,
+          descricao: descricao.trim(),
+          valor: valorNum,
+          data,
+          forma_pagamento: formaPagamento,
+          parcelas: null,
+          ...(tipo === "receita" ? { status: "recebido" } : {}),
+        } as never);
+        if (error) throw error;
+      }
     },
     onSuccess: () => {
-      toast.success("Conta criada.");
-      limparFormNovaConta();
-      setAbertoNovo(false);
+      toast.success(vaiVirarConta ? "Conta criada." : "Lançamento registrado.");
+      limparForm();
+      queryClient.invalidateQueries({ queryKey: ["financeiro"] });
       queryClient.invalidateQueries({ queryKey: ["contas"] });
       queryClient.invalidateQueries({ queryKey: ["parcelas"] });
+      queryClient.invalidateQueries({ queryKey: ["inicio-resumo"] });
     },
     onError: (erro) =>
-      toast.error(erro instanceof Error ? erro.message : "Não conseguimos criar a conta."),
+      toast.error(erro instanceof Error ? erro.message : "Não conseguimos salvar agora."),
   });
 
-  // ----- Detalhe / pagamento / cancelamento -----
+  // ----- Detalhe / pagamento / cancelamento de conta -----
   const [contaDetalhe, setContaDetalhe] = useState<string | null>(null);
   const [pagandoParcela, setPagandoParcela] = useState<ParcelaRow | null>(null);
   const [pagoEm, setPagoEm] = useState(hoje);
@@ -491,24 +473,25 @@ function Financeiro() {
 
   const contaSelecionada = contasComDados.find((c) => c.id === contaDetalhe) ?? null;
 
+  // ----- Detalhe de lançamento simples (mesma funcionalidade de conta) -----
+  const [lancamentoDetalhe, setLancamentoDetalhe] = useState<string | null>(null);
+  const lancamentoSelecionado =
+    (lancamentos.data ?? []).find((l) => l.id === lancamentoDetalhe) ?? null;
+
   return (
     <AppShell titulo="Financeiro" descricao="Entradas e saídas da fazenda, sem planilha.">
-      <div className="mb-5 grid gap-3 sm:grid-cols-3 lg:grid-cols-5">
-        <Resumo
-          rotulo="Receita do período"
-          valor={moeda(receitaPeriodo)}
-          classe="text-success"
-          nota="Faturado, inclusive o que ainda não caiu na conta"
-        />
-        <Resumo rotulo="Recebido" valor={moeda(recebido)} classe="text-success" />
-        <Resumo rotulo="A receber" valor={moeda(aReceberLancamentos)} classe="text-warning" />
-        <Resumo rotulo="Despesas" valor={moeda(despesas)} classe="text-destructive" />
+      <div className="mb-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+        <Resumo rotulo="Recebido" valor={moeda(recebidoUnificado)} classe="text-success" />
+        <Resumo rotulo="A receber" valor={moeda(aReceberUnificado)} classe="text-warning" />
+        <Resumo rotulo="Despesas" valor={moeda(despesasUnificado)} classe="text-destructive" />
+        <Resumo rotulo="A pagar" valor={moeda(aPagarContas)} classe="text-warning" />
         <Resumo
           rotulo="Saldo realizado"
-          valor={moeda(saldoRealizado)}
+          valor={moeda(saldoRealizadoUnificado)}
           classe=""
           nota="Recebido menos despesas — dinheiro de verdade"
         />
+        <Resumo rotulo="Em atraso" valor={moeda(emAtrasoUnificado)} classe="text-destructive" />
       </div>
 
       {selecionados.size > 0 ? (
@@ -535,7 +518,7 @@ function Financeiro() {
       >
         <h2 className="text-base font-semibold">Novo lançamento</h2>
         <p className="mt-1 text-sm text-muted-foreground">
-          Registre uma despesa ou receita da fazenda.
+          Registre uma despesa ou receita da fazenda — à vista ou parcelada.
         </p>
 
         <div className="mt-4 flex flex-wrap items-start gap-3">
@@ -544,7 +527,7 @@ function Financeiro() {
             <select
               id="tipo-lanc"
               value={tipo}
-              onChange={(e) => setTipo(e.target.value)}
+              onChange={(e) => setTipo(e.target.value as "despesa" | "receita")}
               className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
             >
               <option value="despesa">Despesa</option>
@@ -562,12 +545,12 @@ function Financeiro() {
             />
           </div>
           <div className="min-w-[140px] flex-1 space-y-1.5">
-            <Label htmlFor="valor">Valor (R$)</Label>
+            <Label htmlFor="valor">{parcelado ? "Valor total (R$)" : "Valor (R$)"}</Label>
             <Input
               id="valor"
               type="number"
               step="0.01"
-              min="0"
+              min="0.01"
               value={valor}
               onChange={(e) => setValor(e.target.value)}
               required
@@ -583,25 +566,25 @@ function Financeiro() {
               required
             />
           </div>
-          {tipo === "receita" ? (
+          {!parcelado ? (
             <div className="min-w-[200px] flex-1 space-y-1.5">
               <Label>Situação</Label>
               <div className="flex gap-2">
                 <Button
                   type="button"
                   size="sm"
-                  variant={receitaRecebida ? "default" : "outline"}
-                  onClick={() => setReceitaRecebida(true)}
+                  variant={jaAconteceu ? "default" : "outline"}
+                  onClick={() => setJaAconteceu(true)}
                 >
-                  Recebido
+                  {tipo === "receita" ? "Recebido" : "Pago"}
                 </Button>
                 <Button
                   type="button"
                   size="sm"
-                  variant={receitaRecebida ? "outline" : "default"}
-                  onClick={() => setReceitaRecebida(false)}
+                  variant={jaAconteceu ? "outline" : "default"}
+                  onClick={() => setJaAconteceu(false)}
                 >
-                  A receber
+                  {tipo === "receita" ? "A receber" : "A pagar"}
                 </Button>
               </div>
             </div>
@@ -614,28 +597,119 @@ function Financeiro() {
               onChange={(e) => setFormaPagamento(e.target.value)}
               className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
             >
-              <option value="dinheiro">Dinheiro</option>
-              <option value="pix">Pix</option>
-              <option value="cartao">Cartão</option>
-              <option value="boleto">Boleto</option>
-              <option value="transferencia">Transferência</option>
+              {Object.entries(FORMAS_PAGAMENTO).map(([v, label]) => (
+                <option key={v} value={v}>
+                  {label}
+                </option>
+              ))}
             </select>
           </div>
-          {formaPagamento === "cartao" ? (
-            <div className="min-w-[110px] space-y-1.5">
-              <Label htmlFor="parcelas">Parcelas</Label>
+          <div className="min-w-[160px] flex-1 space-y-1.5">
+            <Label htmlFor="pessoa-lanc">Pessoa (opcional)</Label>
+            <Input
+              id="pessoa-lanc"
+              value={pessoa}
+              onChange={(e) => setPessoa(e.target.value)}
+              placeholder="Cliente ou fornecedor"
+            />
+          </div>
+          <div className="min-w-[160px] flex-1 space-y-1.5">
+            <Label htmlFor="animal-lanc">Animal (opcional)</Label>
+            <select
+              id="animal-lanc"
+              value={animalId}
+              onChange={(e) => setAnimalId(e.target.value)}
+              className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+            >
+              <option value="">Nenhum</option>
+              {(animais.data ?? []).map((a) => (
+                <option key={a.id} value={a.id}>
+                  {a.nome ?? "Sem nome"}
+                  {a.brinco ? ` (${a.brinco})` : ""}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+
+        <div className="mt-4 space-y-1.5">
+          <Label>Pagamento</Label>
+          <div className="flex gap-2">
+            <Button
+              type="button"
+              size="sm"
+              variant={!parcelado ? "default" : "outline"}
+              onClick={() => setParcelado(false)}
+            >
+              À vista
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant={parcelado ? "default" : "outline"}
+              onClick={() => setParcelado(true)}
+            >
+              Parcelado
+            </Button>
+          </div>
+        </div>
+
+        {parcelado ? (
+          <div className="mt-3 flex flex-wrap items-start gap-3">
+            <div className="min-w-[120px] space-y-1.5">
+              <Label htmlFor="num-parcelas">Número de parcelas</Label>
               <Input
-                id="parcelas"
+                id="num-parcelas"
                 type="number"
                 min="1"
-                max="12"
                 step="1"
-                value={parcelas}
-                onChange={(e) => aoMudarParcelas(e.target.value)}
+                value={numParcelas}
+                onChange={(e) => setNumParcelas(e.target.value)}
               />
             </div>
-          ) : null}
-        </div>
+            <div className="min-w-[160px] flex-1 space-y-1.5">
+              <Label htmlFor="primeiro-venc">Primeiro vencimento</Label>
+              <Input
+                id="primeiro-venc"
+                type="date"
+                value={primeiroVencimento}
+                onChange={(e) => setPrimeiroVencimento(e.target.value)}
+                required
+              />
+            </div>
+            <div className="min-w-[140px] space-y-1.5">
+              <Label htmlFor="intervalo-dias">Intervalo (dias)</Label>
+              <Input
+                id="intervalo-dias"
+                type="number"
+                min="1"
+                step="1"
+                value={intervaloDias}
+                onChange={(e) => setIntervaloDias(e.target.value)}
+              />
+            </div>
+          </div>
+        ) : null}
+
+        {previewParcelas.length > 0 ? (
+          <div className="mt-4 rounded-lg border border-dashed border-border p-3">
+            <p className="text-xs font-semibold text-muted-foreground">
+              {previewParcelas.length === 1
+                ? "Vencimento"
+                : `${previewParcelas.length} parcelas geradas`}
+            </p>
+            <ul className="mt-2 space-y-1 text-sm">
+              {previewParcelas.map((p) => (
+                <li key={p.numero} className="flex items-center justify-between">
+                  <span className="text-muted-foreground">
+                    {p.numero}/{p.totalParcelas} · {dataCurta(p.vencimento)}
+                  </span>
+                  <span className="font-medium">{moeda(p.valor)}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
 
         <div className="mt-4">
           <Button type="submit" disabled={salvar.isPending}>
@@ -645,31 +719,11 @@ function Financeiro() {
         </div>
       </form>
 
-      <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h2 className="text-base font-semibold">Contas</h2>
-          <p className="text-sm text-muted-foreground">
-            O que a fazenda tem a receber e o que precisa pagar, com parcelas e vencimentos.
-          </p>
-        </div>
-        <Button onClick={() => setAbertoNovo(true)}>
-          <Plus className="size-4" aria-hidden="true" />
-          Nova conta
-        </Button>
-      </div>
-
-      <div className="mb-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <Resumo rotulo="A receber" valor={moeda(aReceberContas)} classe="text-success" />
-        <Resumo rotulo="A pagar" valor={moeda(aPagarContas)} classe="text-destructive" />
-        <Resumo rotulo="Vencendo este mês" valor={moeda(vencendoEsteMes)} classe="text-warning" />
-        <Resumo rotulo="Em atraso" valor={moeda(emAtrasoContas)} classe="text-destructive" />
-      </div>
-
       {linhasFinanceiras.length === 0 ? (
         <EmptyState
           icon={Wallet}
           titulo="Nenhum lançamento"
-          descricao="Registre a primeira despesa, receita ou conta pra acompanhar o resultado da fazenda."
+          descricao="Registre a primeira despesa ou receita pra acompanhar o resultado da fazenda."
         />
       ) : (
         <div className="rounded-xl border border-border bg-card">
@@ -732,21 +786,24 @@ function Financeiro() {
                 linha.kind === "lancamento" ? (
                   <li
                     key={`l-${linha.lancamento.id}`}
-                    className="flex items-center justify-between gap-3 px-4 py-3 text-sm"
+                    className="flex flex-wrap items-center justify-between gap-3 p-4"
                   >
-                    <span className="flex items-center gap-3">
+                    <div className="flex min-w-0 flex-1 items-center gap-3">
                       {linha.lancamento.status === "a_receber" ? (
                         <input
                           type="checkbox"
                           checked={selecionados.has(linha.lancamento.id)}
                           onChange={() => alternarSelecao(linha.lancamento.id)}
                           aria-label={`Selecionar ${linha.lancamento.descricao}`}
-                          className="size-4 accent-[var(--primary)]"
+                          className="size-4 shrink-0 accent-[var(--primary)]"
                         />
                       ) : null}
-                      <span>
-                        <span className="block font-medium">{linha.lancamento.descricao}</span>
-                        <span className="block text-xs text-muted-foreground">
+                      <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="font-medium">{linha.lancamento.descricao}</span>
+                          <StatusBadge status={linha.statusUnificado} info={STATUS_INFO_CONTA} />
+                        </div>
+                        <p className="mt-1 text-xs text-muted-foreground">
                           {dataCurta(linha.lancamento.data)} ·{" "}
                           {FORMAS_PAGAMENTO[linha.lancamento.forma_pagamento] ??
                             linha.lancamento.forma_pagamento}
@@ -755,24 +812,27 @@ function Financeiro() {
                           linha.lancamento.parcelas > 1
                             ? ` em ${linha.lancamento.parcelas}x`
                             : ""}
-                          {linha.lancamento.status === "a_receber" ? (
-                            <span className="ml-1.5 rounded-full bg-warning/15 px-1.5 py-0.5 text-warning">
-                              a receber
-                            </span>
-                          ) : null}
-                        </span>
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <span
+                        className={cn(
+                          "font-semibold",
+                          linha.lancamento.tipo === "receita" ? "text-success" : "text-destructive",
+                        )}
+                      >
+                        {linha.lancamento.tipo === "receita" ? "+" : "−"}{" "}
+                        {moeda(Number(linha.lancamento.valor))}
                       </span>
-                    </span>
-                    <span
-                      className={
-                        linha.lancamento.tipo === "receita"
-                          ? "font-semibold text-success"
-                          : "font-semibold text-destructive"
-                      }
-                    >
-                      {linha.lancamento.tipo === "receita" ? "+" : "−"}{" "}
-                      {moeda(Number(linha.lancamento.valor))}
-                    </span>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setLancamentoDetalhe(linha.lancamento.id)}
+                      >
+                        Ver detalhes
+                      </Button>
+                    </div>
                   </li>
                 ) : (
                   <li
@@ -827,233 +887,58 @@ function Financeiro() {
         </div>
       )}
 
-      {/* ----- Dialog: nova conta ----- */}
-      <Dialog
-        open={abertoNovo}
-        onOpenChange={(v) => {
-          setAbertoNovo(v);
-          if (!v) limparFormNovaConta();
-        }}
-      >
-        <DialogContent className="max-h-[85vh] max-w-xl overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>Nova conta</DialogTitle>
-            <DialogDescription>
-              Registre o que a fazenda tem a receber ou a pagar. Se for parcelado, os vencimentos
-              são gerados automaticamente.
-            </DialogDescription>
-          </DialogHeader>
+      {/* ----- Dialog: detalhe do lançamento simples ----- */}
+      <Dialog open={!!lancamentoSelecionado} onOpenChange={(v) => !v && setLancamentoDetalhe(null)}>
+        <DialogContent>
+          {lancamentoSelecionado ? (
+            <>
+              <DialogHeader>
+                <DialogTitle>{lancamentoSelecionado.descricao}</DialogTitle>
+                <DialogDescription>
+                  {lancamentoSelecionado.tipo === "receita" ? "Receita" : "Despesa"} ·{" "}
+                  {dataCurta(lancamentoSelecionado.data)}
+                </DialogDescription>
+              </DialogHeader>
 
-          <form
-            onSubmit={(e) => {
-              e.preventDefault();
-              criarContaMutation.mutate();
-            }}
-          >
-            <div className="flex flex-wrap items-start gap-3">
-              <div className="min-w-[160px] flex-1 space-y-1.5">
-                <Label>Tipo</Label>
-                <div className="flex gap-2">
+              <div className="flex flex-wrap items-center gap-2">
+                <StatusBadge
+                  status={statusUnificadoLancamento(lancamentoSelecionado, hoje)}
+                  info={STATUS_INFO_CONTA}
+                />
+                <span
+                  className={cn(
+                    "text-sm font-semibold",
+                    lancamentoSelecionado.tipo === "receita" ? "text-success" : "text-destructive",
+                  )}
+                >
+                  {moeda(Number(lancamentoSelecionado.valor))}
+                </span>
+              </div>
+              <p className="text-sm text-muted-foreground">
+                Forma de pagamento:{" "}
+                {FORMAS_PAGAMENTO[lancamentoSelecionado.forma_pagamento] ??
+                  lancamentoSelecionado.forma_pagamento}
+                {lancamentoSelecionado.forma_pagamento === "cartao" &&
+                lancamentoSelecionado.parcelas &&
+                lancamentoSelecionado.parcelas > 1
+                  ? ` em ${lancamentoSelecionado.parcelas}x`
+                  : ""}
+              </p>
+
+              {lancamentoSelecionado.status === "a_receber" ? (
+                <DialogFooter className="mt-3">
                   <Button
                     type="button"
-                    size="sm"
-                    variant={contaTipo === "a_receber" ? "default" : "outline"}
-                    onClick={() => setContaTipo("a_receber")}
+                    disabled={marcarRecebido.isPending}
+                    onClick={() => marcarRecebido.mutate([lancamentoSelecionado.id])}
                   >
-                    A receber
+                    <CircleCheck className="size-4" aria-hidden="true" />
+                    Marcar como recebido
                   </Button>
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant={contaTipo === "a_pagar" ? "default" : "outline"}
-                    onClick={() => setContaTipo("a_pagar")}
-                  >
-                    A pagar
-                  </Button>
-                </div>
-              </div>
-              <div className="min-w-[220px] flex-[2] space-y-1.5">
-                <Label htmlFor="conta-descricao">Descrição</Label>
-                <Input
-                  id="conta-descricao"
-                  value={contaDescricao}
-                  onChange={(e) => setContaDescricao(e.target.value)}
-                  placeholder="Ex: Venda de Mimosa"
-                  required
-                />
-              </div>
-              <div className="min-w-[140px] flex-1 space-y-1.5">
-                <Label htmlFor="conta-valor">Valor total (R$)</Label>
-                <Input
-                  id="conta-valor"
-                  type="number"
-                  step="0.01"
-                  min="0.01"
-                  value={valorTotal}
-                  onChange={(e) => setValorTotal(e.target.value)}
-                  required
-                />
-              </div>
-              <div className="min-w-[160px] flex-1 space-y-1.5">
-                <Label htmlFor="conta-data">Data</Label>
-                <Input
-                  id="conta-data"
-                  type="date"
-                  value={dataEmissao}
-                  onChange={(e) => setDataEmissao(e.target.value)}
-                  required
-                />
-              </div>
-              <div className="min-w-[160px] flex-1 space-y-1.5">
-                <Label htmlFor="conta-categoria">Categoria</Label>
-                <Input
-                  id="conta-categoria"
-                  value={categoria}
-                  onChange={(e) => setCategoria(e.target.value)}
-                  placeholder="Ex: Ração, Venda de boi"
-                />
-              </div>
-              <div className="min-w-[160px] flex-1 space-y-1.5">
-                <Label htmlFor="conta-pessoa">Pessoa</Label>
-                <Input
-                  id="conta-pessoa"
-                  value={pessoa}
-                  onChange={(e) => setPessoa(e.target.value)}
-                  placeholder="Cliente ou fornecedor"
-                />
-              </div>
-              <div className="min-w-[160px] flex-1 space-y-1.5">
-                <Label htmlFor="conta-animal">Animal (opcional)</Label>
-                <select
-                  id="conta-animal"
-                  value={animalId}
-                  onChange={(e) => setAnimalId(e.target.value)}
-                  className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
-                >
-                  <option value="">Nenhum</option>
-                  {(animais.data ?? []).map((a) => (
-                    <option key={a.id} value={a.id}>
-                      {a.nome ?? "Sem nome"}
-                      {a.brinco ? ` (${a.brinco})` : ""}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div className="min-w-[160px] flex-1 space-y-1.5">
-                <Label htmlFor="conta-forma">Forma de pagamento</Label>
-                <select
-                  id="conta-forma"
-                  value={contaFormaPagamento}
-                  onChange={(e) => setContaFormaPagamento(e.target.value)}
-                  className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
-                >
-                  <option value="">Não especificado</option>
-                  {Object.entries(FORMAS_PAGAMENTO).map(([v, label]) => (
-                    <option key={v} value={v}>
-                      {label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </div>
-
-            <div className="mt-4 space-y-1.5">
-              <Label>Pagamento</Label>
-              <div className="flex gap-2">
-                <Button
-                  type="button"
-                  size="sm"
-                  variant={pagamento === "avista" ? "default" : "outline"}
-                  onClick={() => setPagamento("avista")}
-                >
-                  À vista
-                </Button>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant={pagamento === "parcelado" ? "default" : "outline"}
-                  onClick={() => setPagamento("parcelado")}
-                >
-                  Parcelado
-                </Button>
-              </div>
-            </div>
-
-            {pagamento === "parcelado" ? (
-              <div className="mt-3 flex flex-wrap items-start gap-3">
-                <div className="min-w-[120px] space-y-1.5">
-                  <Label htmlFor="conta-num-parcelas">Número de parcelas</Label>
-                  <Input
-                    id="conta-num-parcelas"
-                    type="number"
-                    min="1"
-                    step="1"
-                    value={numParcelas}
-                    onChange={(e) => setNumParcelas(e.target.value)}
-                  />
-                </div>
-                <div className="min-w-[160px] flex-1 space-y-1.5">
-                  <Label htmlFor="conta-primeiro-venc">Primeiro vencimento</Label>
-                  <Input
-                    id="conta-primeiro-venc"
-                    type="date"
-                    value={primeiroVencimento}
-                    onChange={(e) => setPrimeiroVencimento(e.target.value)}
-                    required
-                  />
-                </div>
-                <div className="min-w-[140px] space-y-1.5">
-                  <Label htmlFor="conta-intervalo">Intervalo (dias)</Label>
-                  <Input
-                    id="conta-intervalo"
-                    type="number"
-                    min="1"
-                    step="1"
-                    value={intervaloDias}
-                    onChange={(e) => setIntervaloDias(e.target.value)}
-                  />
-                </div>
-              </div>
-            ) : null}
-
-            <div className="mt-3 space-y-1.5">
-              <Label htmlFor="conta-obs">Observações (opcional)</Label>
-              <Input
-                id="conta-obs"
-                value={observacoes}
-                onChange={(e) => setObservacoes(e.target.value)}
-              />
-            </div>
-
-            {previewParcelas.length > 0 ? (
-              <div className="mt-4 rounded-lg border border-dashed border-border p-3">
-                <p className="text-xs font-semibold text-muted-foreground">
-                  {previewParcelas.length === 1
-                    ? "Vencimento"
-                    : `${previewParcelas.length} parcelas geradas`}
-                </p>
-                <ul className="mt-2 space-y-1 text-sm">
-                  {previewParcelas.map((p) => (
-                    <li key={p.numero} className="flex items-center justify-between">
-                      <span className="text-muted-foreground">
-                        {p.numero}/{p.totalParcelas} · {dataCurta(p.vencimento)}
-                      </span>
-                      <span className="font-medium">{moeda(p.valor)}</span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            ) : null}
-
-            <DialogFooter className="mt-5">
-              <Button type="button" variant="outline" onClick={() => setAbertoNovo(false)}>
-                Cancelar
-              </Button>
-              <Button type="submit" disabled={criarContaMutation.isPending}>
-                Criar conta
-              </Button>
-            </DialogFooter>
-          </form>
+                </DialogFooter>
+              ) : null}
+            </>
+          ) : null}
         </DialogContent>
       </Dialog>
 
