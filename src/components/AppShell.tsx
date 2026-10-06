@@ -4,12 +4,10 @@ import {
   CalendarDays,
   ChevronDown,
   Home,
-  LayoutDashboard,
   LogOut,
   Milk,
   PanelLeftClose,
   PanelLeftOpen,
-  Receipt,
   Settings,
   Sprout,
   Stethoscope,
@@ -40,14 +38,7 @@ const NAV: (NavLink | NavGroup)[] = [
       { to: "/reproducao", label: "Reprodução", icon: Stethoscope },
     ],
   },
-  {
-    label: "Financeiro",
-    icon: Wallet,
-    items: [
-      { to: "/financeiro", label: "Visão geral", icon: LayoutDashboard },
-      { to: "/financeiro/contas", label: "Contas", icon: Receipt },
-    ],
-  },
+  { to: "/financeiro", label: "Financeiro", icon: Wallet },
   { to: "/calendario", label: "Agenda", icon: CalendarDays },
   { to: "/config", label: "Config", icon: Settings },
 ];

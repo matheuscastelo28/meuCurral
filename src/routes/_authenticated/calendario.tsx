@@ -156,7 +156,7 @@ function FinanceiroAgendaItem({
           {atrasado ? "Atrasado" : "A vencer"}
         </span>
         <Button size="sm" variant="ghost" asChild>
-          <Link to="/financeiro/contas">Ver em Financeiro</Link>
+          <Link to="/financeiro">Ver em Financeiro</Link>
         </Button>
       </span>
     </li>
