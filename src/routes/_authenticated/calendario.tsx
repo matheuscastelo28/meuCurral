@@ -282,7 +282,7 @@ function Calendario() {
               evento:
                 "relative font-semibold text-primary after:absolute after:bottom-1 after:left-1/2 after:size-1.5 after:-translate-x-1/2 after:rounded-full after:bg-primary data-[selected=true]:after:bg-primary-foreground",
             }}
-            className="w-full [--cell-size:2.25rem]"
+            className="w-full [--cell-size:1.95rem] sm:[--cell-size:2.25rem]"
           />
           <p className="mt-2 px-2 text-center text-xs text-muted-foreground">
             Os dias com bolinha têm compromissos registrados.
