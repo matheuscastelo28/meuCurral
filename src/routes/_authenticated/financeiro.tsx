@@ -131,6 +131,7 @@ interface ContaRow {
   data_emissao: string | Date;
   observacoes: string | null;
   status: string;
+  created_at: string | Date;
 }
 
 function Financeiro() {
@@ -214,20 +215,6 @@ function Financeiro() {
     },
   });
 
-  const animais = useQuery({
-    queryKey: ["animais-select", fazenda?.id],
-    enabled: !!fazenda?.id,
-    queryFn: async () => {
-      const { data, error } = await db
-        .from("animais")
-        .select("id, nome, brinco")
-        .eq("fazenda_id", fazenda!.id)
-        .order("nome", { ascending: true });
-      if (error) throw error;
-      return (data ?? []) as { id: string; nome: string | null; brinco: string | null }[];
-    },
-  });
-
   const parcelasPorConta = useMemo(() => {
     const mapa = new Map<string, ParcelaRow[]>();
     for (const p of parcelasConta.data ?? []) {
@@ -251,14 +238,18 @@ function Financeiro() {
   }, [contas.data, parcelasPorConta]);
 
   // Lançamentos simples e contas (com suas parcelas) entram na mesma lista,
-  // ordenados por data: cada linha se comporta do jeito do seu tipo
-  // (lançamento ganha a caixinha de seleção legada pra "marcar como
-  // recebido"; conta ganha o badge de parcelas), mas as duas têm "Ver
-  // detalhes" e o mesmo badge de status.
+  // em esquema de pilha: o que foi lançado por último aparece no topo,
+  // mesmo que dois itens tenham a mesma data — por isso a ordenação usa
+  // created_at (o instante real do registro), não a data escolhida no
+  // formulário. Cada linha se comporta do jeito do seu tipo (lançamento
+  // ganha a caixinha de seleção legada pra "marcar como recebido"; conta
+  // ganha o badge de parcelas), mas as duas têm "Ver detalhes" e o mesmo
+  // badge de status.
   const linhasFinanceiras = useMemo(() => {
     const doLancamentos = (lancamentos.data ?? []).map((l) => ({
       kind: "lancamento" as const,
       dataOrdenacao: dataISO(l.data),
+      criadoEm: String(l.created_at ?? l.data),
       tipoBucket: (l.tipo === "receita" ? "receita" : "despesa") as "receita" | "despesa",
       statusUnificado: statusUnificadoLancamento(l, hoje),
       lancamento: l,
@@ -266,13 +257,12 @@ function Financeiro() {
     const doContas = contasComDados.map((c) => ({
       kind: "conta" as const,
       dataOrdenacao: dataISO(c.data_emissao),
+      criadoEm: String(c.created_at ?? c.data_emissao),
       tipoBucket: (c.tipo === "a_receber" ? "receita" : "despesa") as "receita" | "despesa",
       statusUnificado: c.statusExibido,
       conta: c,
     }));
-    return [...doLancamentos, ...doContas].sort((a, b) =>
-      b.dataOrdenacao.localeCompare(a.dataOrdenacao),
-    );
+    return [...doLancamentos, ...doContas].sort((a, b) => b.criadoEm.localeCompare(a.criadoEm));
   }, [lancamentos.data, contasComDados, hoje]);
 
   const filtroAtivo = filtroTipo !== "todos" || filtroStatus !== "todos" || filtroData !== "";
@@ -339,6 +329,7 @@ function Financeiro() {
   // mas ainda não recebida/paga).
   // ---------------------------------------------------------------------
 
+  const [formAberto, setFormAberto] = useState(false);
   const [tipo, setTipo] = useState<"despesa" | "receita">("despesa");
   const [descricao, setDescricao] = useState("");
   const [valor, setValor] = useState("");
@@ -346,7 +337,6 @@ function Financeiro() {
   const [formaPagamento, setFormaPagamento] = useState("dinheiro");
   const [jaAconteceu, setJaAconteceu] = useState(true);
   const [pessoa, setPessoa] = useState("");
-  const [animalId, setAnimalId] = useState("");
   const [parcelado, setParcelado] = useState(false);
   const [numParcelas, setNumParcelas] = useState("2");
   const [primeiroVencimento, setPrimeiroVencimento] = useState(hoje);
@@ -359,7 +349,6 @@ function Financeiro() {
     setFormaPagamento("dinheiro");
     setJaAconteceu(true);
     setPessoa("");
-    setAnimalId("");
     setParcelado(false);
     setNumParcelas("2");
     setPrimeiroVencimento(hoje);
@@ -391,7 +380,6 @@ function Financeiro() {
           dataEmissao: data,
           categoria: null,
           pessoa: pessoa.trim() || null,
-          animalId: animalId || null,
           formaPagamento: formaPagamento || null,
           observacoes: null,
           parcelamento: parcelado
@@ -420,6 +408,7 @@ function Financeiro() {
     onSuccess: () => {
       toast.success(vaiVirarConta ? "Conta criada." : "Lançamento registrado.");
       limparForm();
+      setFormAberto(false);
       queryClient.invalidateQueries({ queryKey: ["financeiro"] });
       queryClient.invalidateQueries({ queryKey: ["contas"] });
       queryClient.invalidateQueries({ queryKey: ["parcelas"] });
@@ -479,18 +468,22 @@ function Financeiro() {
     (lancamentos.data ?? []).find((l) => l.id === lancamentoDetalhe) ?? null;
 
   return (
-    <AppShell titulo="Financeiro" descricao="Entradas e saídas da fazenda, sem planilha.">
+    <AppShell
+      titulo="Financeiro"
+      descricao="Entradas e saídas da fazenda, sem planilha."
+      acao={
+        <Button onClick={() => setFormAberto((v) => !v)}>
+          <Plus className="size-4" aria-hidden="true" />
+          Novo lançamento
+        </Button>
+      }
+    >
       <div className="mb-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
         <Resumo rotulo="Recebido" valor={moeda(recebidoUnificado)} classe="text-success" />
         <Resumo rotulo="A receber" valor={moeda(aReceberUnificado)} classe="text-warning" />
         <Resumo rotulo="Despesas" valor={moeda(despesasUnificado)} classe="text-destructive" />
         <Resumo rotulo="A pagar" valor={moeda(aPagarContas)} classe="text-warning" />
-        <Resumo
-          rotulo="Saldo realizado"
-          valor={moeda(saldoRealizadoUnificado)}
-          classe=""
-          nota="Recebido menos despesas — dinheiro de verdade"
-        />
+        <Resumo rotulo="Saldo realizado" valor={moeda(saldoRealizadoUnificado)} classe="" />
         <Resumo rotulo="Em atraso" valor={moeda(emAtrasoUnificado)} classe="text-destructive" />
       </div>
 
@@ -509,215 +502,215 @@ function Financeiro() {
         </div>
       ) : null}
 
-      <form
-        className="mb-5 rounded-xl border border-border bg-card p-4"
-        onSubmit={(e) => {
-          e.preventDefault();
-          salvar.mutate();
-        }}
-      >
-        <h2 className="text-base font-semibold">Novo lançamento</h2>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Registre uma despesa ou receita da fazenda — à vista ou parcelada.
-        </p>
+      {formAberto ? (
+        <form
+          className="mb-5 rounded-xl border border-border bg-card p-4"
+          onSubmit={(e) => {
+            e.preventDefault();
+            salvar.mutate();
+          }}
+        >
+          <h2 className="text-base font-semibold">Novo lançamento</h2>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Registre uma despesa ou receita da fazenda — à vista ou parcelada.
+          </p>
 
-        <div className="mt-4 flex flex-wrap items-start gap-3">
-          <div className="min-w-[140px] flex-1 space-y-1.5">
-            <Label htmlFor="tipo-lanc">Tipo</Label>
-            <select
-              id="tipo-lanc"
-              value={tipo}
-              onChange={(e) => setTipo(e.target.value as "despesa" | "receita")}
-              className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
-            >
-              <option value="despesa">Despesa</option>
-              <option value="receita">Receita</option>
-            </select>
-          </div>
-          <div className="min-w-[220px] flex-[2] space-y-1.5">
-            <Label htmlFor="descricao">Descrição</Label>
-            <Input
-              id="descricao"
-              value={descricao}
-              onChange={(e) => setDescricao(e.target.value)}
-              placeholder="Ex: Compra de ração"
-              required
-            />
-          </div>
-          <div className="min-w-[140px] flex-1 space-y-1.5">
-            <Label htmlFor="valor">{parcelado ? "Valor total (R$)" : "Valor (R$)"}</Label>
-            <Input
-              id="valor"
-              type="number"
-              step="0.01"
-              min="0.01"
-              value={valor}
-              onChange={(e) => setValor(e.target.value)}
-              required
-            />
-          </div>
-          <div className="min-w-[160px] flex-1 space-y-1.5">
-            <Label htmlFor="data-lanc">Data</Label>
-            <Input
-              id="data-lanc"
-              type="date"
-              value={data}
-              onChange={(e) => setData(e.target.value)}
-              required
-            />
-          </div>
-          {!parcelado ? (
-            <div className="min-w-[200px] flex-1 space-y-1.5">
-              <Label>Situação</Label>
-              <div className="flex gap-2">
-                <Button
-                  type="button"
-                  size="sm"
-                  variant={jaAconteceu ? "default" : "outline"}
-                  onClick={() => setJaAconteceu(true)}
-                >
-                  {tipo === "receita" ? "Recebido" : "Pago"}
-                </Button>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant={jaAconteceu ? "outline" : "default"}
-                  onClick={() => setJaAconteceu(false)}
-                >
-                  {tipo === "receita" ? "A receber" : "A pagar"}
-                </Button>
-              </div>
+          <div className="mt-4 flex flex-wrap items-start gap-3">
+            <div className="min-w-[140px] flex-1 space-y-1.5">
+              <Label htmlFor="tipo-lanc">Tipo</Label>
+              <select
+                id="tipo-lanc"
+                value={tipo}
+                onChange={(e) => setTipo(e.target.value as "despesa" | "receita")}
+                className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+              >
+                <option value="despesa">Despesa</option>
+                <option value="receita">Receita</option>
+              </select>
             </div>
-          ) : null}
-          <div className="min-w-[160px] flex-1 space-y-1.5">
-            <Label htmlFor="forma-pagamento">Forma de pagamento</Label>
-            <select
-              id="forma-pagamento"
-              value={formaPagamento}
-              onChange={(e) => setFormaPagamento(e.target.value)}
-              className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
-            >
-              {Object.entries(FORMAS_PAGAMENTO).map(([v, label]) => (
-                <option key={v} value={v}>
-                  {label}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div className="min-w-[160px] flex-1 space-y-1.5">
-            <Label htmlFor="pessoa-lanc">Pessoa (opcional)</Label>
-            <Input
-              id="pessoa-lanc"
-              value={pessoa}
-              onChange={(e) => setPessoa(e.target.value)}
-              placeholder="Cliente ou fornecedor"
-            />
-          </div>
-          <div className="min-w-[160px] flex-1 space-y-1.5">
-            <Label htmlFor="animal-lanc">Animal (opcional)</Label>
-            <select
-              id="animal-lanc"
-              value={animalId}
-              onChange={(e) => setAnimalId(e.target.value)}
-              className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
-            >
-              <option value="">Nenhum</option>
-              {(animais.data ?? []).map((a) => (
-                <option key={a.id} value={a.id}>
-                  {a.nome ?? "Sem nome"}
-                  {a.brinco ? ` (${a.brinco})` : ""}
-                </option>
-              ))}
-            </select>
-          </div>
-        </div>
-
-        <div className="mt-4 space-y-1.5">
-          <Label>Pagamento</Label>
-          <div className="flex gap-2">
-            <Button
-              type="button"
-              size="sm"
-              variant={!parcelado ? "default" : "outline"}
-              onClick={() => setParcelado(false)}
-            >
-              À vista
-            </Button>
-            <Button
-              type="button"
-              size="sm"
-              variant={parcelado ? "default" : "outline"}
-              onClick={() => setParcelado(true)}
-            >
-              Parcelado
-            </Button>
-          </div>
-        </div>
-
-        {parcelado ? (
-          <div className="mt-3 flex flex-wrap items-start gap-3">
-            <div className="min-w-[120px] space-y-1.5">
-              <Label htmlFor="num-parcelas">Número de parcelas</Label>
+            <div className="min-w-[220px] flex-[2] space-y-1.5">
+              <Label htmlFor="descricao">Descrição</Label>
               <Input
-                id="num-parcelas"
-                type="number"
-                min="1"
-                step="1"
-                value={numParcelas}
-                onChange={(e) => setNumParcelas(e.target.value)}
-              />
-            </div>
-            <div className="min-w-[160px] flex-1 space-y-1.5">
-              <Label htmlFor="primeiro-venc">Primeiro vencimento</Label>
-              <Input
-                id="primeiro-venc"
-                type="date"
-                value={primeiroVencimento}
-                onChange={(e) => setPrimeiroVencimento(e.target.value)}
+                id="descricao"
+                value={descricao}
+                onChange={(e) => setDescricao(e.target.value)}
+                placeholder="Ex: Compra de ração"
                 required
               />
             </div>
-            <div className="min-w-[140px] space-y-1.5">
-              <Label htmlFor="intervalo-dias">Intervalo (dias)</Label>
+            <div className="min-w-[140px] flex-1 space-y-1.5">
+              <Label htmlFor="valor">{parcelado ? "Valor total (R$)" : "Valor (R$)"}</Label>
               <Input
-                id="intervalo-dias"
+                id="valor"
                 type="number"
-                min="1"
-                step="1"
-                value={intervaloDias}
-                onChange={(e) => setIntervaloDias(e.target.value)}
+                step="0.01"
+                min="0.01"
+                value={valor}
+                onChange={(e) => setValor(e.target.value)}
+                required
+              />
+            </div>
+            <div className="min-w-[160px] flex-1 space-y-1.5">
+              <Label htmlFor="data-lanc">Data</Label>
+              <Input
+                id="data-lanc"
+                type="date"
+                value={data}
+                onChange={(e) => setData(e.target.value)}
+                required
               />
             </div>
           </div>
-        ) : null}
 
-        {previewParcelas.length > 0 ? (
-          <div className="mt-4 rounded-lg border border-dashed border-border p-3">
-            <p className="text-xs font-semibold text-muted-foreground">
-              {previewParcelas.length === 1
-                ? "Vencimento"
-                : `${previewParcelas.length} parcelas geradas`}
-            </p>
-            <ul className="mt-2 space-y-1 text-sm">
-              {previewParcelas.map((p) => (
-                <li key={p.numero} className="flex items-center justify-between">
-                  <span className="text-muted-foreground">
-                    {p.numero}/{p.totalParcelas} · {dataCurta(p.vencimento)}
-                  </span>
-                  <span className="font-medium">{moeda(p.valor)}</span>
-                </li>
-              ))}
-            </ul>
+          <div className="mt-3 flex flex-wrap items-start gap-3">
+            {!parcelado ? (
+              <div className="min-w-[200px] flex-1 space-y-1.5">
+                <Label>Situação</Label>
+                <div className="flex gap-2">
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant={jaAconteceu ? "default" : "outline"}
+                    onClick={() => setJaAconteceu(true)}
+                  >
+                    {tipo === "receita" ? "Recebido" : "Pago"}
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant={jaAconteceu ? "outline" : "default"}
+                    onClick={() => setJaAconteceu(false)}
+                  >
+                    {tipo === "receita" ? "A receber" : "A pagar"}
+                  </Button>
+                </div>
+              </div>
+            ) : null}
+            <div className="min-w-[160px] flex-1 space-y-1.5">
+              <Label htmlFor="forma-pagamento">Forma de pagamento</Label>
+              <select
+                id="forma-pagamento"
+                value={formaPagamento}
+                onChange={(e) => setFormaPagamento(e.target.value)}
+                className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+              >
+                {Object.entries(FORMAS_PAGAMENTO).map(([v, label]) => (
+                  <option key={v} value={v}>
+                    {label}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="min-w-[200px] flex-1 space-y-1.5">
+              <Label htmlFor="pessoa-lanc">
+                {tipo === "receita" ? "Comprador (opcional)" : "Fornecedor (opcional)"}
+              </Label>
+              <Input
+                id="pessoa-lanc"
+                value={pessoa}
+                onChange={(e) => setPessoa(e.target.value)}
+                placeholder={tipo === "receita" ? "Quem comprou" : "Quem vendeu"}
+              />
+            </div>
           </div>
-        ) : null}
 
-        <div className="mt-4">
-          <Button type="submit" disabled={salvar.isPending}>
-            <Plus className="size-4" aria-hidden="true" />
-            Lançar
-          </Button>
-        </div>
-      </form>
+          <div className="mt-4 border-t border-border pt-4">
+            <Label>Pagamento</Label>
+            <div className="mt-1.5 flex gap-2">
+              <Button
+                type="button"
+                size="sm"
+                variant={!parcelado ? "default" : "outline"}
+                onClick={() => setParcelado(false)}
+              >
+                À vista
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant={parcelado ? "default" : "outline"}
+                onClick={() => setParcelado(true)}
+              >
+                Parcelado
+              </Button>
+            </div>
+
+            {parcelado ? (
+              <div className="mt-3 flex flex-wrap items-start gap-3">
+                <div className="min-w-[120px] space-y-1.5">
+                  <Label htmlFor="num-parcelas">Número de parcelas</Label>
+                  <Input
+                    id="num-parcelas"
+                    type="number"
+                    min="1"
+                    step="1"
+                    value={numParcelas}
+                    onChange={(e) => setNumParcelas(e.target.value)}
+                  />
+                </div>
+                <div className="min-w-[160px] flex-1 space-y-1.5">
+                  <Label htmlFor="primeiro-venc">Primeiro vencimento</Label>
+                  <Input
+                    id="primeiro-venc"
+                    type="date"
+                    value={primeiroVencimento}
+                    onChange={(e) => setPrimeiroVencimento(e.target.value)}
+                    required
+                  />
+                </div>
+                <div className="min-w-[140px] space-y-1.5">
+                  <Label htmlFor="intervalo-dias">Intervalo (dias)</Label>
+                  <Input
+                    id="intervalo-dias"
+                    type="number"
+                    min="1"
+                    step="1"
+                    value={intervaloDias}
+                    onChange={(e) => setIntervaloDias(e.target.value)}
+                  />
+                </div>
+              </div>
+            ) : null}
+
+            {previewParcelas.length > 0 ? (
+              <div className="mt-3 rounded-lg border border-dashed border-border p-3">
+                <p className="text-xs font-semibold text-muted-foreground">
+                  {previewParcelas.length === 1
+                    ? "Vencimento"
+                    : `${previewParcelas.length} parcelas geradas`}
+                </p>
+                <ul className="mt-2 space-y-1 text-sm">
+                  {previewParcelas.map((p) => (
+                    <li key={p.numero} className="flex items-center justify-between">
+                      <span className="text-muted-foreground">
+                        {p.numero}/{p.totalParcelas} · {dataCurta(p.vencimento)}
+                      </span>
+                      <span className="font-medium">{moeda(p.valor)}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
+          </div>
+
+          <div className="mt-4 flex gap-2">
+            <Button type="submit" disabled={salvar.isPending}>
+              <Plus className="size-4" aria-hidden="true" />
+              Lançar
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => {
+                limparForm();
+                setFormAberto(false);
+              }}
+            >
+              Cancelar
+            </Button>
+          </div>
+        </form>
+      ) : null}
 
       {linhasFinanceiras.length === 0 ? (
         <EmptyState
@@ -1124,22 +1117,11 @@ function Financeiro() {
   );
 }
 
-function Resumo({
-  rotulo,
-  valor,
-  classe,
-  nota,
-}: {
-  rotulo: string;
-  valor: string;
-  classe: string;
-  nota?: string;
-}) {
+function Resumo({ rotulo, valor, classe }: { rotulo: string; valor: string; classe: string }) {
   return (
     <div className="rounded-xl border border-border bg-card p-4">
       <p className="text-xs text-muted-foreground">{rotulo}</p>
       <p className={`font-display text-2xl font-extrabold ${classe}`}>{valor}</p>
-      {nota ? <p className="mt-1 text-[11px] text-muted-foreground">{nota}</p> : null}
     </div>
   );
 }
