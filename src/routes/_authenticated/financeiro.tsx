@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Ban, CircleCheck, Plus, Receipt, Wallet } from "lucide-react";
+import { Ban, CircleCheck, Plus, Wallet } from "lucide-react";
 import { toast } from "sonner";
 import { db } from "@/lib/local-db";
 import { AppShell } from "@/components/AppShell";
@@ -77,6 +77,18 @@ const STATUS_INFO_PARCELA: Record<StatusParcela, { rotulo: string; classe: strin
   cancelado: { rotulo: "Cancelado", classe: "bg-muted text-muted-foreground" },
 };
 
+// Lançamento simples não guarda um status no mesmo vocabulário de conta —
+// aqui ele "empresta" o vocabulário (pendente/pago/atrasado) só pra entrar
+// na lista única com o mesmo filtro de status das contas.
+function statusUnificadoLancamento(
+  l: { tipo: string; status: string; data: string | Date },
+  hoje: string,
+): StatusConta {
+  if (l.tipo !== "receita") return "pago";
+  if (l.status === "recebido") return "pago";
+  return dataISO(l.data) < hoje ? "atrasado" : "pendente";
+}
+
 function StatusBadge({
   status,
   info,
@@ -134,6 +146,7 @@ function Financeiro() {
   const [parcelas, setParcelas] = useState("1");
   const [selecionados, setSelecionados] = useState<Set<string>>(new Set());
   const [filtroTipo, setFiltroTipo] = useState<"todos" | "despesa" | "receita">("todos");
+  const [filtroStatus, setFiltroStatus] = useState<"todos" | StatusConta>("todos");
   const [filtroData, setFiltroData] = useState("");
   // Só se aplica a receita — despesa lançada na mão ainda não distingue
   // "a pagar" de "paga" (ver comentário no cálculo do Saldo, mais abaixo).
@@ -235,21 +248,9 @@ function Financeiro() {
     setParcelas(String(numero));
   }
 
-  const filtroAtivo = filtroTipo !== "todos" || filtroData !== "";
-  const lancamentosFiltrados = (lancamentos.data ?? []).filter(
-    (l) =>
-      (filtroTipo === "todos" || l.tipo === filtroTipo) &&
-      (!filtroData || dataISO(l.data) === filtroData),
-  );
-
   // ---------------------------------------------------------------------
   // Contas a receber/a pagar (com parcelas)
   // ---------------------------------------------------------------------
-
-  const [filtroTipoConta, setFiltroTipoConta] = useState<"todos" | "a_receber" | "a_pagar">(
-    "todos",
-  );
-  const [filtroStatusConta, setFiltroStatusConta] = useState<"todos" | StatusConta>("todos");
 
   const contas = useQuery({
     queryKey: ["contas", fazenda?.id],
@@ -315,10 +316,38 @@ function Financeiro() {
     });
   }, [contas.data, parcelasPorConta]);
 
-  const contasFiltradas = contasComDados.filter(
-    (c) =>
-      (filtroTipoConta === "todos" || c.tipo === filtroTipoConta) &&
-      (filtroStatusConta === "todos" || c.statusExibido === filtroStatusConta),
+  // Lançamentos simples e contas (com suas parcelas) entram na mesma lista,
+  // ordenados por data — "unificar as listas mantendo as funcionalidades":
+  // cada linha ainda se comporta do jeito do seu tipo (lançamento ganha a
+  // caixinha de seleção pra "marcar como recebido"; conta ganha o badge de
+  // status/parcelas e o "Ver detalhes"), só o contêiner e os filtros é que
+  // são um só.
+  const linhasFinanceiras = useMemo(() => {
+    const doLancamentos = (lancamentos.data ?? []).map((l) => ({
+      kind: "lancamento" as const,
+      dataOrdenacao: dataISO(l.data),
+      tipoBucket: (l.tipo === "receita" ? "receita" : "despesa") as "receita" | "despesa",
+      statusUnificado: statusUnificadoLancamento(l, hoje),
+      lancamento: l,
+    }));
+    const doContas = contasComDados.map((c) => ({
+      kind: "conta" as const,
+      dataOrdenacao: dataISO(c.data_emissao),
+      tipoBucket: (c.tipo === "a_receber" ? "receita" : "despesa") as "receita" | "despesa",
+      statusUnificado: c.statusExibido,
+      conta: c,
+    }));
+    return [...doLancamentos, ...doContas].sort((a, b) =>
+      b.dataOrdenacao.localeCompare(a.dataOrdenacao),
+    );
+  }, [lancamentos.data, contasComDados, hoje]);
+
+  const filtroAtivo = filtroTipo !== "todos" || filtroStatus !== "todos" || filtroData !== "";
+  const linhasFiltradas = linhasFinanceiras.filter(
+    (linha) =>
+      (filtroTipo === "todos" || linha.tipoBucket === filtroTipo) &&
+      (filtroStatus === "todos" || linha.statusUnificado === filtroStatus) &&
+      (!filtroData || linha.dataOrdenacao === filtroData),
   );
 
   const mesAtual = hoje.slice(0, 7);
@@ -616,124 +645,31 @@ function Financeiro() {
         </div>
       </form>
 
-      <div className="mb-5">
-        <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <h2 className="text-base font-semibold">Contas</h2>
-            <p className="text-sm text-muted-foreground">
-              O que a fazenda tem a receber e o que precisa pagar, com parcelas e vencimentos.
-            </p>
-          </div>
-          <Button onClick={() => setAbertoNovo(true)}>
-            <Plus className="size-4" aria-hidden="true" />
-            Nova conta
-          </Button>
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h2 className="text-base font-semibold">Contas</h2>
+          <p className="text-sm text-muted-foreground">
+            O que a fazenda tem a receber e o que precisa pagar, com parcelas e vencimentos.
+          </p>
         </div>
-
-        <div className="mb-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          <Resumo rotulo="A receber" valor={moeda(aReceberContas)} classe="text-success" />
-          <Resumo rotulo="A pagar" valor={moeda(aPagarContas)} classe="text-destructive" />
-          <Resumo rotulo="Vencendo este mês" valor={moeda(vencendoEsteMes)} classe="text-warning" />
-          <Resumo rotulo="Em atraso" valor={moeda(emAtrasoContas)} classe="text-destructive" />
-        </div>
-
-        {(contas.data?.length ?? 0) === 0 ? (
-          <EmptyState
-            icon={Receipt}
-            titulo="Nenhuma conta ainda"
-            descricao="Crie uma conta a receber ou a pagar — se for parcelada, a gente gera os vencimentos pra você."
-            acao={
-              <Button onClick={() => setAbertoNovo(true)}>
-                <Plus className="size-4" aria-hidden="true" />
-                Nova conta
-              </Button>
-            }
-          />
-        ) : (
-          <div className="rounded-xl border border-border bg-card">
-            <div className="flex flex-wrap items-center gap-2 border-b border-border p-4">
-              <select
-                aria-label="Filtrar contas por tipo"
-                value={filtroTipoConta}
-                onChange={(e) => setFiltroTipoConta(e.target.value as typeof filtroTipoConta)}
-                className="h-9 rounded-md border border-input bg-background px-2.5 text-sm"
-              >
-                <option value="todos">Todas</option>
-                <option value="a_receber">A receber</option>
-                <option value="a_pagar">A pagar</option>
-              </select>
-              <select
-                aria-label="Filtrar contas por status"
-                value={filtroStatusConta}
-                onChange={(e) => setFiltroStatusConta(e.target.value as typeof filtroStatusConta)}
-                className="h-9 rounded-md border border-input bg-background px-2.5 text-sm"
-              >
-                <option value="todos">Todos os status</option>
-                <option value="pendente">Pendente</option>
-                <option value="parcial">Parcial</option>
-                <option value="pago">Pago</option>
-                <option value="atrasado">Atrasado</option>
-                <option value="cancelado">Cancelado</option>
-              </select>
-            </div>
-
-            {contasFiltradas.length === 0 ? (
-              <p className="px-4 py-10 text-center text-sm text-muted-foreground">
-                Nenhuma conta encontrada com esse filtro.
-              </p>
-            ) : (
-              <ul className="divide-y divide-border">
-                {contasFiltradas.map((c) => (
-                  <li key={c.id} className="flex flex-wrap items-center justify-between gap-3 p-4">
-                    <div className="min-w-0 flex-1">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span className="font-medium">{c.descricao}</span>
-                        <StatusBadge status={c.statusExibido} info={STATUS_INFO_CONTA} />
-                        <span className="rounded-full bg-accent px-2 py-0.5 text-xs font-semibold text-muted-foreground">
-                          {TIPO_LABEL[c.tipo]} · {c.parcelas.length}x
-                        </span>
-                      </div>
-                      <p className="mt-1 text-xs text-muted-foreground">
-                        {c.pessoa ? `${c.pessoa} · ` : ""}
-                        {dataCurta(c.data_emissao)}
-                        {c.proximaPendente
-                          ? ` · próximo venc. ${dataCurta(c.proximaPendente.vencimento)}`
-                          : ""}
-                      </p>
-                    </div>
-                    <div className="text-right">
-                      <p
-                        className={cn(
-                          "font-semibold",
-                          c.tipo === "a_receber" ? "text-success" : "text-destructive",
-                        )}
-                      >
-                        {moeda(Number(c.valor_total))}
-                      </p>
-                      {Number(c.valor_restante) !== Number(c.valor_total) &&
-                      c.statusExibido !== "cancelado" &&
-                      c.statusExibido !== "pago" ? (
-                        <p className="text-xs text-muted-foreground">
-                          restam {moeda(Number(c.valor_restante))}
-                        </p>
-                      ) : null}
-                    </div>
-                    <Button variant="outline" size="sm" onClick={() => setContaDetalhe(c.id)}>
-                      Ver detalhes
-                    </Button>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-        )}
+        <Button onClick={() => setAbertoNovo(true)}>
+          <Plus className="size-4" aria-hidden="true" />
+          Nova conta
+        </Button>
       </div>
 
-      {(lancamentos.data?.length ?? 0) === 0 ? (
+      <div className="mb-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <Resumo rotulo="A receber" valor={moeda(aReceberContas)} classe="text-success" />
+        <Resumo rotulo="A pagar" valor={moeda(aPagarContas)} classe="text-destructive" />
+        <Resumo rotulo="Vencendo este mês" valor={moeda(vencendoEsteMes)} classe="text-warning" />
+        <Resumo rotulo="Em atraso" valor={moeda(emAtrasoContas)} classe="text-destructive" />
+      </div>
+
+      {linhasFinanceiras.length === 0 ? (
         <EmptyState
           icon={Wallet}
           titulo="Nenhum lançamento"
-          descricao="Registre a primeira despesa ou receita para acompanhar o resultado da fazenda."
+          descricao="Registre a primeira despesa, receita ou conta pra acompanhar o resultado da fazenda."
         />
       ) : (
         <div className="rounded-xl border border-border bg-card">
@@ -750,6 +686,19 @@ function Financeiro() {
                 <option value="despesa">Despesa</option>
                 <option value="receita">Receita</option>
               </select>
+              <select
+                aria-label="Filtrar por status"
+                value={filtroStatus}
+                onChange={(e) => setFiltroStatus(e.target.value as typeof filtroStatus)}
+                className="h-9 rounded-md border border-input bg-background px-2.5 text-sm"
+              >
+                <option value="todos">Todos os status</option>
+                <option value="pendente">Pendente</option>
+                <option value="parcial">Parcial</option>
+                <option value="pago">Pago</option>
+                <option value="atrasado">Atrasado</option>
+                <option value="cancelado">Cancelado</option>
+              </select>
               <Input
                 type="date"
                 aria-label="Filtrar por data"
@@ -762,6 +711,7 @@ function Financeiro() {
                   type="button"
                   onClick={() => {
                     setFiltroTipo("todos");
+                    setFiltroStatus("todos");
                     setFiltroData("");
                   }}
                   className="text-xs font-medium text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
@@ -772,54 +722,106 @@ function Financeiro() {
             </div>
           </div>
 
-          {lancamentosFiltrados.length === 0 ? (
+          {linhasFiltradas.length === 0 ? (
             <p className="px-4 py-10 text-center text-sm text-muted-foreground">
               Nenhum lançamento encontrado com esse filtro.
             </p>
           ) : (
             <ul className="divide-y divide-border">
-              {lancamentosFiltrados.map((l) => (
-                <li
-                  key={l.id}
-                  className="flex items-center justify-between gap-3 px-4 py-3 text-sm"
-                >
-                  <span className="flex items-center gap-3">
-                    {l.status === "a_receber" ? (
-                      <input
-                        type="checkbox"
-                        checked={selecionados.has(l.id)}
-                        onChange={() => alternarSelecao(l.id)}
-                        aria-label={`Selecionar ${l.descricao}`}
-                        className="size-4 accent-[var(--primary)]"
-                      />
-                    ) : null}
-                    <span>
-                      <span className="block font-medium">{l.descricao}</span>
-                      <span className="block text-xs text-muted-foreground">
-                        {dataCurta(l.data)} ·{" "}
-                        {FORMAS_PAGAMENTO[l.forma_pagamento] ?? l.forma_pagamento}
-                        {l.forma_pagamento === "cartao" && l.parcelas && l.parcelas > 1
-                          ? ` em ${l.parcelas}x`
-                          : ""}
-                        {l.status === "a_receber" ? (
-                          <span className="ml-1.5 rounded-full bg-warning/15 px-1.5 py-0.5 text-warning">
-                            a receber
-                          </span>
-                        ) : null}
+              {linhasFiltradas.map((linha) =>
+                linha.kind === "lancamento" ? (
+                  <li
+                    key={`l-${linha.lancamento.id}`}
+                    className="flex items-center justify-between gap-3 px-4 py-3 text-sm"
+                  >
+                    <span className="flex items-center gap-3">
+                      {linha.lancamento.status === "a_receber" ? (
+                        <input
+                          type="checkbox"
+                          checked={selecionados.has(linha.lancamento.id)}
+                          onChange={() => alternarSelecao(linha.lancamento.id)}
+                          aria-label={`Selecionar ${linha.lancamento.descricao}`}
+                          className="size-4 accent-[var(--primary)]"
+                        />
+                      ) : null}
+                      <span>
+                        <span className="block font-medium">{linha.lancamento.descricao}</span>
+                        <span className="block text-xs text-muted-foreground">
+                          {dataCurta(linha.lancamento.data)} ·{" "}
+                          {FORMAS_PAGAMENTO[linha.lancamento.forma_pagamento] ??
+                            linha.lancamento.forma_pagamento}
+                          {linha.lancamento.forma_pagamento === "cartao" &&
+                          linha.lancamento.parcelas &&
+                          linha.lancamento.parcelas > 1
+                            ? ` em ${linha.lancamento.parcelas}x`
+                            : ""}
+                          {linha.lancamento.status === "a_receber" ? (
+                            <span className="ml-1.5 rounded-full bg-warning/15 px-1.5 py-0.5 text-warning">
+                              a receber
+                            </span>
+                          ) : null}
+                        </span>
                       </span>
                     </span>
-                  </span>
-                  <span
-                    className={
-                      l.tipo === "receita"
-                        ? "font-semibold text-success"
-                        : "font-semibold text-destructive"
-                    }
+                    <span
+                      className={
+                        linha.lancamento.tipo === "receita"
+                          ? "font-semibold text-success"
+                          : "font-semibold text-destructive"
+                      }
+                    >
+                      {linha.lancamento.tipo === "receita" ? "+" : "−"}{" "}
+                      {moeda(Number(linha.lancamento.valor))}
+                    </span>
+                  </li>
+                ) : (
+                  <li
+                    key={`c-${linha.conta.id}`}
+                    className="flex flex-wrap items-center justify-between gap-3 p-4"
                   >
-                    {l.tipo === "receita" ? "+" : "−"} {moeda(Number(l.valor))}
-                  </span>
-                </li>
-              ))}
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="font-medium">{linha.conta.descricao}</span>
+                        <StatusBadge status={linha.conta.statusExibido} info={STATUS_INFO_CONTA} />
+                        <span className="rounded-full bg-accent px-2 py-0.5 text-xs font-semibold text-muted-foreground">
+                          {TIPO_LABEL[linha.conta.tipo]} · {linha.conta.parcelas.length}x
+                        </span>
+                      </div>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        {linha.conta.pessoa ? `${linha.conta.pessoa} · ` : ""}
+                        {dataCurta(linha.conta.data_emissao)}
+                        {linha.conta.proximaPendente
+                          ? ` · próximo venc. ${dataCurta(linha.conta.proximaPendente.vencimento)}`
+                          : ""}
+                      </p>
+                    </div>
+                    <div className="text-right">
+                      <p
+                        className={cn(
+                          "font-semibold",
+                          linha.conta.tipo === "a_receber" ? "text-success" : "text-destructive",
+                        )}
+                      >
+                        {moeda(Number(linha.conta.valor_total))}
+                      </p>
+                      {Number(linha.conta.valor_restante) !== Number(linha.conta.valor_total) &&
+                      linha.conta.statusExibido !== "cancelado" &&
+                      linha.conta.statusExibido !== "pago" ? (
+                        <p className="text-xs text-muted-foreground">
+                          restam {moeda(Number(linha.conta.valor_restante))}
+                        </p>
+                      ) : null}
+                    </div>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setContaDetalhe(linha.conta.id)}
+                    >
+                      Ver detalhes
+                    </Button>
+                  </li>
+                ),
+              )}
             </ul>
           )}
         </div>
