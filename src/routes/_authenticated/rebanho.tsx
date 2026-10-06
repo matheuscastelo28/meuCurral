@@ -43,6 +43,17 @@ const CATEGORIAS = ["bezerro", "novilha", "vaca", "boi", "touro", "outro"] as co
 const STATUS = ["ativo", "lactacao", "seca", "prenhe", "engorda", "vendido", "morto"] as const;
 const SEXOS = ["femea", "macho", "castrado"] as const;
 
+/**
+ * O servidor devolve uma mensagem amigável quando o brinco já está em uso
+ * (ver verificarBrincosDuplicados em dados.functions.ts). Só repassamos essa
+ * mensagem específica pro usuário — qualquer outro erro usa o texto padrão,
+ * pra nunca vazar um erro técnico do banco na tela.
+ */
+function mensagemErroAnimal(erro: unknown, padrao: string): string {
+  const msg = erro && typeof erro === "object" && "message" in erro ? String((erro as any).message) : "";
+  return msg.startsWith("Já existe um animal com o brinco") ? msg : padrao;
+}
+
 const OUTRA_RACA = "Outra";
 const RACAS_BOVINO: string[] = [
   "Nelore",
@@ -135,7 +146,8 @@ function Rebanho() {
       queryClient.invalidateQueries({ queryKey: ["animais-contagem"] });
       queryClient.invalidateQueries({ queryKey: ["inicio-resumo"] });
     },
-    onError: () => toast.error("Não conseguimos salvar agora. Confira os campos e tente de novo."),
+    onError: (erro) =>
+      toast.error(mensagemErroAnimal(erro, "Não conseguimos salvar agora. Confira os campos e tente de novo.")),
   });
 
   const editar = useMutation({
@@ -172,7 +184,8 @@ function Rebanho() {
       queryClient.invalidateQueries({ queryKey: ["indices-rebanho"] });
       queryClient.invalidateQueries({ queryKey: ["indices-engorda"] });
     },
-    onError: () => toast.error("Não conseguimos salvar agora. Confira os campos e tente de novo."),
+    onError: (erro) =>
+      toast.error(mensagemErroAnimal(erro, "Não conseguimos salvar agora. Confira os campos e tente de novo.")),
   });
 
   function novoAnimal() {

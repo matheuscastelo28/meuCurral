@@ -53,6 +53,68 @@ function normalizarLinhas(linhas: unknown[]): unknown[] {
   return linhas.map(normalizarLinha);
 }
 
+/**
+ * Normaliza um brinco pra comparação: "2", "02" e "002" contam como o mesmo
+ * brinco. Só mexe em brincos puramente numéricos — um brinco com letra
+ * (ex: "A007") é comparado do jeito que foi digitado, sem tirar zeros.
+ */
+function normalizarBrinco(valor: string): string {
+  const v = valor.trim();
+  if (/^\d+$/.test(v)) {
+    const semZeros = v.replace(/^0+/, "");
+    return semZeros === "" ? "0" : semZeros;
+  }
+  return v;
+}
+
+/**
+ * Confere se algum brinco em `entrada` já está em uso por outro animal da
+ * mesma fazenda (brincos "equivalentes" por normalizarBrinco contam como
+ * duplicados), tanto contra o que já existe no banco quanto entre si, caso
+ * `entrada` traga mais de um animal de uma vez. `idExcluido` evita que uma
+ * edição acuse o próprio animal de duplicidade.
+ */
+async function verificarBrincosDuplicados(
+  sql: Sql,
+  entrada: Record<string, unknown>[],
+  idExcluido: string | null,
+): Promise<string | null> {
+  const porFazenda = new Map<string, { brincoOriginal: string; normalizado: string }[]>();
+  for (const linha of entrada) {
+    const brinco = linha["brinco"];
+    const fazendaId = linha["fazenda_id"];
+    if (typeof brinco !== "string" || brinco.trim() === "" || typeof fazendaId !== "string") continue;
+    const lista = porFazenda.get(fazendaId) ?? [];
+    lista.push({ brincoOriginal: brinco, normalizado: normalizarBrinco(brinco) });
+    porFazenda.set(fazendaId, lista);
+  }
+  if (porFazenda.size === 0) return null;
+
+  for (const [fazendaId, itens] of porFazenda) {
+    const vistos = new Set<string>();
+    for (const item of itens) {
+      if (vistos.has(item.normalizado)) {
+        return `Já existe um animal com o brinco "${item.brincoOriginal}" nesta fazenda.`;
+      }
+      vistos.add(item.normalizado);
+    }
+
+    const existentes: { id: string; brinco: string }[] = await sql`
+      select id, brinco from animais
+      where fazenda_id = ${fazendaId} and brinco is not null and brinco <> ''
+      ${idExcluido ? sql`and id <> ${idExcluido}` : sql``}`;
+
+    for (const existente of existentes) {
+      const normalizadoExistente = normalizarBrinco(existente.brinco);
+      const bateu = itens.find((item) => item.normalizado === normalizadoExistente);
+      if (bateu) {
+        return `Já existe um animal com o brinco "${existente.brinco}" nesta fazenda.`;
+      }
+    }
+  }
+  return null;
+}
+
 async function usuarioIdDaSessao(
   sql: Sql,
   token: string | null | undefined,
@@ -171,6 +233,11 @@ export const consultar = createServerFn({ method: "POST" })
           entradaSegura = entrada as Record<string, unknown>[];
         }
 
+        if (tabela === "animais") {
+          const erroBrinco = await verificarBrincosDuplicados(sql, entradaSegura, null);
+          if (erroBrinco) return { data: [], error: { message: erroBrinco }, count: 0 };
+        }
+
         const criadas: any[] =
           await sql`insert into ${sql(tabela)} ${sql(entradaSegura as any)} returning *`;
         return { data: normalizarLinhas(criadas), error: null, count: criadas.length };
@@ -187,6 +254,23 @@ export const consultar = createServerFn({ method: "POST" })
             return { data: [], error: { message: "Fazenda inválida." }, count: 0 };
           }
         }
+        if (
+          tabela === "animais" &&
+          typeof valoresAtualizacao["brinco"] === "string" &&
+          (valoresAtualizacao["brinco"] as string).trim() !== ""
+        ) {
+          const alvos: { id: string; fazenda_id: string }[] =
+            await sql`select id, fazenda_id from animais where ${onde}`;
+          for (const alvo of alvos) {
+            const erroBrinco = await verificarBrincosDuplicados(
+              sql,
+              [{ fazenda_id: alvo.fazenda_id, brinco: valoresAtualizacao["brinco"] }],
+              alvo.id,
+            );
+            if (erroBrinco) return { data: [], error: { message: erroBrinco }, count: 0 };
+          }
+        }
+
         const atualizadas: any[] = await sql`
           update ${sql(tabela)} set ${sql(valoresAtualizacao as any)}, updated_at = now()
           where ${onde} returning *`;
