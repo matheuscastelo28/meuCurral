@@ -5,6 +5,7 @@ import { db } from "@/lib/local-db";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { PasswordField } from "@/components/PasswordField";
 import { forcaSenha } from "@/lib/formato";
 import { PLANOS } from "@/lib/planos";
 
@@ -231,16 +232,13 @@ function Cadastro() {
                     required
                   />
                 </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="senha">Senha</Label>
-                  <Input
-                    id="senha"
-                    type="password"
-                    value={senha}
-                    onChange={(e) => setSenha(e.target.value)}
-                    autoComplete="new-password"
-                    required
-                  />
+                <PasswordField
+                  id="senha"
+                  value={senha}
+                  onChange={setSenha}
+                  autoComplete="new-password"
+                  required
+                >
                   <div className="flex items-center gap-2 pt-1">
                     <div className="flex flex-1 gap-1" aria-hidden="true">
                       {[0, 1, 2, 3].map((i) => (
@@ -258,7 +256,7 @@ function Cadastro() {
                     </div>
                     <span className="text-xs text-muted-foreground">{forca.rotulo}</span>
                   </div>
-                </div>
+                </PasswordField>
               </div>
             </section>
           ) : null}

@@ -6,6 +6,7 @@ import { db } from "@/lib/local-db";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { PasswordField } from "@/components/PasswordField";
 
 export const Route = createFileRoute("/auth")({
   head: () => ({
@@ -129,18 +130,14 @@ function Login() {
               placeholder="voce@fazenda.com.br"
             />
           </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="senha">Senha</Label>
-            <Input
-              id="senha"
-              type="password"
-              autoComplete="current-password"
-              required
-              value={senha}
-              onChange={(e) => setSenha(e.target.value)}
-              placeholder="Sua senha"
-            />
-          </div>
+          <PasswordField
+            id="senha"
+            value={senha}
+            onChange={setSenha}
+            autoComplete="current-password"
+            required
+            placeholder="Sua senha"
+          />
 
           {erro ? (
             <p
