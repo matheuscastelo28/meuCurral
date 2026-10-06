@@ -41,37 +41,24 @@ export const Route = createFileRoute("/_authenticated/rebanho")({
 
 const CATEGORIAS = ["bezerro", "novilha", "vaca", "boi", "touro", "outro"] as const;
 const STATUS = ["ativo", "lactacao", "seca", "prenhe", "engorda", "vendido", "morto"] as const;
-const ESPECIES = ["bovino", "ovino"] as const;
 const SEXOS = ["femea", "macho", "castrado"] as const;
 
 const OUTRA_RACA = "Outra";
-const RACAS: Record<string, string[]> = {
-  bovino: [
-    "Nelore",
-    "Gir",
-    "Girolando",
-    "Holandês",
-    "Jersey",
-    "Angus",
-    "Brahman",
-    "Guzerá",
-    "Tabapuã",
-    "Senepol",
-    "Simental",
-    "Charolês",
-    OUTRA_RACA,
-  ],
-  ovino: [
-    "Santa Inês",
-    "Dorper",
-    "Morada Nova",
-    "Suffolk",
-    "Texel",
-    "Bergamácia",
-    "Ile de France",
-    OUTRA_RACA,
-  ],
-};
+const RACAS_BOVINO: string[] = [
+  "Nelore",
+  "Gir",
+  "Girolando",
+  "Holandês",
+  "Jersey",
+  "Angus",
+  "Brahman",
+  "Guzerá",
+  "Tabapuã",
+  "Senepol",
+  "Simental",
+  "Charolês",
+  OUTRA_RACA,
+];
 
 function Rebanho() {
   const prefs = usePreferencias();
@@ -82,8 +69,7 @@ function Rebanho() {
   const [busca, setBusca] = useState("");
   const [aberto, setAberto] = useState(false);
   const [upgrade, setUpgrade] = useState(false);
-  const [especie, setEspecie] = useState<string>(ESPECIES[0]);
-  const [raca, setRaca] = useState<string>(RACAS[ESPECIES[0]]![0]!);
+  const [raca, setRaca] = useState<string>(RACAS_BOVINO[0]!);
   const [racaCustom, setRacaCustom] = useState("");
   const [editando, setEditando] = useState<any>(null);
 
@@ -129,7 +115,6 @@ function Rebanho() {
         fazenda_id: fazenda!.id,
         nome: String(form.get("nome") ?? "").trim(),
         brinco: String(form.get("brinco") ?? "").trim() || null,
-        especie,
         raca: racaFinal || null,
         sexo: String(form.get("sexo") ?? "femea"),
         categoria: String(form.get("categoria") ?? "vaca"),
@@ -144,8 +129,7 @@ function Rebanho() {
     onSuccess: () => {
       toast.success("Animal cadastrado.");
       setAberto(false);
-      setEspecie(ESPECIES[0]);
-      setRaca(RACAS[ESPECIES[0]]![0]!);
+      setRaca(RACAS_BOVINO[0]!);
       setRacaCustom("");
       queryClient.invalidateQueries({ queryKey: ["animais"] });
       queryClient.invalidateQueries({ queryKey: ["animais-contagem"] });
@@ -160,7 +144,6 @@ function Rebanho() {
       const payload = {
         nome: String(form.get("nome") ?? "").trim(),
         brinco: String(form.get("brinco") ?? "").trim() || null,
-        especie,
         raca: racaFinal || null,
         sexo: String(form.get("sexo") ?? "femea"),
         categoria: String(form.get("categoria") ?? "vaca"),
@@ -198,24 +181,21 @@ function Rebanho() {
       return;
     }
     setEditando(null);
-    setEspecie(ESPECIES[0]);
-    setRaca(RACAS[ESPECIES[0]]![0]!);
+    setRaca(RACAS_BOVINO[0]!);
     setRacaCustom("");
     setAberto(true);
   }
 
   function abrirEdicao(a: any) {
     setAberto(false);
-    setEspecie(a.especie ?? ESPECIES[0]);
-    const racasDaEspecie = RACAS[a.especie] ?? RACAS["bovino"]!;
-    if (a.raca && racasDaEspecie.includes(a.raca)) {
+    if (a.raca && RACAS_BOVINO.includes(a.raca)) {
       setRaca(a.raca);
       setRacaCustom("");
     } else if (a.raca) {
       setRaca(OUTRA_RACA);
       setRacaCustom(a.raca);
     } else {
-      setRaca(racasDaEspecie[0]!);
+      setRaca(RACAS_BOVINO[0]!);
       setRacaCustom("");
     }
     setEditando(a);
@@ -336,28 +316,7 @@ function Rebanho() {
                 <Input id="lote" name="lote" placeholder="Ex: Pasto 2" />
               </div>
             </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1.5">
-                <Label htmlFor="especie">Espécie</Label>
-                <select
-                  id="especie"
-                  name="especie"
-                  value={especie}
-                  onChange={(e) => {
-                    const novaEspecie = e.target.value;
-                    setEspecie(novaEspecie);
-                    setRaca(RACAS[novaEspecie]![0]!);
-                    setRacaCustom("");
-                  }}
-                  className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm capitalize"
-                >
-                  {ESPECIES.map((o) => (
-                    <option key={o} value={o} className="capitalize">
-                      {o}
-                    </option>
-                  ))}
-                </select>
-              </div>
+            <div className="grid grid-cols-3 gap-3">
               <Selecao id="sexo" nome="Sexo" opcoes={SEXOS} />
               <Selecao id="categoria" nome="Categoria" opcoes={CATEGORIAS} padrao="vaca" />
               <Selecao id="status" nome="Situação" opcoes={STATUS} />
@@ -380,7 +339,7 @@ function Rebanho() {
                 onChange={(e) => setRaca(e.target.value)}
                 className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
               >
-                {(RACAS[especie] ?? RACAS["bovino"]!).map((r) => (
+                {RACAS_BOVINO.map((r) => (
                   <option key={r} value={r}>
                     {r}
                   </option>
@@ -447,28 +406,7 @@ function Rebanho() {
                     <Input id="edit-lote" name="lote" defaultValue={editando.lote ?? ""} />
                   </div>
                 </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="space-y-1.5">
-                    <Label htmlFor="edit-especie">Espécie</Label>
-                    <select
-                      id="edit-especie"
-                      name="especie"
-                      value={especie}
-                      onChange={(e) => {
-                        const novaEspecie = e.target.value;
-                        setEspecie(novaEspecie);
-                        setRaca(RACAS[novaEspecie]![0]!);
-                        setRacaCustom("");
-                      }}
-                      className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm capitalize"
-                    >
-                      {ESPECIES.map((o) => (
-                        <option key={o} value={o} className="capitalize">
-                          {o}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
+                <div className="grid grid-cols-3 gap-3">
                   <Selecao id="sexo" nome="Sexo" opcoes={SEXOS} padrao={editando.sexo} />
                   <Selecao
                     id="categoria"
@@ -513,7 +451,7 @@ function Rebanho() {
                     onChange={(e) => setRaca(e.target.value)}
                     className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
                   >
-                    {(RACAS[especie] ?? RACAS["bovino"]!).map((r) => (
+                    {RACAS_BOVINO.map((r) => (
                       <option key={r} value={r}>
                         {r}
                       </option>
