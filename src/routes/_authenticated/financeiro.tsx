@@ -1,7 +1,7 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { CircleCheck, Plus, Wallet } from "lucide-react";
+import { CircleCheck, Plus, Receipt, Wallet } from "lucide-react";
 import { toast } from "sonner";
 import { db } from "@/lib/local-db";
 import { AppShell } from "@/components/AppShell";
@@ -156,7 +156,18 @@ function Financeiro() {
   );
 
   return (
-    <AppShell titulo="Financeiro" descricao="Entradas e saídas da fazenda, sem planilha.">
+    <AppShell
+      titulo="Financeiro"
+      descricao="Entradas e saídas da fazenda, sem planilha."
+      acao={
+        <Button variant="outline" asChild>
+          <Link to="/financeiro/contas">
+            <Receipt className="size-4" aria-hidden="true" />
+            Contas
+          </Link>
+        </Button>
+      }
+    >
       <div className="mb-5 grid gap-3 sm:grid-cols-3 lg:grid-cols-5">
         <Resumo
           rotulo="Receita do período"
@@ -198,7 +209,9 @@ function Financeiro() {
         }}
       >
         <h2 className="text-base font-semibold">Novo lançamento</h2>
-        <p className="mt-1 text-sm text-muted-foreground">Registre uma despesa ou receita da fazenda.</p>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Registre uma despesa ou receita da fazenda.
+        </p>
 
         <div className="mt-4 flex flex-wrap items-start gap-3">
           <div className="min-w-[140px] flex-1 space-y-1.5">
@@ -357,7 +370,10 @@ function Financeiro() {
           ) : (
             <ul className="divide-y divide-border">
               {lancamentosFiltrados.map((l) => (
-                <li key={l.id} className="flex items-center justify-between gap-3 px-4 py-3 text-sm">
+                <li
+                  key={l.id}
+                  className="flex items-center justify-between gap-3 px-4 py-3 text-sm"
+                >
                   <span className="flex items-center gap-3">
                     {l.status === "a_receber" ? (
                       <input
@@ -371,7 +387,8 @@ function Financeiro() {
                     <span>
                       <span className="block font-medium">{l.descricao}</span>
                       <span className="block text-xs text-muted-foreground">
-                        {dataCurta(l.data)} · {FORMAS_PAGAMENTO[l.forma_pagamento] ?? l.forma_pagamento}
+                        {dataCurta(l.data)} ·{" "}
+                        {FORMAS_PAGAMENTO[l.forma_pagamento] ?? l.forma_pagamento}
                         {l.forma_pagamento === "cartao" && l.parcelas && l.parcelas > 1
                           ? ` em ${l.parcelas}x`
                           : ""}

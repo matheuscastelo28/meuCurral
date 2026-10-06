@@ -1,7 +1,7 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Ban, CalendarDays, Check, Pencil, Plus, RotateCcw, Undo2 } from "lucide-react";
+import { Ban, CalendarDays, Check, Pencil, Plus, Receipt, RotateCcw, Undo2 } from "lucide-react";
 import { toast } from "sonner";
 import { db } from "@/lib/local-db";
 import { AppShell } from "@/components/AppShell";
@@ -29,8 +29,9 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { useFazenda } from "@/hooks/use-fazenda";
-import { dataCurta, dataISO, hojeISO, paraDataISO } from "@/lib/formato";
+import { dataCurta, dataISO, hojeISO, moeda as formatarMoeda, paraDataISO } from "@/lib/formato";
 import { usePreferencias } from "@/hooks/use-preferencias";
+import { statusExibicaoParcela } from "@/lib/parcelamento";
 import { cn } from "@/lib/utils";
 
 const MESES = [
@@ -94,6 +95,74 @@ function StatusBadge({ status }: { status: StatusEvento }) {
   );
 }
 
+// Vencimentos de Financeiro > Contas aparecem aqui só como leitura (derivados,
+// nunca duplicados) — a fonte de verdade continua em Financeiro > Contas.
+// Só mostramos parcela ainda pendente (inclusive atrasada); paga/cancelada
+// já saiu do radar operacional do dia a dia.
+interface ParcelaAgendaRow {
+  id: string;
+  conta_id: string;
+  numero: number;
+  total_parcelas: number;
+  valor: string | number;
+  vencimento: string | Date;
+  status: string;
+}
+
+interface ContaAgendaRow {
+  id: string;
+  tipo: "a_receber" | "a_pagar";
+  descricao: string;
+}
+
+function FinanceiroAgendaItem({
+  item,
+}: {
+  item: { parcela: ParcelaAgendaRow; conta: ContaAgendaRow };
+}) {
+  const prefs = usePreferencias();
+  const { parcela, conta } = item;
+  const atrasado = statusExibicaoParcela(parcela) === "atrasado";
+  return (
+    <li className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-dashed border-border p-3">
+      <span className="min-w-0">
+        <span className="flex items-center gap-1.5 text-xs font-semibold text-muted-foreground">
+          <Receipt className="size-3.5" aria-hidden="true" />
+          Financeiro
+        </span>
+        <span className="block text-sm font-medium">
+          {conta.descricao}
+          <span className="font-normal text-muted-foreground">
+            {" "}
+            · Parcela {parcela.numero}/{parcela.total_parcelas}
+          </span>
+        </span>
+        <span
+          className={cn(
+            "block text-xs font-semibold",
+            conta.tipo === "a_receber" ? "text-success" : "text-destructive",
+          )}
+        >
+          {formatarMoeda(Number(parcela.valor), prefs.moeda)}
+        </span>
+      </span>
+      <span className="flex items-center gap-2">
+        <span
+          className={cn(
+            "shrink-0 rounded-full px-2 py-0.5 text-xs font-semibold",
+            atrasado ? "bg-destructive/15 text-destructive" : "bg-warning/15 text-warning",
+          )}
+        >
+          {atrasado ? "Atrasado" : "A vencer"}
+        </span>
+        <Button size="sm" variant="ghost" asChild>
+          <Link to="/financeiro/contas">Ver em Financeiro</Link>
+        </Button>
+      </span>
+    </li>
+  );
+}
+
 export const Route = createFileRoute("/_authenticated/calendario")({
   head: () => ({
     meta: [
@@ -130,6 +199,7 @@ function Calendario() {
   const [filtroMesNum, setFiltroMesNum] = useState(Number(hoje.slice(5, 7)));
   const [filtroAno, setFiltroAno] = useState(Number(hoje.slice(0, 4)));
   const [filtroStatus, setFiltroStatus] = useState<"todos" | StatusEvento>("todos");
+  const [filtroOrigem, setFiltroOrigem] = useState<"todos" | "eventos" | "financeiro">("todos");
 
   const eventos = useQuery({
     queryKey: ["eventos", fazenda?.id],
@@ -145,6 +215,50 @@ function Calendario() {
     },
   });
 
+  // Mesmas chaves de query usadas em Financeiro > Contas — se o produtor já
+  // visitou aquela tela, os dados vêm do cache, sem round-trip extra.
+  const parcelasFinanceiras = useQuery({
+    queryKey: ["parcelas", fazenda?.id],
+    enabled: !!fazenda?.id,
+    queryFn: async () => {
+      const { data, error } = await db
+        .from("parcelas")
+        .select("*")
+        .eq("fazenda_id", fazenda!.id)
+        .order("vencimento", { ascending: true });
+      if (error) throw error;
+      return (data ?? []) as ParcelaAgendaRow[];
+    },
+  });
+
+  const contasFinanceiras = useQuery({
+    queryKey: ["contas", fazenda?.id],
+    enabled: !!fazenda?.id,
+    queryFn: async () => {
+      const { data, error } = await db
+        .from("contas")
+        .select("id, tipo, descricao")
+        .eq("fazenda_id", fazenda!.id);
+      if (error) throw error;
+      return (data ?? []) as ContaAgendaRow[];
+    },
+  });
+
+  const financeiroPorDia = useMemo(() => {
+    const contasPorId = new Map((contasFinanceiras.data ?? []).map((c) => [c.id, c]));
+    const mapa = new Map<string, { parcela: ParcelaAgendaRow; conta: ContaAgendaRow }[]>();
+    for (const p of parcelasFinanceiras.data ?? []) {
+      if (p.status !== "pendente") continue;
+      const conta = contasPorId.get(p.conta_id);
+      if (!conta) continue;
+      const dia = dataISO(p.vencimento);
+      const lista = mapa.get(dia) ?? [];
+      lista.push({ parcela: p, conta });
+      mapa.set(dia, lista);
+    }
+    return mapa;
+  }, [parcelasFinanceiras.data, contasFinanceiras.data]);
+
   const marcados = useMemo(
     () =>
       (eventos.data ?? [])
@@ -153,18 +267,48 @@ function Calendario() {
     [eventos.data],
   );
 
-  const doDia = (eventos.data ?? []).filter(
-    (e) => selecionado && dataISO(e.data) === paraDataISO(selecionado),
+  const marcadosFinanceiro = useMemo(
+    () => Array.from(financeiroPorDia.keys()).map((dia) => new Date(`${dia}T12:00:00`)),
+    [financeiroPorDia],
   );
+
+  const doDia =
+    filtroOrigem === "financeiro"
+      ? []
+      : (eventos.data ?? []).filter(
+          (e) => selecionado && dataISO(e.data) === paraDataISO(selecionado),
+        );
+  const financeiroDoDia =
+    filtroOrigem === "eventos" || !selecionado
+      ? []
+      : (financeiroPorDia.get(paraDataISO(selecionado)) ?? []);
 
   const filtroMes = `${filtroAno}-${String(filtroMesNum).padStart(2, "0")}`;
 
   const eventosDoMes = useMemo(() => {
+    if (filtroOrigem === "financeiro") return [];
     return (eventos.data ?? [])
       .filter((e) => dataISO(e.data).slice(0, 7) === filtroMes)
       .filter((e) => filtroStatus === "todos" || statusDoEvento(e, hoje) === filtroStatus)
       .sort((a, b) => dataISO(a.data).localeCompare(dataISO(b.data)));
-  }, [eventos.data, filtroMes, filtroStatus, hoje]);
+  }, [eventos.data, filtroMes, filtroStatus, filtroOrigem, hoje]);
+
+  const financeiroDoMes = useMemo(() => {
+    if (filtroOrigem === "eventos") return [];
+    const itens: { parcela: ParcelaAgendaRow; conta: ContaAgendaRow }[] = [];
+    for (const [dia, lista] of financeiroPorDia) {
+      if (dia.slice(0, 7) !== filtroMes) continue;
+      for (const item of lista) {
+        const statusEquivalente =
+          statusExibicaoParcela(item.parcela) === "atrasado" ? "atrasado" : "a_fazer";
+        if (filtroStatus !== "todos" && filtroStatus !== statusEquivalente) continue;
+        itens.push(item);
+      }
+    }
+    return itens.sort((a, b) =>
+      dataISO(a.parcela.vencimento).localeCompare(dataISO(b.parcela.vencimento)),
+    );
+  }, [financeiroPorDia, filtroMes, filtroStatus, filtroOrigem]);
 
   const anosDisponiveis = useMemo(() => {
     const anos = new Set<number>([Number(hoje.slice(0, 4))]);
@@ -277,15 +421,17 @@ function Calendario() {
             weekStartsOn={prefs.inicio_semana === 1 ? 1 : 0}
             selected={selecionado}
             onSelect={setSelecionado}
-            modifiers={{ evento: marcados }}
+            modifiers={{ evento: marcados, financeiro: marcadosFinanceiro }}
             modifiersClassNames={{
               evento:
                 "relative font-semibold text-primary after:absolute after:bottom-1 after:left-1/2 after:size-1.5 after:-translate-x-1/2 after:rounded-full after:bg-primary data-[selected=true]:after:bg-primary-foreground",
+              financeiro:
+                "relative before:absolute before:top-1 before:right-1 before:size-1.5 before:rounded-full before:bg-warning data-[selected=true]:before:bg-primary-foreground",
             }}
             className="w-full [--cell-size:1.95rem] sm:[--cell-size:2.25rem]"
           />
           <p className="mt-2 px-2 text-center text-xs text-muted-foreground">
-            Os dias com bolinha têm compromissos registrados.
+            Bolinha embaixo = compromisso. Bolinha laranja no canto = vencimento financeiro.
           </p>
         </div>
 
@@ -293,7 +439,7 @@ function Calendario() {
           <h2 className="text-base font-semibold">
             {selecionado ? dataCurta(paraDataISO(selecionado)) : "Selecione um dia"}
           </h2>
-          {doDia.length === 0 ? (
+          {doDia.length === 0 && financeiroDoDia.length === 0 ? (
             <EmptyState
               icon={CalendarDays}
               titulo="Nada marcado nesse dia"
@@ -304,6 +450,9 @@ function Calendario() {
               {doDia.map((e) => (
                 <EventoItem key={e.id} evento={e} hoje={hoje} {...acoesEvento} />
               ))}
+              {financeiroDoDia.map((item) => (
+                <FinanceiroAgendaItem key={item.parcela.id} item={item} />
+              ))}
             </ul>
           )}
         </section>
@@ -313,6 +462,16 @@ function Calendario() {
         <div className="flex flex-wrap items-center justify-between gap-3">
           <h2 className="text-base font-semibold">Eventos do mês</h2>
           <div className="flex flex-wrap items-center gap-2">
+            <select
+              aria-label="Filtrar por origem"
+              value={filtroOrigem}
+              onChange={(e) => setFiltroOrigem(e.target.value as typeof filtroOrigem)}
+              className="h-9 rounded-md border border-input bg-background px-2.5 text-sm"
+            >
+              <option value="todos">Todos</option>
+              <option value="eventos">Eventos</option>
+              <option value="financeiro">Financeiro</option>
+            </select>
             <select
               aria-label="Filtrar por status"
               value={filtroStatus}
@@ -351,7 +510,7 @@ function Calendario() {
           </div>
         </div>
 
-        {eventosDoMes.length === 0 ? (
+        {eventosDoMes.length === 0 && financeiroDoMes.length === 0 ? (
           <p className="px-2 py-10 text-center text-sm text-muted-foreground">
             Nenhum evento encontrado para esse filtro.
           </p>
@@ -359,6 +518,9 @@ function Calendario() {
           <ul className="mt-4 space-y-3">
             {eventosDoMes.map((e) => (
               <EventoItem key={e.id} evento={e} hoje={hoje} mostrarData {...acoesEvento} />
+            ))}
+            {financeiroDoMes.map((item) => (
+              <FinanceiroAgendaItem key={item.parcela.id} item={item} />
             ))}
           </ul>
         )}
@@ -439,7 +601,11 @@ function Calendario() {
               Cancelar
             </Button>
             <Button type="submit" form="form-evento" disabled={salvarEvento.isPending}>
-              {salvarEvento.isPending ? "Salvando..." : editandoId ? "Salvar alterações" : "Salvar evento"}
+              {salvarEvento.isPending
+                ? "Salvando..."
+                : editandoId
+                  ? "Salvar alterações"
+                  : "Salvar evento"}
             </Button>
           </DialogFooter>
         </DialogContent>

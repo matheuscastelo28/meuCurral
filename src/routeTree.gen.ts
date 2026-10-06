@@ -25,6 +25,7 @@ import { Route as AuthenticatedLeiteRouteImport } from './routes/_authenticated/
 import { Route as AuthenticatedPlanosRouteImport } from './routes/_authenticated/planos'
 import { Route as AuthenticatedRebanhoRouteImport } from './routes/_authenticated/rebanho'
 import { Route as AuthenticatedReproducaoRouteImport } from './routes/_authenticated/reproducao'
+import { Route as AuthenticatedFinanceiroContasRouteImport } from './routes/_authenticated/financeiro_.contas'
 import { Route as AuthenticatedRebanhoAnimalIdRouteImport } from './routes/_authenticated/rebanho_.$animalId'
 
 const IndexRoute = IndexRouteImport.update({
@@ -106,6 +107,12 @@ const AuthenticatedReproducaoRoute = AuthenticatedReproducaoRouteImport.update({
   path: '/reproducao',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
+const AuthenticatedFinanceiroContasRoute =
+  AuthenticatedFinanceiroContasRouteImport.update({
+    id: '/financeiro_/contas',
+    path: '/financeiro/contas',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 const AuthenticatedRebanhoAnimalIdRoute =
   AuthenticatedRebanhoAnimalIdRouteImport.update({
     id: '/rebanho_/$animalId',
@@ -129,6 +136,7 @@ export interface FileRoutesByFullPath {
   '/planos': typeof AuthenticatedPlanosRoute
   '/rebanho': typeof AuthenticatedRebanhoRoute
   '/reproducao': typeof AuthenticatedReproducaoRoute
+  '/financeiro/contas': typeof AuthenticatedFinanceiroContasRoute
   '/rebanho/$animalId': typeof AuthenticatedRebanhoAnimalIdRoute
 }
 export interface FileRoutesByTo {
@@ -147,6 +155,7 @@ export interface FileRoutesByTo {
   '/planos': typeof AuthenticatedPlanosRoute
   '/rebanho': typeof AuthenticatedRebanhoRoute
   '/reproducao': typeof AuthenticatedReproducaoRoute
+  '/financeiro/contas': typeof AuthenticatedFinanceiroContasRoute
   '/rebanho/$animalId': typeof AuthenticatedRebanhoAnimalIdRoute
 }
 export interface FileRoutesById {
@@ -167,6 +176,7 @@ export interface FileRoutesById {
   '/_authenticated/planos': typeof AuthenticatedPlanosRoute
   '/_authenticated/rebanho': typeof AuthenticatedRebanhoRoute
   '/_authenticated/reproducao': typeof AuthenticatedReproducaoRoute
+  '/_authenticated/financeiro_/contas': typeof AuthenticatedFinanceiroContasRoute
   '/_authenticated/rebanho_/$animalId': typeof AuthenticatedRebanhoAnimalIdRoute
 }
 export interface FileRouteTypes {
@@ -187,6 +197,7 @@ export interface FileRouteTypes {
     | '/planos'
     | '/rebanho'
     | '/reproducao'
+    | '/financeiro/contas'
     | '/rebanho/$animalId'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -205,6 +216,7 @@ export interface FileRouteTypes {
     | '/planos'
     | '/rebanho'
     | '/reproducao'
+    | '/financeiro/contas'
     | '/rebanho/$animalId'
   id:
     | '__root__'
@@ -224,6 +236,7 @@ export interface FileRouteTypes {
     | '/_authenticated/planos'
     | '/_authenticated/rebanho'
     | '/_authenticated/reproducao'
+    | '/_authenticated/financeiro_/contas'
     | '/_authenticated/rebanho_/$animalId'
   fileRoutesById: FileRoutesById
 }
@@ -351,6 +364,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedReproducaoRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/financeiro_/contas': {
+      id: '/_authenticated/financeiro_/contas'
+      path: '/financeiro/contas'
+      fullPath: '/financeiro/contas'
+      preLoaderRoute: typeof AuthenticatedFinanceiroContasRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/rebanho_/$animalId': {
       id: '/_authenticated/rebanho_/$animalId'
       path: '/rebanho/$animalId'
@@ -371,6 +391,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedPlanosRoute: typeof AuthenticatedPlanosRoute
   AuthenticatedRebanhoRoute: typeof AuthenticatedRebanhoRoute
   AuthenticatedReproducaoRoute: typeof AuthenticatedReproducaoRoute
+  AuthenticatedFinanceiroContasRoute: typeof AuthenticatedFinanceiroContasRoute
   AuthenticatedRebanhoAnimalIdRoute: typeof AuthenticatedRebanhoAnimalIdRoute
 }
 
@@ -384,6 +405,7 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedPlanosRoute: AuthenticatedPlanosRoute,
   AuthenticatedRebanhoRoute: AuthenticatedRebanhoRoute,
   AuthenticatedReproducaoRoute: AuthenticatedReproducaoRoute,
+  AuthenticatedFinanceiroContasRoute: AuthenticatedFinanceiroContasRoute,
   AuthenticatedRebanhoAnimalIdRoute: AuthenticatedRebanhoAnimalIdRoute,
 }
 

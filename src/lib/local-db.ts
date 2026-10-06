@@ -23,6 +23,9 @@ import {
   marcarLancamentosRecebidos,
   registrarPesagemLote,
   registrarVendaLote,
+  criarConta,
+  marcarParcelaPaga,
+  cancelarConta,
   type FiltroRemoto,
 } from "@/lib/dados.functions";
 
@@ -453,6 +456,41 @@ export const db = {
       formaPagamento?: string;
     }) {
       return registrarVendaLote({ data: { token: tokenSessao(), ...params } });
+    },
+  },
+  financeiro: {
+    /** Cria a conta e já gera as parcelas dela numa transação só. */
+    async criarConta(params: {
+      fazendaId: string;
+      tipo: "a_receber" | "a_pagar";
+      descricao: string;
+      valorTotal: number;
+      dataEmissao: string;
+      categoria?: string | null;
+      pessoa?: string | null;
+      animalId?: string | null;
+      formaPagamento?: string | null;
+      observacoes?: string | null;
+      parcelamento: {
+        numParcelas: number;
+        primeiroVencimento: string;
+        intervaloDias: number;
+      } | null;
+    }) {
+      return criarConta({ data: { token: tokenSessao(), ...params } });
+    },
+    /** Marca a parcela como paga e recalcula o saldo da conta pai. */
+    async marcarParcelaPaga(params: {
+      fazendaId: string;
+      parcelaId: string;
+      pagoEm?: string | null;
+      formaPagamento?: string | null;
+    }) {
+      return marcarParcelaPaga({ data: { token: tokenSessao(), ...params } });
+    },
+    /** Cancela a conta e todas as parcelas ainda pendentes dela. */
+    async cancelarConta(params: { fazendaId: string; contaId: string }) {
+      return cancelarConta({ data: { token: tokenSessao(), ...params } });
     },
   },
 };

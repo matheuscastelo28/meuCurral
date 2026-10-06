@@ -83,7 +83,8 @@ async function verificarBrincosDuplicados(
   for (const linha of entrada) {
     const brinco = linha["brinco"];
     const fazendaId = linha["fazenda_id"];
-    if (typeof brinco !== "string" || brinco.trim() === "" || typeof fazendaId !== "string") continue;
+    if (typeof brinco !== "string" || brinco.trim() === "" || typeof fazendaId !== "string")
+      continue;
     const lista = porFazenda.get(fazendaId) ?? [];
     lista.push({ brincoOriginal: brinco, normalizado: normalizarBrinco(brinco) });
     porFazenda.set(fazendaId, lista);
@@ -139,13 +140,18 @@ const TABELAS_PERMITIDAS = new Set([
   "precos_produto",
   "destinacoes_leite",
   "vendas",
+  "contas",
+  "parcelas",
 ]);
 
 // destinacoes_leite e vendas têm regras de negócio (destinação não pode
 // passar da produção do dia; venda precisa criar o lançamento financeiro
 // junto) que o consultar genérico não sabe aplicar — por isso só leitura
 // aqui; escrita é só via registrarDestinacaoLeite/registrarVenda abaixo.
-const TABELAS_SOMENTE_LEITURA = new Set(["destinacoes_leite", "vendas"]);
+// contas/parcelas seguem o mesmo motivo: criar uma conta gera N parcelas
+// numa transação, e pagar/cancelar uma parcela recalcula a conta pai —
+// escrita só via criarConta/marcarParcelaPaga/cancelarConta abaixo.
+const TABELAS_SOMENTE_LEITURA = new Set(["destinacoes_leite", "vendas", "contas", "parcelas"]);
 
 // ---------------------------------------------------------------------------
 // Consulta genérica (espelha o que as telas usam)
@@ -1231,6 +1237,223 @@ export const registrarVendaLote = createServerFn({ method: "POST" })
         error: {
           message: erro instanceof Error ? erro.message : "Erro ao registrar venda do lote.",
         },
+      };
+    }
+  });
+
+// ---------------------------------------------------------------------------
+// Financeiro > Contas: conta (obrigação) + parcelas (vencimentos dela)
+// ---------------------------------------------------------------------------
+
+/**
+ * Cria uma conta a receber/a pagar e já gera suas parcelas na mesma
+ * transação. Pra conta "à vista" o chamador manda parcelamento = null, o
+ * que gera 1 parcela só vencendo na data de emissão.
+ */
+export const criarConta = createServerFn({ method: "POST" })
+  .inputValidator(
+    (dados: {
+      token: string | null;
+      fazendaId: string;
+      tipo: "a_receber" | "a_pagar";
+      descricao: string;
+      valorTotal: number;
+      dataEmissao: string;
+      categoria?: string | null;
+      pessoa?: string | null;
+      animalId?: string | null;
+      formaPagamento?: string | null;
+      observacoes?: string | null;
+      parcelamento: {
+        numParcelas: number;
+        primeiroVencimento: string;
+        intervaloDias: number;
+      } | null;
+    }) => dados,
+  )
+  .handler(async ({ data }) => {
+    try {
+      const { conexao } = await import("./pg.server");
+      const sql = await conexao();
+      const userId = await fazendaDoUsuario(sql, data.token, data.fazendaId);
+      if (!userId) {
+        return { data: null, error: { message: "Não autenticado ou fazenda inválida." } };
+      }
+      if (!data.descricao.trim()) {
+        return { data: null, error: { message: "Informe uma descrição para a conta." } };
+      }
+      if (!Number.isFinite(data.valorTotal) || data.valorTotal <= 0) {
+        return { data: null, error: { message: "O valor total precisa ser maior que zero." } };
+      }
+      if (data.tipo !== "a_receber" && data.tipo !== "a_pagar") {
+        return { data: null, error: { message: "Tipo de conta inválido." } };
+      }
+      if (!data.dataEmissao) {
+        return { data: null, error: { message: "Informe a data da conta." } };
+      }
+
+      const numParcelas = data.parcelamento
+        ? Math.max(1, Math.floor(data.parcelamento.numParcelas))
+        : 1;
+      if (data.parcelamento && (!Number.isFinite(numParcelas) || numParcelas < 1)) {
+        return { data: null, error: { message: "Informe ao menos 1 parcela." } };
+      }
+      const primeiroVencimento = data.parcelamento?.primeiroVencimento ?? data.dataEmissao;
+      if (!primeiroVencimento) {
+        return { data: null, error: { message: "Informe a data do primeiro vencimento." } };
+      }
+      const intervaloDias = data.parcelamento
+        ? Math.max(1, Math.floor(data.parcelamento.intervaloDias))
+        : 0;
+
+      const { gerarParcelas } = await import("./parcelamento");
+      const geradas = gerarParcelas(
+        data.valorTotal,
+        numParcelas,
+        primeiroVencimento,
+        intervaloDias,
+      );
+
+      const resultado = await sql.begin(async (tx) => {
+        const contas: any[] = await tx`
+          insert into contas (
+            fazenda_id, tipo, descricao, valor_total, valor_restante, categoria,
+            pessoa, animal_id, forma_pagamento, data_emissao, observacoes
+          )
+          values (
+            ${data.fazendaId}, ${data.tipo}, ${data.descricao.trim()}, ${data.valorTotal},
+            ${data.valorTotal}, ${data.categoria ?? null}, ${data.pessoa ?? null},
+            ${data.animalId ?? null}, ${data.formaPagamento ?? null}, ${data.dataEmissao},
+            ${data.observacoes ?? null}
+          )
+          returning *`;
+        const conta = contas[0]!;
+
+        const entradasParcelas = geradas.map((p) => ({
+          conta_id: conta.id,
+          fazenda_id: data.fazendaId,
+          numero: p.numero,
+          total_parcelas: p.totalParcelas,
+          valor: p.valor,
+          vencimento: p.vencimento,
+        }));
+        const parcelasInseridas: any[] =
+          await tx`insert into parcelas ${tx(entradasParcelas as any)} returning *`;
+
+        return { conta, parcelas: parcelasInseridas };
+      });
+
+      return {
+        data: {
+          conta: normalizarLinha(resultado.conta),
+          parcelas: normalizarLinhas(resultado.parcelas),
+        } as any,
+        error: null,
+      };
+    } catch (erro) {
+      return {
+        data: null,
+        error: { message: erro instanceof Error ? erro.message : "Erro ao criar conta." },
+      };
+    }
+  });
+
+/**
+ * Marca uma parcela como paga e recalcula o valor_restante/status da conta
+ * pai na mesma transação — "pendente" enquanto nada foi pago, "parcial"
+ * enquanto falta algo, "pago" quando valor_restante chega a zero.
+ */
+export const marcarParcelaPaga = createServerFn({ method: "POST" })
+  .inputValidator(
+    (dados: {
+      token: string | null;
+      fazendaId: string;
+      parcelaId: string;
+      pagoEm?: string | null;
+      formaPagamento?: string | null;
+    }) => dados,
+  )
+  .handler(async ({ data }) => {
+    try {
+      const { conexao } = await import("./pg.server");
+      const sql = await conexao();
+      const userId = await fazendaDoUsuario(sql, data.token, data.fazendaId);
+      if (!userId) {
+        return { data: null, error: { message: "Não autenticado ou fazenda inválida." } };
+      }
+
+      const resultado = await sql.begin(async (tx) => {
+        const parcelas: any[] = await tx`
+          select * from parcelas where id = ${data.parcelaId} and fazenda_id = ${data.fazendaId}
+          for update`;
+        const parcela = parcelas[0];
+        if (!parcela) throw new Error("Parcela não encontrada.");
+        if (parcela.status === "pago") throw new Error("Esta parcela já está marcada como paga.");
+        if (parcela.status === "cancelado") throw new Error("Esta parcela está cancelada.");
+
+        await tx`
+          update parcelas set
+            status = 'pago',
+            pago_em = coalesce(${data.pagoEm ?? null}::date, current_date),
+            forma_pagamento = ${data.formaPagamento ?? null},
+            updated_at = now()
+          where id = ${data.parcelaId}`;
+
+        const pendentes: { valor: string }[] = await tx`
+          select valor from parcelas where conta_id = ${parcela.conta_id} and status = 'pendente'`;
+        const valorRestante = pendentes.reduce((soma, p) => soma + Number(p.valor), 0);
+        const novoStatus = valorRestante <= 0 ? "pago" : "parcial";
+        await tx`
+          update contas set valor_restante = ${valorRestante}, status = ${novoStatus}, updated_at = now()
+          where id = ${parcela.conta_id}`;
+
+        const atualizadas: any[] = await tx`select * from parcelas where id = ${data.parcelaId}`;
+        return atualizadas[0];
+      });
+
+      return { data: normalizarLinha(resultado) as any, error: null };
+    } catch (erro) {
+      return {
+        data: null,
+        error: {
+          message: erro instanceof Error ? erro.message : "Erro ao marcar parcela como paga.",
+        },
+      };
+    }
+  });
+
+/**
+ * Cancela uma conta inteira: a conta vira "cancelado" e toda parcela ainda
+ * pendente também — parcelas já pagas continuam como estavam (histórico).
+ */
+export const cancelarConta = createServerFn({ method: "POST" })
+  .inputValidator((dados: { token: string | null; fazendaId: string; contaId: string }) => dados)
+  .handler(async ({ data }) => {
+    try {
+      const { conexao } = await import("./pg.server");
+      const sql = await conexao();
+      const userId = await fazendaDoUsuario(sql, data.token, data.fazendaId);
+      if (!userId) {
+        return { data: null, error: { message: "Não autenticado ou fazenda inválida." } };
+      }
+
+      const resultado = await sql.begin(async (tx) => {
+        const contas: any[] = await tx`
+          update contas set status = 'cancelado', updated_at = now()
+          where id = ${data.contaId} and fazenda_id = ${data.fazendaId}
+          returning *`;
+        if (contas.length === 0) throw new Error("Conta não encontrada.");
+        await tx`
+          update parcelas set status = 'cancelado', updated_at = now()
+          where conta_id = ${data.contaId} and status = 'pendente'`;
+        return contas[0];
+      });
+
+      return { data: normalizarLinha(resultado) as any, error: null };
+    } catch (erro) {
+      return {
+        data: null,
+        error: { message: erro instanceof Error ? erro.message : "Erro ao cancelar conta." },
       };
     }
   });

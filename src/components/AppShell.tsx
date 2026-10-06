@@ -4,10 +4,12 @@ import {
   CalendarDays,
   ChevronDown,
   Home,
+  LayoutDashboard,
   LogOut,
   Milk,
   PanelLeftClose,
   PanelLeftOpen,
+  Receipt,
   Settings,
   Sprout,
   Stethoscope,
@@ -38,7 +40,14 @@ const NAV: (NavLink | NavGroup)[] = [
       { to: "/reproducao", label: "Reprodução", icon: Stethoscope },
     ],
   },
-  { to: "/financeiro", label: "Financeiro", icon: Wallet },
+  {
+    label: "Financeiro",
+    icon: Wallet,
+    items: [
+      { to: "/financeiro", label: "Visão geral", icon: LayoutDashboard },
+      { to: "/financeiro/contas", label: "Contas", icon: Receipt },
+    ],
+  },
   { to: "/calendario", label: "Agenda", icon: CalendarDays },
   { to: "/config", label: "Config", icon: Settings },
 ];
@@ -78,30 +87,35 @@ export function AppShell({
     if (typeof window === "undefined") return false;
     return window.localStorage.getItem("curral-sidebar-colapsada") === "1";
   });
-  const [producaoAberta, setProducaoAberta] = useState(true);
-  const [producaoFlyoutAberto, setProducaoFlyoutAberto] = useState(false);
-  const [producaoFlyoutPos, setProducaoFlyoutPos] = useState({ top: 0, left: 0 });
-  const producaoGrupoRef = useRef<HTMLDivElement>(null);
-  const producaoBtnRef = useRef<HTMLButtonElement>(null);
+  // Um grupo (ex: "Produção", "Financeiro") por vez pode estar aberto em
+  // flyout; aberto/fechado quando expandida é controlado por grupo,
+  // guardado pelo label do grupo.
+  const [gruposAbertos, setGruposAbertos] = useState<Record<string, boolean>>({});
+  const [flyoutAberto, setFlyoutAberto] = useState<string | null>(null);
+  const [flyoutPos, setFlyoutPos] = useState({ top: 0, left: 0 });
+  const grupoRefs = useRef<Map<string, HTMLDivElement>>(new Map());
+  const grupoBtnRefs = useRef<Map<string, HTMLButtonElement>>(new Map());
 
   useEffect(() => {
     window.localStorage.setItem("curral-sidebar-colapsada", colapsada ? "1" : "0");
   }, [colapsada]);
 
   useEffect(() => {
-    setProducaoFlyoutAberto(false);
+    setFlyoutAberto(null);
   }, [colapsada]);
 
   useEffect(() => {
-    if (!producaoFlyoutAberto) return;
+    if (!flyoutAberto) return;
+    const grupoAberto: string = flyoutAberto;
     function aoClicarFora(evento: MouseEvent) {
-      if (!producaoGrupoRef.current?.contains(evento.target as Node)) {
-        setProducaoFlyoutAberto(false);
+      const container = grupoRefs.current.get(grupoAberto);
+      if (!container?.contains(evento.target as Node)) {
+        setFlyoutAberto(null);
       }
     }
     document.addEventListener("mousedown", aoClicarFora);
     return () => document.removeEventListener("mousedown", aoClicarFora);
-  }, [producaoFlyoutAberto]);
+  }, [flyoutAberto]);
 
   async function sair() {
     await queryClient.cancelQueries();
@@ -135,7 +149,9 @@ export function AppShell({
             </span>
             {!colapsada ? (
               <span className="min-w-0 leading-tight">
-                <span className="block truncate font-display text-sm font-extrabold">Curral Online</span>
+                <span className="block truncate font-display text-sm font-extrabold">
+                  Curral Online
+                </span>
                 <span className="block truncate text-xs text-muted-foreground">
                   {fazenda?.nome ?? "Carregando fazenda..."}
                 </span>
@@ -162,21 +178,31 @@ export function AppShell({
           {NAV.map((entry) => {
             if (isGroup(entry)) {
               const grupoAtivo = entry.items.some((item) => location.pathname.startsWith(item.to));
+              const aberto = gruposAbertos[entry.label] ?? true;
+              const flyoutAbertoAqui = flyoutAberto === entry.label;
               return (
-                <div key={entry.label} ref={producaoGrupoRef} className="relative">
+                <div
+                  key={entry.label}
+                  ref={(el) => {
+                    if (el) grupoRefs.current.set(entry.label, el);
+                  }}
+                  className="relative"
+                >
                   <button
-                    ref={producaoBtnRef}
+                    ref={(el) => {
+                      if (el) grupoBtnRefs.current.set(entry.label, el);
+                    }}
                     type="button"
                     onClick={() => {
                       if (!colapsada) {
-                        setProducaoAberta((v) => !v);
+                        setGruposAbertos((prev) => ({ ...prev, [entry.label]: !aberto }));
                         return;
                       }
-                      const rect = producaoBtnRef.current?.getBoundingClientRect();
-                      if (rect) setProducaoFlyoutPos({ top: rect.top, left: rect.right + 8 });
-                      setProducaoFlyoutAberto((v) => !v);
+                      const rect = grupoBtnRefs.current.get(entry.label)?.getBoundingClientRect();
+                      if (rect) setFlyoutPos({ top: rect.top, left: rect.right + 8 });
+                      setFlyoutAberto((v) => (v === entry.label ? null : entry.label));
                     }}
-                    aria-expanded={colapsada ? producaoFlyoutAberto : producaoAberta}
+                    aria-expanded={colapsada ? flyoutAbertoAqui : aberto}
                     aria-haspopup={colapsada ? "true" : undefined}
                     aria-label={colapsada ? entry.label : undefined}
                     title={colapsada ? entry.label : undefined}
@@ -193,19 +219,20 @@ export function AppShell({
                         <ChevronDown
                           className={cn(
                             "size-4 shrink-0 transicao-suave",
-                            producaoAberta ? "" : "-rotate-90",
+                            aberto ? "" : "-rotate-90",
                           )}
                           aria-hidden="true"
                         />
                       </>
                     ) : null}
                   </button>
-                  {!colapsada && producaoAberta ? (
+                  {!colapsada && aberto ? (
                     <div className="ml-4 mt-1 space-y-1 border-l border-border pl-3">
                       {entry.items.map((item) => (
                         <Link
                           key={item.to}
                           to={item.to}
+                          activeOptions={{ exact: true }}
                           className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium text-muted-foreground transicao-suave hover:bg-accent hover:text-foreground"
                           activeProps={{ className: "bg-accent text-primary" }}
                         >
@@ -215,9 +242,9 @@ export function AppShell({
                       ))}
                     </div>
                   ) : null}
-                  {colapsada && producaoFlyoutAberto ? (
+                  {colapsada && flyoutAbertoAqui ? (
                     <div
-                      style={{ top: producaoFlyoutPos.top, left: producaoFlyoutPos.left }}
+                      style={{ top: flyoutPos.top, left: flyoutPos.left }}
                       className="fixed z-40 min-w-[180px] rounded-xl border border-border bg-card p-1.5 shadow-md"
                     >
                       <p className="truncate px-2 py-1 text-xs font-semibold text-muted-foreground">
@@ -227,7 +254,8 @@ export function AppShell({
                         <Link
                           key={item.to}
                           to={item.to}
-                          onClick={() => setProducaoFlyoutAberto(false)}
+                          activeOptions={{ exact: true }}
+                          onClick={() => setFlyoutAberto(null)}
                           className="flex items-center gap-2 rounded-lg px-2 py-2 text-sm font-medium text-muted-foreground transicao-suave hover:bg-accent hover:text-foreground"
                           activeProps={{ className: "bg-accent text-primary" }}
                         >

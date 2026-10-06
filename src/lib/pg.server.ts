@@ -304,6 +304,52 @@ create index if not exists idx_leite_fazenda on producao_leite(fazenda_id);
 create index if not exists idx_reproducao_fazenda on reproducao(fazenda_id);
 create index if not exists idx_financeiro_fazenda on financeiro_lancamentos(fazenda_id);
 create index if not exists idx_eventos_fazenda on eventos_agenda(fazenda_id);
+
+-- Uma conta é a obrigação (o que a fazenda tem a receber ou a pagar);
+-- parcelas são os vencimentos dela. valor_restante some ao longo dos
+-- pagamentos; status 'atrasado' NÃO existe aqui — é sempre calculado a
+-- partir de vencimento x data de hoje, igual ao padrão já usado em
+-- eventos_agenda (ver statusDoEvento em calendario.tsx).
+create table if not exists contas (
+  id uuid primary key default gen_random_uuid(),
+  fazenda_id uuid references fazendas(id) on delete cascade,
+  tipo text not null, -- 'a_receber' | 'a_pagar'
+  descricao text not null,
+  valor_total numeric not null,
+  valor_restante numeric not null,
+  categoria text,
+  pessoa text,
+  animal_id uuid references animais(id) on delete set null,
+  forma_pagamento text,
+  data_emissao date not null default current_date,
+  observacoes text,
+  status text not null default 'pendente', -- 'pendente' | 'parcial' | 'pago' | 'cancelado'
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create table if not exists parcelas (
+  id uuid primary key default gen_random_uuid(),
+  conta_id uuid references contas(id) on delete cascade,
+  -- Duplicado de contas.fazenda_id (mesmo padrão de financeiro_lancamentos.lote)
+  -- só para o "consultar" genérico conseguir isolar por fazenda sem join.
+  fazenda_id uuid references fazendas(id) on delete cascade,
+  numero integer not null,
+  total_parcelas integer not null,
+  valor numeric not null,
+  vencimento date not null,
+  status text not null default 'pendente', -- 'pendente' | 'pago' | 'cancelado'
+  pago_em date,
+  forma_pagamento text,
+  observacoes text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create index if not exists idx_contas_fazenda on contas(fazenda_id, status);
+create index if not exists idx_contas_animal on contas(animal_id);
+create index if not exists idx_parcelas_conta on parcelas(conta_id, numero);
+create index if not exists idx_parcelas_vencimento on parcelas(vencimento, status);
 `;
 
 /** Cria as tabelas na primeira vez que o banco é usado. */
