@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Ban, CircleCheck, Plus, Wallet } from "lucide-react";
 import { toast } from "sonner";
@@ -49,6 +49,10 @@ export const Route = createFileRoute("/_authenticated/financeiro")({
       { name: "robots", content: "noindex" },
     ],
   }),
+  validateSearch: (search: Record<string, unknown>): { conta?: string } => {
+    const conta = typeof search["conta"] === "string" ? search["conta"] : undefined;
+    return conta ? { conta } : {};
+  },
   component: Financeiro,
 });
 
@@ -140,6 +144,8 @@ function Financeiro() {
   const { data: fazenda } = useFazenda();
   const queryClient = useQueryClient();
   const hoje = hojeISO();
+  const { conta: contaIdNaUrl } = Route.useSearch();
+  const navigate = Route.useNavigate();
 
   const [selecionados, setSelecionados] = useState<Set<string>>(new Set());
   const [filtroTipo, setFiltroTipo] = useState<"todos" | "despesa" | "receita">("todos");
@@ -425,6 +431,16 @@ function Financeiro() {
   const [formaPagamentoBaixa, setFormaPagamentoBaixa] = useState("dinheiro");
   const [cancelando, setCancelando] = useState<string | null>(null);
 
+  // Permite abrir o detalhe de uma conta direto de outra tela (ex: "Ver em
+  // Financeiro" na Agenda) navegando para /financeiro?conta=<id>.
+  useEffect(() => {
+    if (!contaIdNaUrl || !contas.data) return;
+    const alvo = contas.data.find((c) => c.id === contaIdNaUrl);
+    if (alvo) setContaDetalhe(alvo.id);
+    navigate({ search: {}, replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [contaIdNaUrl, contas.data]);
+
   const marcarPagaMutation = useMutation({
     mutationFn: async () => {
       const { error } = await db.financeiro.marcarParcelaPaga({
@@ -472,7 +488,7 @@ function Financeiro() {
       titulo="Financeiro"
       descricao="Entradas e saídas da fazenda, sem planilha."
       acao={
-        <Button onClick={() => setFormAberto((v) => !v)}>
+        <Button onClick={() => setFormAberto(true)}>
           <Plus className="size-4" aria-hidden="true" />
           Novo lançamento
         </Button>
@@ -502,215 +518,217 @@ function Financeiro() {
         </div>
       ) : null}
 
-      {formAberto ? (
-        <form
-          className="mb-5 rounded-xl border border-border bg-card p-4"
-          onSubmit={(e) => {
-            e.preventDefault();
-            salvar.mutate();
-          }}
-        >
-          <h2 className="text-base font-semibold">Novo lançamento</h2>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Registre uma despesa ou receita da fazenda — à vista ou parcelada.
-          </p>
+      <Dialog
+        open={formAberto}
+        onOpenChange={(v) => {
+          setFormAberto(v);
+          if (!v) limparForm();
+        }}
+      >
+        <DialogContent className="max-h-[85vh] max-w-xl overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Novo lançamento</DialogTitle>
+            <DialogDescription>
+              Registre uma despesa ou receita da fazenda — à vista ou parcelada.
+            </DialogDescription>
+          </DialogHeader>
 
-          <div className="mt-4 flex flex-wrap items-start gap-3">
-            <div className="min-w-[140px] flex-1 space-y-1.5">
-              <Label htmlFor="tipo-lanc">Tipo</Label>
-              <select
-                id="tipo-lanc"
-                value={tipo}
-                onChange={(e) => setTipo(e.target.value as "despesa" | "receita")}
-                className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
-              >
-                <option value="despesa">Despesa</option>
-                <option value="receita">Receita</option>
-              </select>
-            </div>
-            <div className="min-w-[220px] flex-[2] space-y-1.5">
-              <Label htmlFor="descricao">Descrição</Label>
-              <Input
-                id="descricao"
-                value={descricao}
-                onChange={(e) => setDescricao(e.target.value)}
-                placeholder="Ex: Compra de ração"
-                required
-              />
-            </div>
-            <div className="min-w-[140px] flex-1 space-y-1.5">
-              <Label htmlFor="valor">{parcelado ? "Valor total (R$)" : "Valor (R$)"}</Label>
-              <Input
-                id="valor"
-                type="number"
-                step="0.01"
-                min="0.01"
-                value={valor}
-                onChange={(e) => setValor(e.target.value)}
-                required
-              />
-            </div>
-            <div className="min-w-[160px] flex-1 space-y-1.5">
-              <Label htmlFor="data-lanc">Data</Label>
-              <Input
-                id="data-lanc"
-                type="date"
-                value={data}
-                onChange={(e) => setData(e.target.value)}
-                required
-              />
-            </div>
-          </div>
-
-          <div className="mt-3 flex flex-wrap items-start gap-3">
-            {!parcelado ? (
-              <div className="min-w-[200px] flex-1 space-y-1.5">
-                <Label>Situação</Label>
-                <div className="flex gap-2">
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant={jaAconteceu ? "default" : "outline"}
-                    onClick={() => setJaAconteceu(true)}
-                  >
-                    {tipo === "receita" ? "Recebido" : "Pago"}
-                  </Button>
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant={jaAconteceu ? "outline" : "default"}
-                    onClick={() => setJaAconteceu(false)}
-                  >
-                    {tipo === "receita" ? "A receber" : "A pagar"}
-                  </Button>
-                </div>
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              salvar.mutate();
+            }}
+          >
+            <div className="flex flex-wrap items-start gap-3">
+              <div className="min-w-[140px] flex-1 space-y-1.5">
+                <Label htmlFor="tipo-lanc">Tipo</Label>
+                <select
+                  id="tipo-lanc"
+                  value={tipo}
+                  onChange={(e) => setTipo(e.target.value as "despesa" | "receita")}
+                  className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+                >
+                  <option value="despesa">Despesa</option>
+                  <option value="receita">Receita</option>
+                </select>
               </div>
-            ) : null}
-            <div className="min-w-[160px] flex-1 space-y-1.5">
-              <Label htmlFor="forma-pagamento">Forma de pagamento</Label>
-              <select
-                id="forma-pagamento"
-                value={formaPagamento}
-                onChange={(e) => setFormaPagamento(e.target.value)}
-                className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
-              >
-                {Object.entries(FORMAS_PAGAMENTO).map(([v, label]) => (
-                  <option key={v} value={v}>
-                    {label}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div className="min-w-[200px] flex-1 space-y-1.5">
-              <Label htmlFor="pessoa-lanc">
-                {tipo === "receita" ? "Comprador (opcional)" : "Fornecedor (opcional)"}
-              </Label>
-              <Input
-                id="pessoa-lanc"
-                value={pessoa}
-                onChange={(e) => setPessoa(e.target.value)}
-                placeholder={tipo === "receita" ? "Quem comprou" : "Quem vendeu"}
-              />
-            </div>
-          </div>
-
-          <div className="mt-4 border-t border-border pt-4">
-            <Label>Pagamento</Label>
-            <div className="mt-1.5 flex gap-2">
-              <Button
-                type="button"
-                size="sm"
-                variant={!parcelado ? "default" : "outline"}
-                onClick={() => setParcelado(false)}
-              >
-                À vista
-              </Button>
-              <Button
-                type="button"
-                size="sm"
-                variant={parcelado ? "default" : "outline"}
-                onClick={() => setParcelado(true)}
-              >
-                Parcelado
-              </Button>
-            </div>
-
-            {parcelado ? (
-              <div className="mt-3 flex flex-wrap items-start gap-3">
-                <div className="min-w-[120px] space-y-1.5">
-                  <Label htmlFor="num-parcelas">Número de parcelas</Label>
-                  <Input
-                    id="num-parcelas"
-                    type="number"
-                    min="1"
-                    step="1"
-                    value={numParcelas}
-                    onChange={(e) => setNumParcelas(e.target.value)}
-                  />
-                </div>
-                <div className="min-w-[160px] flex-1 space-y-1.5">
-                  <Label htmlFor="primeiro-venc">Primeiro vencimento</Label>
-                  <Input
-                    id="primeiro-venc"
-                    type="date"
-                    value={primeiroVencimento}
-                    onChange={(e) => setPrimeiroVencimento(e.target.value)}
-                    required
-                  />
-                </div>
-                <div className="min-w-[140px] space-y-1.5">
-                  <Label htmlFor="intervalo-dias">Intervalo (dias)</Label>
-                  <Input
-                    id="intervalo-dias"
-                    type="number"
-                    min="1"
-                    step="1"
-                    value={intervaloDias}
-                    onChange={(e) => setIntervaloDias(e.target.value)}
-                  />
-                </div>
+              <div className="min-w-[220px] flex-[2] space-y-1.5">
+                <Label htmlFor="descricao">Descrição</Label>
+                <Input
+                  id="descricao"
+                  value={descricao}
+                  onChange={(e) => setDescricao(e.target.value)}
+                  placeholder="Ex: Compra de ração"
+                  required
+                />
               </div>
-            ) : null}
+              <div className="min-w-[140px] flex-1 space-y-1.5">
+                <Label htmlFor="valor">{parcelado ? "Valor total (R$)" : "Valor (R$)"}</Label>
+                <Input
+                  id="valor"
+                  type="number"
+                  step="0.01"
+                  min="0.01"
+                  value={valor}
+                  onChange={(e) => setValor(e.target.value)}
+                  required
+                />
+              </div>
+              <div className="min-w-[160px] flex-1 space-y-1.5">
+                <Label htmlFor="data-lanc">Data</Label>
+                <Input
+                  id="data-lanc"
+                  type="date"
+                  value={data}
+                  onChange={(e) => setData(e.target.value)}
+                  required
+                />
+              </div>
+            </div>
 
-            {previewParcelas.length > 0 ? (
-              <div className="mt-3 rounded-lg border border-dashed border-border p-3">
-                <p className="text-xs font-semibold text-muted-foreground">
-                  {previewParcelas.length === 1
-                    ? "Vencimento"
-                    : `${previewParcelas.length} parcelas geradas`}
-                </p>
-                <ul className="mt-2 space-y-1 text-sm">
-                  {previewParcelas.map((p) => (
-                    <li key={p.numero} className="flex items-center justify-between">
-                      <span className="text-muted-foreground">
-                        {p.numero}/{p.totalParcelas} · {dataCurta(p.vencimento)}
-                      </span>
-                      <span className="font-medium">{moeda(p.valor)}</span>
-                    </li>
+            <div className="mt-3 flex flex-wrap items-start gap-3">
+              {!parcelado ? (
+                <div className="min-w-[200px] flex-1 space-y-1.5">
+                  <Label>Situação</Label>
+                  <div className="flex gap-2">
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant={jaAconteceu ? "default" : "outline"}
+                      onClick={() => setJaAconteceu(true)}
+                    >
+                      {tipo === "receita" ? "Recebido" : "Pago"}
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant={jaAconteceu ? "outline" : "default"}
+                      onClick={() => setJaAconteceu(false)}
+                    >
+                      {tipo === "receita" ? "A receber" : "A pagar"}
+                    </Button>
+                  </div>
+                </div>
+              ) : null}
+              <div className="min-w-[160px] flex-1 space-y-1.5">
+                <Label htmlFor="forma-pagamento">Forma de pagamento</Label>
+                <select
+                  id="forma-pagamento"
+                  value={formaPagamento}
+                  onChange={(e) => setFormaPagamento(e.target.value)}
+                  className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+                >
+                  {Object.entries(FORMAS_PAGAMENTO).map(([v, label]) => (
+                    <option key={v} value={v}>
+                      {label}
+                    </option>
                   ))}
-                </ul>
+                </select>
               </div>
-            ) : null}
-          </div>
+              <div className="min-w-[200px] flex-1 space-y-1.5">
+                <Label htmlFor="pessoa-lanc">
+                  {tipo === "receita" ? "Comprador (opcional)" : "Fornecedor (opcional)"}
+                </Label>
+                <Input
+                  id="pessoa-lanc"
+                  value={pessoa}
+                  onChange={(e) => setPessoa(e.target.value)}
+                  placeholder={tipo === "receita" ? "Quem comprou" : "Quem vendeu"}
+                />
+              </div>
+            </div>
 
-          <div className="mt-4 flex gap-2">
-            <Button type="submit" disabled={salvar.isPending}>
-              <Plus className="size-4" aria-hidden="true" />
-              Lançar
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => {
-                limparForm();
-                setFormAberto(false);
-              }}
-            >
-              Cancelar
-            </Button>
-          </div>
-        </form>
-      ) : null}
+            <div className="mt-4 border-t border-border pt-4">
+              <Label>Pagamento</Label>
+              <div className="mt-1.5 flex gap-2">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant={!parcelado ? "default" : "outline"}
+                  onClick={() => setParcelado(false)}
+                >
+                  À vista
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant={parcelado ? "default" : "outline"}
+                  onClick={() => setParcelado(true)}
+                >
+                  Parcelado
+                </Button>
+              </div>
+
+              {parcelado ? (
+                <div className="mt-3 flex flex-wrap items-start gap-3">
+                  <div className="min-w-[120px] space-y-1.5">
+                    <Label htmlFor="num-parcelas">Número de parcelas</Label>
+                    <Input
+                      id="num-parcelas"
+                      type="number"
+                      min="1"
+                      step="1"
+                      value={numParcelas}
+                      onChange={(e) => setNumParcelas(e.target.value)}
+                    />
+                  </div>
+                  <div className="min-w-[160px] flex-1 space-y-1.5">
+                    <Label htmlFor="primeiro-venc">Primeiro vencimento</Label>
+                    <Input
+                      id="primeiro-venc"
+                      type="date"
+                      value={primeiroVencimento}
+                      onChange={(e) => setPrimeiroVencimento(e.target.value)}
+                      required
+                    />
+                  </div>
+                  <div className="min-w-[140px] space-y-1.5">
+                    <Label htmlFor="intervalo-dias">Intervalo (dias)</Label>
+                    <Input
+                      id="intervalo-dias"
+                      type="number"
+                      min="1"
+                      step="1"
+                      value={intervaloDias}
+                      onChange={(e) => setIntervaloDias(e.target.value)}
+                    />
+                  </div>
+                </div>
+              ) : null}
+
+              {previewParcelas.length > 0 ? (
+                <div className="mt-3 rounded-lg border border-dashed border-border p-3">
+                  <p className="text-xs font-semibold text-muted-foreground">
+                    {previewParcelas.length === 1
+                      ? "Vencimento"
+                      : `${previewParcelas.length} parcelas geradas`}
+                  </p>
+                  <ul className="mt-2 space-y-1 text-sm">
+                    {previewParcelas.map((p) => (
+                      <li key={p.numero} className="flex items-center justify-between">
+                        <span className="text-muted-foreground">
+                          {p.numero}/{p.totalParcelas} · {dataCurta(p.vencimento)}
+                        </span>
+                        <span className="font-medium">{moeda(p.valor)}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
+            </div>
+
+            <DialogFooter className="mt-5">
+              <Button type="button" variant="outline" onClick={() => setFormAberto(false)}>
+                Cancelar
+              </Button>
+              <Button type="submit" disabled={salvar.isPending}>
+                <Plus className="size-4" aria-hidden="true" />
+                Lançar
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
 
       {linhasFinanceiras.length === 0 ? (
         <EmptyState
