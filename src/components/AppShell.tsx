@@ -43,17 +43,6 @@ const NAV: (NavLink | NavGroup)[] = [
   { to: "/config", label: "Config", icon: Settings },
 ];
 
-const NAV_MOBILE = [
-  { to: "/inicio", label: "Início", icon: Home },
-  { to: "/rebanho", label: "Rebanho", icon: Beef },
-  { to: "/leite", label: "Leite", icon: Milk },
-  { to: "/engorda", label: "Engorda", icon: Weight },
-  { to: "/reproducao", label: "Reprodução", icon: Stethoscope },
-  { to: "/financeiro", label: "Financeiro", icon: Wallet },
-  { to: "/calendario", label: "Agenda", icon: CalendarDays },
-  { to: "/config", label: "Config", icon: Settings },
-] as const;
-
 function isGroup(entry: NavLink | NavGroup): entry is NavGroup {
   return "items" in entry;
 }
@@ -87,6 +76,15 @@ export function AppShell({
   const grupoRefs = useRef<Map<string, HTMLDivElement>>(new Map());
   const grupoBtnRefs = useRef<Map<string, HTMLButtonElement>>(new Map());
 
+  // Barra inferior (mobile): mesmo princípio do flyout da barra lateral
+  // colapsada, mas com seu próprio estado/refs — os dois menus coexistem no
+  // DOM (um escondido via CSS conforme o tamanho da tela), então não dá pra
+  // dividir a mesma Map de refs entre os dois sem um sobrescrever o outro.
+  const [flyoutMobileAberto, setFlyoutMobileAberto] = useState(false);
+  const [flyoutMobilePos, setFlyoutMobilePos] = useState({ left: 0 });
+  const grupoMobileBtnRef = useRef<HTMLButtonElement>(null);
+  const grupoMobileRef = useRef<HTMLDivElement>(null);
+
   useEffect(() => {
     window.localStorage.setItem("curral-sidebar-colapsada", colapsada ? "1" : "0");
   }, [colapsada]);
@@ -107,6 +105,18 @@ export function AppShell({
     document.addEventListener("mousedown", aoClicarFora);
     return () => document.removeEventListener("mousedown", aoClicarFora);
   }, [flyoutAberto]);
+
+  useEffect(() => {
+    if (!flyoutMobileAberto) return;
+    function aoClicarFora(evento: MouseEvent) {
+      const alvo = evento.target as Node;
+      if (!grupoMobileRef.current?.contains(alvo) && !grupoMobileBtnRef.current?.contains(alvo)) {
+        setFlyoutMobileAberto(false);
+      }
+    }
+    document.addEventListener("mousedown", aoClicarFora);
+    return () => document.removeEventListener("mousedown", aoClicarFora);
+  }, [flyoutMobileAberto]);
 
   async function sair() {
     await queryClient.cancelQueries();
@@ -352,19 +362,70 @@ export function AppShell({
 
         <nav
           aria-label="Seções"
-          className="fixed inset-x-0 bottom-0 z-30 grid grid-cols-8 border-t border-border bg-card md:hidden"
+          className="fixed inset-x-0 bottom-0 z-30 grid grid-cols-6 border-t border-border bg-card md:hidden"
         >
-          {NAV_MOBILE.map((item) => (
-            <Link
-              key={item.to}
-              to={item.to}
-              className="flex flex-col items-center gap-1 py-2 text-[10px] font-medium text-muted-foreground transicao-suave"
-              activeProps={{ className: "text-primary" }}
-            >
-              <item.icon className="size-5" aria-hidden="true" />
-              {item.label}
-            </Link>
-          ))}
+          {NAV.map((entry) => {
+            if (isGroup(entry)) {
+              const grupoAtivo = entry.items.some((item) => location.pathname.startsWith(item.to));
+              return (
+                <div key={entry.label} className="relative">
+                  <button
+                    ref={grupoMobileBtnRef}
+                    type="button"
+                    onClick={() => {
+                      const rect = grupoMobileBtnRef.current?.getBoundingClientRect();
+                      if (rect) setFlyoutMobilePos({ left: rect.left + rect.width / 2 });
+                      setFlyoutMobileAberto((v) => !v);
+                    }}
+                    aria-expanded={flyoutMobileAberto}
+                    aria-haspopup="true"
+                    className={cn(
+                      "flex w-full flex-col items-center gap-1 py-2 text-[10px] font-medium transicao-suave",
+                      grupoAtivo ? "text-primary" : "text-muted-foreground",
+                    )}
+                  >
+                    <entry.icon className="size-5" aria-hidden="true" />
+                    {entry.label}
+                  </button>
+                  {flyoutMobileAberto ? (
+                    <div
+                      ref={grupoMobileRef}
+                      style={{ left: flyoutMobilePos.left }}
+                      className="fixed bottom-20 z-40 w-44 -translate-x-1/2 rounded-xl border border-border bg-card p-1.5 shadow-md"
+                    >
+                      <p className="truncate px-2 py-1 text-xs font-semibold text-muted-foreground">
+                        {entry.label}
+                      </p>
+                      {entry.items.map((item) => (
+                        <Link
+                          key={item.to}
+                          to={item.to}
+                          activeOptions={{ exact: true }}
+                          onClick={() => setFlyoutMobileAberto(false)}
+                          className="flex items-center gap-2 rounded-lg px-2 py-2 text-sm font-medium text-muted-foreground transicao-suave hover:bg-accent hover:text-foreground"
+                          activeProps={{ className: "bg-accent text-primary" }}
+                        >
+                          <item.icon className="size-4 shrink-0" aria-hidden="true" />
+                          {item.label}
+                        </Link>
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
+              );
+            }
+            return (
+              <Link
+                key={entry.to}
+                to={entry.to}
+                className="flex flex-col items-center gap-1 py-2 text-[10px] font-medium text-muted-foreground transicao-suave"
+                activeProps={{ className: "text-primary" }}
+              >
+                <entry.icon className="size-5" aria-hidden="true" />
+                {entry.label}
+              </Link>
+            );
+          })}
         </nav>
       </div>
     </div>

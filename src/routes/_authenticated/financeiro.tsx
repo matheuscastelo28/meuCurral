@@ -494,7 +494,7 @@ function Financeiro() {
         </Button>
       }
     >
-      <div className="mb-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+      <div className="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6">
         <Resumo rotulo="Recebido" valor={moeda(recebidoUnificado)} classe="text-success" />
         <Resumo rotulo="A receber" valor={moeda(aReceberUnificado)} classe="text-warning" />
         <Resumo rotulo="Despesas" valor={moeda(despesasUnificado)} classe="text-destructive" />
@@ -525,7 +525,7 @@ function Financeiro() {
           if (!v) limparForm();
         }}
       >
-        <DialogContent className="max-h-[85vh] max-w-xl overflow-y-auto">
+        <DialogContent className="max-h-[85vh] max-w-xl overflow-y-auto rounded-xl">
           <DialogHeader>
             <DialogTitle>Novo lançamento</DialogTitle>
             <DialogDescription>
@@ -717,11 +717,16 @@ function Financeiro() {
               ) : null}
             </div>
 
-            <DialogFooter className="mt-5">
-              <Button type="button" variant="outline" onClick={() => setFormAberto(false)}>
+            <DialogFooter className="mt-5 flex-row justify-end gap-2 sm:space-x-0">
+              <Button
+                type="button"
+                variant="outline"
+                className="flex-1 sm:flex-initial"
+                onClick={() => setFormAberto(false)}
+              >
                 Cancelar
               </Button>
-              <Button type="submit" disabled={salvar.isPending}>
+              <Button type="submit" className="flex-1 sm:flex-initial" disabled={salvar.isPending}>
                 <Plus className="size-4" aria-hidden="true" />
                 Lançar
               </Button>
