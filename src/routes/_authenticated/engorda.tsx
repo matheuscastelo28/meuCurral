@@ -12,6 +12,7 @@ import {
   Tag,
   TrendingUp,
   Weight,
+  Wheat,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Line, LineChart, CartesianGrid, XAxis, YAxis } from "recharts";
@@ -142,11 +143,27 @@ function Engorda() {
     },
   });
 
+  const alimentacaoLote = useQuery({
+    queryKey: ["alimentacao-lote", fazenda?.id],
+    enabled: !!fazenda?.id,
+    queryFn: async () => {
+      const { data, error } = await db
+        .from("alimentacao_lote")
+        .select("id, lote, data, forragem_kg, silagem_kg, racao_kg, custo_dia, observacoes")
+        .eq("fazenda_id", fazenda!.id)
+        .order("data", { ascending: false })
+        .limit(200);
+      if (error) throw error;
+      return data;
+    },
+  });
+
   function invalidarEngordaGeral() {
     queryClient.invalidateQueries({ queryKey: ["animais-engorda"] });
     queryClient.invalidateQueries({ queryKey: ["pesagens-engorda"] });
     queryClient.invalidateQueries({ queryKey: ["pesagens-engorda-todas"] });
     queryClient.invalidateQueries({ queryKey: ["despesas-lote"] });
+    queryClient.invalidateQueries({ queryKey: ["alimentacao-lote"] });
     queryClient.invalidateQueries({ queryKey: ["indices-engorda"] });
     queryClient.invalidateQueries({ queryKey: ["animais"] });
     queryClient.invalidateQueries({ queryKey: ["financeiro"] });
@@ -351,8 +368,38 @@ function Engorda() {
         .filter((d) => (d.lote?.trim() || "") === grupo.nome)
         .reduce((s, d) => s + Number(d.valor), 0);
 
+      const custoCompra = (despesasLote.data ?? [])
+        .filter((d) => (d.lote?.trim() || "") === grupo.nome && d.categoria === "compra")
+        .reduce((s, d) => s + Number(d.valor), 0);
+
       const margemEstimada = precoVigente
         ? arrobasTotais * Number(precoVigente.valor) - custoAcumulado
+        : null;
+
+      // Entrada do lote: usamos a primeira pesagem de cada animal como
+      // proxy do peso/data de entrada — não existe um cadastro de "compra"
+      // separado, é o mesmo texto livre de lote já usado em todo o resto.
+      let somaPesoInicial = 0;
+      let qtdComPesoInicial = 0;
+      let dataEntrada: string | null = null;
+      for (const an of grupo.animais) {
+        const registros = pesagensPorAnimal.get(an.id) ?? [];
+        if (registros.length > 0) {
+          somaPesoInicial += registros[0]!.valor;
+          qtdComPesoInicial++;
+          if (!dataEntrada || registros[0]!.data < dataEntrada) dataEntrada = registros[0]!.data;
+        }
+      }
+      const pesoInicialMedio = qtdComPesoInicial > 0 ? somaPesoInicial / qtdComPesoInicial : null;
+      const pesoTotalEntrada =
+        pesoInicialMedio !== null ? pesoInicialMedio * qtdComPesoInicial : null;
+      const precoMedioPorCabeca =
+        custoCompra > 0 && grupo.animais.length > 0 ? custoCompra / grupo.animais.length : null;
+      const diasDesdeEntrada = dataEntrada
+        ? Math.max(
+            0,
+            Math.round((new Date(hoje).getTime() - new Date(dataEntrada).getTime()) / 86400000),
+          )
         : null;
 
       return {
@@ -365,10 +412,16 @@ function Engorda() {
         gmdMedio,
         curva,
         custoAcumulado,
+        custoCompra,
         margemEstimada,
+        dataEntrada,
+        pesoInicialMedio,
+        pesoTotalEntrada,
+        precoMedioPorCabeca,
+        diasDesdeEntrada,
       };
     });
-  }, [animais.data, pesagensPorAnimal, despesasLote.data, precoVigente]);
+  }, [animais.data, pesagensPorAnimal, despesasLote.data, precoVigente, hoje]);
 
   const [loteSelecionado, setLoteSelecionado] = useState<string | null>(null);
   useEffect(() => {
@@ -384,6 +437,41 @@ function Engorda() {
   const [pesagemLoteAberto, setPesagemLoteAberto] = useState(false);
   const [custoLoteAberto, setCustoLoteAberto] = useState(false);
   const [venderLoteAberto, setVenderLoteAberto] = useState(false);
+  const [alimentacaoLoteAberto, setAlimentacaoLoteAberto] = useState(false);
+
+  const alimentacaoDoLoteAtual = useMemo(
+    () => (alimentacaoLote.data ?? []).filter((a) => (a.lote?.trim() || "") === loteSelecionado),
+    [alimentacaoLote.data, loteSelecionado],
+  );
+  const ultimaAlimentacao = alimentacaoDoLoteAtual[0] ?? null;
+
+  const [pesoMetaAbate, setPesoMetaAbate] = useState("");
+  useEffect(() => {
+    setPesoMetaAbate("");
+  }, [loteSelecionado]);
+
+  const projecao = useMemo(() => {
+    if (!loteAtual || !pesoMetaAbate) return null;
+    const meta = Number(pesoMetaAbate);
+    if (!Number.isFinite(meta) || meta <= loteAtual.pesoMedio) return null;
+    if (!loteAtual.gmdMedio || loteAtual.gmdMedio <= 0) return null;
+    const diasRestantes = Math.ceil((meta - loteAtual.pesoMedio) / loteAtual.gmdMedio);
+    const previsaoSaida = new Date(hoje);
+    previsaoSaida.setUTCDate(previsaoSaida.getUTCDate() + diasRestantes);
+    const custoDiarioMedio =
+      loteAtual.diasDesdeEntrada && loteAtual.diasDesdeEntrada > 0
+        ? loteAtual.custoAcumulado / loteAtual.diasDesdeEntrada
+        : 0;
+    const custoAlimentacaoProjetada = custoDiarioMedio * diasRestantes;
+    const custoFinalProjetado = loteAtual.custoAcumulado + custoAlimentacaoProjetada;
+    return {
+      diasRestantes,
+      previsaoSaida: previsaoSaida.toISOString().slice(0, 10),
+      custoAlimentacaoProjetada,
+      custoFinalProjetado,
+      custoFinalPorCabeca: custoFinalProjetado / loteAtual.qtd,
+    };
+  }, [loteAtual, pesoMetaAbate, hoje]);
 
   const i = indices.data;
   const e = indicesEngorda.data;
@@ -692,6 +780,146 @@ function Engorda() {
                   </div>
                 </div>
 
+                <div className="mt-4 grid gap-4 lg:grid-cols-2">
+                  <div className="rounded-lg bg-muted p-3">
+                    <p className="text-sm font-semibold">Entrada do lote</p>
+                    <div className="mt-2 space-y-2 text-xs">
+                      <div className="flex items-center justify-between">
+                        <span className="text-muted-foreground">Data de entrada</span>
+                        <span className="font-semibold">
+                          {loteAtual.dataEntrada ? dataCurta(loteAtual.dataEntrada) : "—"}
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span className="text-muted-foreground">Peso médio inicial</span>
+                        <span className="font-semibold">
+                          {loteAtual.pesoInicialMedio !== null
+                            ? pesoTexto(loteAtual.pesoInicialMedio, prefs.unidade_peso)
+                            : "—"}
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span className="text-muted-foreground">Peso total na entrada</span>
+                        <span className="font-semibold">
+                          {loteAtual.pesoTotalEntrada !== null
+                            ? pesoTexto(loteAtual.pesoTotalEntrada, prefs.unidade_peso)
+                            : "—"}
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span className="text-muted-foreground">Custo total da compra</span>
+                        <span className="font-semibold">{moeda(loteAtual.custoCompra)}</span>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span className="text-muted-foreground">Preço médio / cabeça</span>
+                        <span className="font-semibold">
+                          {loteAtual.precoMedioPorCabeca !== null
+                            ? moeda(loteAtual.precoMedioPorCabeca)
+                            : "—"}
+                        </span>
+                      </div>
+                    </div>
+                    <p className="mt-2 text-[11px] text-muted-foreground">
+                      Peso/data de entrada vêm da primeira pesagem de cada animal do lote; o custo
+                      da compra entra por "Registrar custo" com a categoria "Compra do lote".
+                    </p>
+                  </div>
+
+                  <div className="rounded-lg bg-muted p-3">
+                    <p className="text-sm font-semibold">Alimentação diária</p>
+                    {ultimaAlimentacao ? (
+                      <div className="mt-2 space-y-2 text-xs">
+                        <p className="text-muted-foreground">
+                          Último registro — {dataCurta(ultimaAlimentacao.data)}
+                        </p>
+                        <div className="flex items-center justify-between">
+                          <span className="text-muted-foreground">Forragem nativa</span>
+                          <span className="font-semibold">
+                            {ultimaAlimentacao.forragem_kg !== null
+                              ? `${Number(ultimaAlimentacao.forragem_kg).toLocaleString("pt-BR")} kg/dia`
+                              : "—"}
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <span className="text-muted-foreground">Silagem</span>
+                          <span className="font-semibold">
+                            {ultimaAlimentacao.silagem_kg !== null
+                              ? `${Number(ultimaAlimentacao.silagem_kg).toLocaleString("pt-BR")} kg/dia`
+                              : "—"}
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <span className="text-muted-foreground">Ração concentrada</span>
+                          <span className="font-semibold">
+                            {ultimaAlimentacao.racao_kg !== null
+                              ? `${Number(ultimaAlimentacao.racao_kg).toLocaleString("pt-BR")} kg/dia`
+                              : "—"}
+                          </span>
+                        </div>
+                        {ultimaAlimentacao.custo_dia !== null ? (
+                          <div className="flex items-center justify-between">
+                            <span className="text-muted-foreground">Custo do dia</span>
+                            <span className="font-semibold">
+                              {moeda(Number(ultimaAlimentacao.custo_dia))}
+                            </span>
+                          </div>
+                        ) : null}
+                      </div>
+                    ) : (
+                      <p className="mt-2 text-xs text-muted-foreground">
+                        Nenhuma alimentação registrada ainda para este lote.
+                      </p>
+                    )}
+
+                    <div className="mt-3 space-y-1.5">
+                      <Label htmlFor="peso-meta-abate" className="text-xs">
+                        Peso de abate (meta, kg/cabeça) — pra estimar a saída
+                      </Label>
+                      <Input
+                        id="peso-meta-abate"
+                        type="number"
+                        step="1"
+                        min="0"
+                        className="h-8 bg-card text-xs"
+                        value={pesoMetaAbate}
+                        onChange={(ev) => setPesoMetaAbate(ev.target.value)}
+                        placeholder="Ex: 480"
+                      />
+                    </div>
+                    {projecao ? (
+                      <div className="mt-3 space-y-2 rounded-md bg-card px-3 py-2 text-xs">
+                        <div className="flex items-center justify-between">
+                          <span className="text-muted-foreground">Permanência estimada</span>
+                          <span className="font-semibold">
+                            {projecao.diasRestantes} dia(s) restante(s)
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <span className="text-muted-foreground">Previsão de saída</span>
+                          <span className="font-semibold">{dataCurta(projecao.previsaoSaida)}</span>
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <span className="text-muted-foreground">Custo final projetado</span>
+                          <span className="font-semibold">
+                            {moeda(projecao.custoFinalProjetado)}
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <span className="text-muted-foreground">Custo final / cabeça</span>
+                          <span className="font-semibold">
+                            {moeda(projecao.custoFinalPorCabeca)}
+                          </span>
+                        </div>
+                      </div>
+                    ) : pesoMetaAbate ? (
+                      <p className="mt-3 text-[11px] text-muted-foreground">
+                        Informe uma meta maior que o peso atual e registre ao menos duas pesagens do
+                        lote para calcular a projeção.
+                      </p>
+                    ) : null}
+                  </div>
+                </div>
+
                 <div className="mt-4 flex flex-wrap gap-2">
                   <Button variant="outline" size="sm" onClick={() => setPesagemLoteAberto(true)}>
                     Registrar pesagem do lote
@@ -700,6 +928,14 @@ function Engorda() {
                     <>
                       <Button variant="outline" size="sm" onClick={() => setCustoLoteAberto(true)}>
                         Registrar custo (ração/sanidade)
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setAlimentacaoLoteAberto(true)}
+                      >
+                        <Wheat className="size-4" aria-hidden="true" />
+                        Registrar alimentação do lote
                       </Button>
                       <Button size="sm" onClick={() => setVenderLoteAberto(true)}>
                         <Coins className="size-4" aria-hidden="true" />
@@ -737,6 +973,13 @@ function Engorda() {
               fazendaId={fazenda?.id}
               precoSugerido={precoVigente ? Number(precoVigente.valor) : null}
               moeda={moeda}
+              onSalvo={invalidarEngordaGeral}
+            />
+            <DialogAlimentacaoLote
+              aberto={alimentacaoLoteAberto}
+              onFechar={() => setAlimentacaoLoteAberto(false)}
+              lote={loteAtual?.nome ?? null}
+              fazendaId={fazenda?.id}
               onSalvo={invalidarEngordaGeral}
             />
           </TabsContent>
@@ -1221,6 +1464,7 @@ function DialogCustoLote({
               defaultValue="racao"
               className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
             >
+              <option value="compra">Compra do lote</option>
               <option value="racao">Ração</option>
               <option value="sanidade">Sanidade</option>
               <option value="outro">Outro</option>
@@ -1409,6 +1653,124 @@ function DialogVenderLote({
           </Button>
           <Button type="submit" form="form-vender-lote" disabled={salvar.isPending}>
             {salvar.isPending ? "Registrando..." : "Confirmar venda"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function DialogAlimentacaoLote({
+  aberto,
+  onFechar,
+  lote,
+  fazendaId,
+  onSalvo,
+}: {
+  aberto: boolean;
+  onFechar: () => void;
+  lote: string | null;
+  fazendaId: string | undefined;
+  onSalvo: () => void;
+}) {
+  const salvar = useMutation({
+    mutationFn: async (form: FormData) => {
+      if (!lote || !fazendaId) return;
+      const data = String(form.get("data"));
+      const forragemKg = form.get("forragem_kg") ? Number(form.get("forragem_kg")) : null;
+      const silagemKg = form.get("silagem_kg") ? Number(form.get("silagem_kg")) : null;
+      const racaoKg = form.get("racao_kg") ? Number(form.get("racao_kg")) : null;
+      const custoDia = form.get("custo_dia") ? Number(form.get("custo_dia")) : null;
+      const observacoes = String(form.get("observacoes") ?? "").trim() || null;
+
+      const { error } = await db.from("alimentacao_lote").insert({
+        fazenda_id: fazendaId,
+        lote,
+        data,
+        forragem_kg: forragemKg,
+        silagem_kg: silagemKg,
+        racao_kg: racaoKg,
+        custo_dia: custoDia,
+        observacoes,
+      } as never);
+      if (error) throw error;
+
+      // Custo do dia também entra como despesa do lote, igual ao fluxo
+      // manual de "Registrar custo" — assim ele já conta no custo
+      // acumulado e na margem estimada sem precisar lançar duas vezes.
+      if (custoDia && custoDia > 0) {
+        const { error: erroDespesa } = await db.from("financeiro_lancamentos").insert({
+          fazenda_id: fazendaId,
+          tipo: "despesa",
+          descricao: `Alimentação do lote ${lote} (${dataCurta(data)})`,
+          valor: custoDia,
+          data,
+          categoria: "racao",
+          lote,
+        } as never);
+        if (erroDespesa) throw erroDespesa;
+      }
+    },
+    onSuccess: () => {
+      toast.success("Alimentação do lote registrada.");
+      onSalvo();
+      onFechar();
+    },
+    onError: () => toast.error("Não conseguimos salvar agora. Tente novamente."),
+  });
+
+  return (
+    <Dialog open={aberto} onOpenChange={(v) => !v && onFechar()}>
+      <DialogContent key={lote}>
+        <DialogHeader>
+          <DialogTitle>Registrar alimentação do lote</DialogTitle>
+          <DialogDescription>
+            {lote
+              ? `Quilos de forragem, silagem e ração do lote "${lote}" no dia. Se informar o custo do dia, ele também entra como despesa do lote.`
+              : ""}
+          </DialogDescription>
+        </DialogHeader>
+        <form
+          id="form-alimentacao-lote"
+          className="space-y-4"
+          onSubmit={(e) => {
+            e.preventDefault();
+            salvar.mutate(new FormData(e.currentTarget));
+          }}
+        >
+          <div className="space-y-1.5">
+            <Label htmlFor="alim-data">Data</Label>
+            <Input id="alim-data" name="data" type="date" defaultValue={hojeISO()} required />
+          </div>
+          <div className="grid gap-3 sm:grid-cols-3">
+            <div className="space-y-1.5">
+              <Label htmlFor="alim-forragem">Forragem (kg/dia)</Label>
+              <Input id="alim-forragem" name="forragem_kg" type="number" step="0.1" min="0" />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="alim-silagem">Silagem (kg/dia)</Label>
+              <Input id="alim-silagem" name="silagem_kg" type="number" step="0.1" min="0" />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="alim-racao">Ração concentrada (kg/dia)</Label>
+              <Input id="alim-racao" name="racao_kg" type="number" step="0.1" min="0" />
+            </div>
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="alim-custo">Custo do dia (R$, opcional)</Label>
+            <Input id="alim-custo" name="custo_dia" type="number" step="0.01" min="0" />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="alim-observacoes">Observações (opcional)</Label>
+            <Input id="alim-observacoes" name="observacoes" placeholder="Opcional" />
+          </div>
+        </form>
+        <DialogFooter>
+          <Button variant="outline" type="button" onClick={onFechar}>
+            Cancelar
+          </Button>
+          <Button type="submit" form="form-alimentacao-lote" disabled={salvar.isPending}>
+            {salvar.isPending ? "Salvando..." : "Salvar alimentação"}
           </Button>
         </DialogFooter>
       </DialogContent>

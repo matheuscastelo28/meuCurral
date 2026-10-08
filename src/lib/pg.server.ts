@@ -298,6 +298,28 @@ create table if not exists eventos_agenda (
 
 alter table eventos_agenda add column if not exists cancelado boolean not null default false;
 
+-- Registro diário de alimentação de um lote em engorda (kg de forragem,
+-- silagem e ração concentrada), igual ao texto livre de animais.lote usado
+-- em produção/despesas por lote. custo_dia é opcional: quando preenchido,
+-- a tela de Engorda também lança uma despesa (categoria 'racao') pra esse
+-- valor entrar no custo acumulado do lote — igual ao fluxo manual que já
+-- existia em "Registrar custo do lote".
+create table if not exists alimentacao_lote (
+  id uuid primary key default gen_random_uuid(),
+  fazenda_id uuid references fazendas(id) on delete cascade,
+  lote text not null,
+  data date not null default current_date,
+  forragem_kg numeric,
+  silagem_kg numeric,
+  racao_kg numeric,
+  custo_dia numeric,
+  observacoes text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create index if not exists idx_alimentacao_lote_fazenda on alimentacao_lote(fazenda_id, lote, data);
+
 create index if not exists idx_animais_fazenda on animais(fazenda_id);
 create index if not exists idx_manejos_fazenda on manejos(fazenda_id);
 create index if not exists idx_leite_fazenda on producao_leite(fazenda_id);
