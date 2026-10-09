@@ -621,6 +621,33 @@ function Engorda() {
         </CartaoConfig>
       </div>
 
+      <div className="mb-5">
+        <CartaoConfig
+          id="alimentacao"
+          titulo="Alimentação"
+          descricao="Registre a rotina de alimentação pro rebanho todo ou só pra lotes específicos — independente de qual lote está selecionado abaixo."
+        >
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => setAlimentacaoLoteAberto(true)}
+          >
+            <Wheat className="size-4" aria-hidden="true" />
+            Rotina de alimentação
+          </Button>
+        </CartaoConfig>
+      </div>
+
+      <DialogAlimentacaoLote
+        aberto={alimentacaoLoteAberto}
+        onFechar={() => setAlimentacaoLoteAberto(false)}
+        loteInicial={null}
+        lotesDisponiveis={lotes.map((l) => l.nome)}
+        fazendaId={fazenda?.id}
+        onSalvo={invalidarEngordaGeral}
+      />
+
       {(animais.data?.length ?? 0) === 0 ? (
         <EmptyState
           icon={Weight}
@@ -953,14 +980,6 @@ function Engorda() {
                       <Button variant="outline" size="sm" onClick={() => setCustoLoteAberto(true)}>
                         Registrar custo (ração/sanidade)
                       </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => setAlimentacaoLoteAberto(true)}
-                      >
-                        <Wheat className="size-4" aria-hidden="true" />
-                        Rotina de alimentação
-                      </Button>
                       <Button size="sm" onClick={() => setVenderLoteAberto(true)}>
                         <Coins className="size-4" aria-hidden="true" />
                         Vender lote
@@ -997,14 +1016,6 @@ function Engorda() {
               fazendaId={fazenda?.id}
               precoSugerido={precoVigente ? Number(precoVigente.valor) : null}
               moeda={moeda}
-              onSalvo={invalidarEngordaGeral}
-            />
-            <DialogAlimentacaoLote
-              aberto={alimentacaoLoteAberto}
-              onFechar={() => setAlimentacaoLoteAberto(false)}
-              loteInicial={loteAtual?.nome ?? null}
-              lotesDisponiveis={lotes.map((l) => l.nome)}
-              fazendaId={fazenda?.id}
               onSalvo={invalidarEngordaGeral}
             />
           </TabsContent>
