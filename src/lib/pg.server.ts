@@ -320,6 +320,13 @@ create table if not exists alimentacao_lote (
 
 create index if not exists idx_alimentacao_lote_fazenda on alimentacao_lote(fazenda_id, lote, data);
 
+-- Rotina de alimentação: lote vira opcional (nulo = aplicado ao rebanho
+-- todo, não a um lote específico), e "Outro" passa a ser um tipo de
+-- alimento livre além de forragem/silagem/ração.
+alter table alimentacao_lote alter column lote drop not null;
+alter table alimentacao_lote add column if not exists outro_kg numeric;
+alter table alimentacao_lote add column if not exists outro_descricao text;
+
 create index if not exists idx_animais_fazenda on animais(fazenda_id);
 create index if not exists idx_manejos_fazenda on manejos(fazenda_id);
 create index if not exists idx_leite_fazenda on producao_leite(fazenda_id);

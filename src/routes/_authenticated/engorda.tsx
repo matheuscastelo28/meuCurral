@@ -21,6 +21,7 @@ import { AppShell } from "@/components/AppShell";
 import { CartaoConfig } from "@/components/config/CartaoConfig";
 import { EmptyState } from "@/components/EmptyState";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -149,7 +150,9 @@ function Engorda() {
     queryFn: async () => {
       const { data, error } = await db
         .from("alimentacao_lote")
-        .select("id, lote, data, forragem_kg, silagem_kg, racao_kg, custo_dia, observacoes")
+        .select(
+          "id, lote, data, forragem_kg, silagem_kg, racao_kg, outro_kg, outro_descricao, custo_dia, observacoes",
+        )
         .eq("fazenda_id", fazenda!.id)
         .order("data", { ascending: false })
         .limit(200);
@@ -439,8 +442,14 @@ function Engorda() {
   const [venderLoteAberto, setVenderLoteAberto] = useState(false);
   const [alimentacaoLoteAberto, setAlimentacaoLoteAberto] = useState(false);
 
+  // Uma rotina de alimentação pode valer pro rebanho todo (lote nulo) ou
+  // só pra lotes específicos — na ficha de um lote mostramos os dois tipos
+  // de registro juntos, o mais recente primeiro (já vem assim do servidor).
   const alimentacaoDoLoteAtual = useMemo(
-    () => (alimentacaoLote.data ?? []).filter((a) => (a.lote?.trim() || "") === loteSelecionado),
+    () =>
+      (alimentacaoLote.data ?? []).filter(
+        (a) => a.lote === null || (a.lote?.trim() || "") === loteSelecionado,
+      ),
     [alimentacaoLote.data, loteSelecionado],
   );
   const ultimaAlimentacao = alimentacaoDoLoteAtual[0] ?? null;
@@ -831,6 +840,11 @@ function Engorda() {
                       <div className="mt-2 space-y-2 text-xs">
                         <p className="text-muted-foreground">
                           Último registro — {dataCurta(ultimaAlimentacao.data)}
+                          {ultimaAlimentacao.lote === null ? (
+                            <span className="ml-1.5 rounded-full bg-accent px-1.5 py-0.5 text-[10px] font-semibold text-primary">
+                              todo o rebanho
+                            </span>
+                          ) : null}
                         </p>
                         <div className="flex items-center justify-between">
                           <span className="text-muted-foreground">Forragem nativa</span>
@@ -856,6 +870,16 @@ function Engorda() {
                               : "—"}
                           </span>
                         </div>
+                        {ultimaAlimentacao.outro_kg !== null ? (
+                          <div className="flex items-center justify-between">
+                            <span className="text-muted-foreground">
+                              {ultimaAlimentacao.outro_descricao || "Outro"}
+                            </span>
+                            <span className="font-semibold">
+                              {Number(ultimaAlimentacao.outro_kg).toLocaleString("pt-BR")} kg/dia
+                            </span>
+                          </div>
+                        ) : null}
                         {ultimaAlimentacao.custo_dia !== null ? (
                           <div className="flex items-center justify-between">
                             <span className="text-muted-foreground">Custo do dia</span>
@@ -935,7 +959,7 @@ function Engorda() {
                         onClick={() => setAlimentacaoLoteAberto(true)}
                       >
                         <Wheat className="size-4" aria-hidden="true" />
-                        Registrar alimentação do lote
+                        Rotina de alimentação
                       </Button>
                       <Button size="sm" onClick={() => setVenderLoteAberto(true)}>
                         <Coins className="size-4" aria-hidden="true" />
@@ -978,7 +1002,8 @@ function Engorda() {
             <DialogAlimentacaoLote
               aberto={alimentacaoLoteAberto}
               onFechar={() => setAlimentacaoLoteAberto(false)}
-              lote={loteAtual?.nome ?? null}
+              loteInicial={loteAtual?.nome ?? null}
+              lotesDisponiveis={lotes.map((l) => l.nome)}
               fazendaId={fazenda?.id}
               onSalvo={invalidarEngordaGeral}
             />
@@ -1660,117 +1685,302 @@ function DialogVenderLote({
   );
 }
 
+type TipoAlimento = "forragem" | "silagem" | "racao" | "outro";
+
+interface EstadoTipoAlimento {
+  ativo: boolean;
+  kg: string;
+  descricao: string;
+}
+
+const TIPOS_ALIMENTO: {
+  chave: TipoAlimento;
+  rotulo: string;
+  coluna: "forragem_kg" | "silagem_kg" | "racao_kg" | "outro_kg";
+}[] = [
+  { chave: "forragem", rotulo: "Forragem nativa", coluna: "forragem_kg" },
+  { chave: "silagem", rotulo: "Silagem", coluna: "silagem_kg" },
+  { chave: "racao", rotulo: "Ração concentrada", coluna: "racao_kg" },
+  { chave: "outro", rotulo: "Outro", coluna: "outro_kg" },
+];
+
 function DialogAlimentacaoLote({
   aberto,
   onFechar,
-  lote,
+  loteInicial,
+  lotesDisponiveis,
   fazendaId,
   onSalvo,
 }: {
   aberto: boolean;
   onFechar: () => void;
-  lote: string | null;
+  loteInicial: string | null;
+  lotesDisponiveis: string[];
   fazendaId: string | undefined;
   onSalvo: () => void;
 }) {
+  const [data, setData] = useState(hojeISO());
+  const [escopo, setEscopo] = useState<"rebanho" | "lotes">("lotes");
+  const [lotesSelecionados, setLotesSelecionados] = useState<string[]>([]);
+  const [tipos, setTipos] = useState<Record<TipoAlimento, EstadoTipoAlimento>>({
+    forragem: { ativo: false, kg: "", descricao: "" },
+    silagem: { ativo: false, kg: "", descricao: "" },
+    racao: { ativo: false, kg: "", descricao: "" },
+    outro: { ativo: false, kg: "", descricao: "" },
+  });
+  const [custoDia, setCustoDia] = useState("");
+  const [observacoes, setObservacoes] = useState("");
+
+  useEffect(() => {
+    if (aberto) {
+      setData(hojeISO());
+      setEscopo("lotes");
+      setLotesSelecionados(loteInicial ? [loteInicial] : []);
+      setTipos({
+        forragem: { ativo: false, kg: "", descricao: "" },
+        silagem: { ativo: false, kg: "", descricao: "" },
+        racao: { ativo: false, kg: "", descricao: "" },
+        outro: { ativo: false, kg: "", descricao: "" },
+      });
+      setCustoDia("");
+      setObservacoes("");
+    }
+  }, [aberto, loteInicial]);
+
+  function alternarTipo(chave: TipoAlimento) {
+    setTipos((prev) => ({ ...prev, [chave]: { ...prev[chave], ativo: !prev[chave].ativo } }));
+  }
+  function atualizarTipo(chave: TipoAlimento, campo: "kg" | "descricao", valor: string) {
+    setTipos((prev) => ({ ...prev, [chave]: { ...prev[chave], [campo]: valor } }));
+  }
+  function alternarLote(nome: string) {
+    setLotesSelecionados((prev) =>
+      prev.includes(nome) ? prev.filter((l) => l !== nome) : [...prev, nome],
+    );
+  }
+
   const salvar = useMutation({
-    mutationFn: async (form: FormData) => {
-      if (!lote || !fazendaId) return;
-      const data = String(form.get("data"));
-      const forragemKg = form.get("forragem_kg") ? Number(form.get("forragem_kg")) : null;
-      const silagemKg = form.get("silagem_kg") ? Number(form.get("silagem_kg")) : null;
-      const racaoKg = form.get("racao_kg") ? Number(form.get("racao_kg")) : null;
-      const custoDia = form.get("custo_dia") ? Number(form.get("custo_dia")) : null;
-      const observacoes = String(form.get("observacoes") ?? "").trim() || null;
+    mutationFn: async () => {
+      if (!fazendaId) return;
 
-      const { error } = await db.from("alimentacao_lote").insert({
-        fazenda_id: fazendaId,
-        lote,
-        data,
-        forragem_kg: forragemKg,
-        silagem_kg: silagemKg,
-        racao_kg: racaoKg,
-        custo_dia: custoDia,
-        observacoes,
-      } as never);
-      if (error) throw error;
+      const ativos = TIPOS_ALIMENTO.filter(
+        (t) => tipos[t.chave].ativo && Number(tipos[t.chave].kg) > 0,
+      );
+      if (ativos.length === 0) {
+        throw new Error("Marque ao menos um tipo de alimento e informe a quantidade (kg/dia).");
+      }
+      if (ativos.some((t) => t.chave === "outro") && !tipos.outro.descricao.trim()) {
+        throw new Error('Descreva o que é o alimento marcado como "Outro".');
+      }
 
-      // Custo do dia também entra como despesa do lote, igual ao fluxo
-      // manual de "Registrar custo" — assim ele já conta no custo
-      // acumulado e na margem estimada sem precisar lançar duas vezes.
-      if (custoDia && custoDia > 0) {
-        const { error: erroDespesa } = await db.from("financeiro_lancamentos").insert({
+      const lotesAlvo: (string | null)[] = escopo === "rebanho" ? [null] : lotesSelecionados;
+      if (lotesAlvo.length === 0) {
+        throw new Error('Selecione ao menos um lote, ou escolha "Todo o rebanho".');
+      }
+
+      const custo = custoDia ? Number(custoDia) : 0;
+      // Custo informado pra "todo o rebanho" não é de nenhum lote específico
+      // (lançamento sem lote); pra vários lotes selecionados, divide o custo
+      // igualmente entre eles — assim o total lançado nunca passa do custo
+      // informado, mesmo marcando mais de um lote na mesma rotina.
+      const custoPorLote =
+        escopo === "lotes" && lotesAlvo.length > 0 ? custo / lotesAlvo.length : custo;
+
+      const camposAlimento: Record<string, number | string | null> = {
+        forragem_kg: null,
+        silagem_kg: null,
+        racao_kg: null,
+        outro_kg: null,
+        outro_descricao: null,
+      };
+      for (const t of ativos) {
+        camposAlimento[t.coluna] = Number(tipos[t.chave].kg);
+        if (t.chave === "outro") camposAlimento["outro_descricao"] = tipos.outro.descricao.trim();
+      }
+
+      for (const loteAlvo of lotesAlvo) {
+        const { error } = await db.from("alimentacao_lote").insert({
           fazenda_id: fazendaId,
-          tipo: "despesa",
-          descricao: `Alimentação do lote ${lote} (${dataCurta(data)})`,
-          valor: custoDia,
+          lote: loteAlvo,
           data,
-          categoria: "racao",
-          lote,
+          ...camposAlimento,
+          custo_dia: custo > 0 ? custoPorLote : null,
+          observacoes: observacoes.trim() || null,
         } as never);
-        if (erroDespesa) throw erroDespesa;
+        if (error) throw error;
+      }
+
+      // Custo do dia também entra como despesa (igual ao fluxo manual de
+      // "Registrar custo"), uma por lote — ou uma só, sem lote, quando a
+      // rotina vale pro rebanho todo — assim já soma no custo acumulado e
+      // na margem estimada sem precisar lançar duas vezes.
+      if (custo > 0) {
+        for (const loteAlvo of lotesAlvo) {
+          const descricaoAlvo = loteAlvo ? `lote ${loteAlvo}` : "todo o rebanho";
+          const { error: erroDespesa } = await db.from("financeiro_lancamentos").insert({
+            fazenda_id: fazendaId,
+            tipo: "despesa",
+            descricao: `Alimentação — ${descricaoAlvo} (${dataCurta(data)})`,
+            valor: custoPorLote,
+            data,
+            categoria: "racao",
+            lote: loteAlvo,
+          } as never);
+          if (erroDespesa) throw erroDespesa;
+        }
       }
     },
     onSuccess: () => {
-      toast.success("Alimentação do lote registrada.");
+      toast.success("Rotina de alimentação registrada.");
       onSalvo();
       onFechar();
     },
-    onError: () => toast.error("Não conseguimos salvar agora. Tente novamente."),
+    onError: (erro: Error) =>
+      toast.error(erro.message || "Não conseguimos salvar agora. Tente novamente."),
   });
 
   return (
     <Dialog open={aberto} onOpenChange={(v) => !v && onFechar()}>
-      <DialogContent key={lote}>
+      <DialogContent className="max-h-[85vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Registrar alimentação do lote</DialogTitle>
+          <DialogTitle>Rotina de alimentação</DialogTitle>
           <DialogDescription>
-            {lote
-              ? `Quilos de forragem, silagem e ração do lote "${lote}" no dia. Se informar o custo do dia, ele também entra como despesa do lote.`
-              : ""}
+            Registre quanto cada tipo de alimento é oferecido por dia — pro rebanho todo ou só pra
+            lotes específicos. Se informar o custo do dia, ele também entra como despesa.
           </DialogDescription>
         </DialogHeader>
+
         <form
-          id="form-alimentacao-lote"
           className="space-y-4"
           onSubmit={(e) => {
             e.preventDefault();
-            salvar.mutate(new FormData(e.currentTarget));
+            salvar.mutate();
           }}
         >
           <div className="space-y-1.5">
             <Label htmlFor="alim-data">Data</Label>
-            <Input id="alim-data" name="data" type="date" defaultValue={hojeISO()} required />
+            <Input
+              id="alim-data"
+              type="date"
+              value={data}
+              onChange={(ev) => setData(ev.target.value)}
+              required
+            />
           </div>
-          <div className="grid gap-3 sm:grid-cols-3">
-            <div className="space-y-1.5">
-              <Label htmlFor="alim-forragem">Forragem (kg/dia)</Label>
-              <Input id="alim-forragem" name="forragem_kg" type="number" step="0.1" min="0" />
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="alim-silagem">Silagem (kg/dia)</Label>
-              <Input id="alim-silagem" name="silagem_kg" type="number" step="0.1" min="0" />
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="alim-racao">Ração concentrada (kg/dia)</Label>
-              <Input id="alim-racao" name="racao_kg" type="number" step="0.1" min="0" />
+
+          <div className="space-y-1.5">
+            <Label>Essa rotina vale para</Label>
+            <div className="flex gap-2">
+              <Button
+                type="button"
+                size="sm"
+                variant={escopo === "rebanho" ? "default" : "outline"}
+                onClick={() => setEscopo("rebanho")}
+              >
+                Todo o rebanho
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant={escopo === "lotes" ? "default" : "outline"}
+                onClick={() => setEscopo("lotes")}
+              >
+                Selecionar lotes
+              </Button>
             </div>
           </div>
+
+          {escopo === "lotes" ? (
+            <div className="rounded-lg border border-border bg-muted p-3">
+              <p className="text-xs font-semibold">Lotes desta rotina</p>
+              {lotesDisponiveis.length === 0 ? (
+                <p className="mt-1 text-xs text-muted-foreground">Nenhum lote disponível ainda.</p>
+              ) : (
+                <ul className="mt-2 max-h-36 space-y-1.5 overflow-y-auto">
+                  {lotesDisponiveis.map((nome) => (
+                    <li key={nome} className="flex items-center gap-2">
+                      <Checkbox
+                        id={`alim-lote-${nome}`}
+                        checked={lotesSelecionados.includes(nome)}
+                        onCheckedChange={() => alternarLote(nome)}
+                      />
+                      <Label htmlFor={`alim-lote-${nome}`} className="text-xs font-normal">
+                        {nome}
+                      </Label>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          ) : null}
+
+          <div className="space-y-2">
+            <Label>Alimentos oferecidos</Label>
+            {TIPOS_ALIMENTO.map((t) => (
+              <div
+                key={t.chave}
+                className="flex flex-wrap items-center gap-2 rounded-lg border border-border p-2"
+              >
+                <Checkbox
+                  id={`alim-tipo-${t.chave}`}
+                  checked={tipos[t.chave].ativo}
+                  onCheckedChange={() => alternarTipo(t.chave)}
+                />
+                <Label htmlFor={`alim-tipo-${t.chave}`} className="min-w-28 text-sm font-normal">
+                  {t.rotulo}
+                </Label>
+                {tipos[t.chave].ativo ? (
+                  <>
+                    {t.chave === "outro" ? (
+                      <Input
+                        value={tipos.outro.descricao}
+                        onChange={(ev) => atualizarTipo("outro", "descricao", ev.target.value)}
+                        placeholder="O que é?"
+                        className="h-8 w-32 text-xs"
+                      />
+                    ) : null}
+                    <Input
+                      type="number"
+                      step="0.1"
+                      min="0"
+                      value={tipos[t.chave].kg}
+                      onChange={(ev) => atualizarTipo(t.chave, "kg", ev.target.value)}
+                      placeholder="kg/dia"
+                      className="h-8 w-24 text-xs"
+                    />
+                  </>
+                ) : null}
+              </div>
+            ))}
+          </div>
+
           <div className="space-y-1.5">
             <Label htmlFor="alim-custo">Custo do dia (R$, opcional)</Label>
-            <Input id="alim-custo" name="custo_dia" type="number" step="0.01" min="0" />
+            <Input
+              id="alim-custo"
+              type="number"
+              step="0.01"
+              min="0"
+              value={custoDia}
+              onChange={(ev) => setCustoDia(ev.target.value)}
+            />
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="alim-observacoes">Observações (opcional)</Label>
-            <Input id="alim-observacoes" name="observacoes" placeholder="Opcional" />
+            <Input
+              id="alim-observacoes"
+              value={observacoes}
+              onChange={(ev) => setObservacoes(ev.target.value)}
+              placeholder="Opcional"
+            />
           </div>
         </form>
         <DialogFooter>
           <Button variant="outline" type="button" onClick={onFechar}>
             Cancelar
           </Button>
-          <Button type="submit" form="form-alimentacao-lote" disabled={salvar.isPending}>
-            {salvar.isPending ? "Salvando..." : "Salvar alimentação"}
+          <Button type="button" disabled={salvar.isPending} onClick={() => salvar.mutate()}>
+            {salvar.isPending ? "Salvando..." : "Salvar rotina"}
           </Button>
         </DialogFooter>
       </DialogContent>
