@@ -145,13 +145,13 @@ export function AppShell({
             to="/inicio"
             className={cn("flex min-w-0 items-center gap-2", colapsada ? "" : "flex-1")}
           >
-            <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground">
-              <Sprout className="size-4" aria-hidden="true" />
+            <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-card">
+              <img src="/logo-icon.png" alt="" className="size-6" />
             </span>
             {!colapsada ? (
               <span className="min-w-0 leading-tight">
                 <span className="block truncate font-display text-sm font-extrabold">
-                  Curral Online
+                  Easy Agro
                 </span>
                 <span className="block truncate text-xs text-muted-foreground">
                   {fazenda?.nome ?? "Carregando fazenda..."}
@@ -306,11 +306,11 @@ export function AppShell({
         <header className="sticky top-0 z-30 border-b border-border bg-card/95 backdrop-blur md:hidden">
           <div className="flex items-center justify-between gap-3 px-4 py-3">
             <Link to="/inicio" className="flex items-center gap-2">
-              <span className="flex size-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
-                <Sprout className="size-4" aria-hidden="true" />
+              <span className="flex size-8 items-center justify-center rounded-lg bg-card">
+                <img src="/logo-icon.png" alt="" className="size-6" />
               </span>
               <span className="leading-tight">
-                <span className="block font-display text-sm font-extrabold">Curral Online</span>
+                <span className="block font-display text-sm font-extrabold">Easy Agro</span>
                 <span className="block text-xs text-muted-foreground">
                   {fazenda?.nome ?? "Carregando fazenda..."}
                 </span>

@@ -1,6 +1,6 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
-import { Loader2, MailCheck, Sprout } from "lucide-react";
+import { Loader2, MailCheck } from "lucide-react";
 import { toast } from "sonner";
 import { db } from "@/lib/local-db";
 import { Button } from "@/components/ui/button";
@@ -30,7 +30,7 @@ export const Route = createFileRoute("/verificar-email")({
   }),
   head: () => ({
     meta: [
-      { title: "Confirme seu e-mail — Curral Online" },
+      { title: "Confirme seu e-mail — Easy Agro" },
       {
         name: "description",
         content: "Digite o código de 6 dígitos que enviamos para o seu e-mail.",
@@ -192,10 +192,10 @@ function VerificarEmail() {
     <div className="flex min-h-screen flex-col bg-background">
       <header className="mx-auto flex w-full max-w-6xl items-center justify-between px-5 py-5">
         <Link to="/" className="flex items-center gap-2">
-          <span className="flex size-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
-            <Sprout className="size-4" aria-hidden="true" />
+          <span className="flex size-8 items-center justify-center rounded-lg bg-card">
+            <img src="/logo-icon.png" alt="" className="size-6" />
           </span>
-          <span className="font-display text-sm font-extrabold">Curral Online</span>
+          <span className="font-display text-sm font-extrabold">Easy Agro</span>
         </Link>
       </header>
 

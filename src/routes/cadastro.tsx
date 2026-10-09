@@ -1,6 +1,6 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
-import { ArrowLeft, ArrowRight, Check, Loader2, Sprout, User, Users } from "lucide-react";
+import { ArrowLeft, ArrowRight, Check, Loader2, User, Users } from "lucide-react";
 import { db } from "@/lib/local-db";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -12,16 +12,16 @@ import { PLANOS } from "@/lib/planos";
 export const Route = createFileRoute("/cadastro")({
   head: () => ({
     meta: [
-      { title: "Criar conta grátis — Curral Online" },
+      { title: "Criar conta grátis — Easy Agro" },
       {
         name: "description",
         content:
           "Crie sua conta em 4 passos e comece a controlar o rebanho com até 10 cabeças grátis.",
       },
-      { property: "og:title", content: "Criar conta grátis — Curral Online" },
+      { property: "og:title", content: "Criar conta grátis — Easy Agro" },
       {
         property: "og:description",
-        content: "Cadastro guiado em 4 passos para começar a usar o Curral Online.",
+        content: "Cadastro guiado em 4 passos para começar a usar o Easy Agro.",
       },
     ],
   }),
@@ -110,10 +110,10 @@ function Cadastro() {
     <div className="flex min-h-screen flex-col bg-background">
       <header className="mx-auto flex w-full max-w-6xl items-center justify-between px-5 py-5">
         <Link to="/" className="flex items-center gap-2">
-          <span className="flex size-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
-            <Sprout className="size-4" aria-hidden="true" />
+          <span className="flex size-8 items-center justify-center rounded-lg bg-card">
+            <img src="/logo-icon.png" alt="" className="size-6" />
           </span>
-          <span className="font-display text-sm font-extrabold">Curral Online</span>
+          <span className="font-display text-sm font-extrabold">Easy Agro</span>
         </Link>
         <Button variant="ghost" size="sm" asChild>
           <Link to="/auth">Já tenho conta</Link>

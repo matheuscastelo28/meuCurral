@@ -3,7 +3,7 @@
  *
  * Configure no ambiente:
  *   RESEND_API_KEY — chave da API do Resend
- *   EMAIL_FROM     — remetente, ex: "Curral Online <nao-responda@seudominio.com.br>"
+ *   EMAIL_FROM     — remetente, ex: "Easy Agro <nao-responda@seudominio.com.br>"
  *
  * Sem RESEND_API_KEY configurada em desenvolvimento, o código de verificação
  * é apenas escrito no log do servidor (nunca enviado ao navegador), para dar
@@ -18,7 +18,7 @@ export function chaveEmail(): string | null {
 }
 
 function remetenteEmail(): string {
-  return process.env["EMAIL_FROM"] ?? "Curral Online <onboarding@resend.dev>";
+  return process.env["EMAIL_FROM"] ?? "Easy Agro <onboarding@resend.dev>";
 }
 
 async function enviarEmail({
@@ -84,7 +84,7 @@ function emailVerificacaoHtml({ nome, codigo }: { nome: string | null; codigo: s
                       🌱
                     </td>
                     <td style="padding-left:10px;color:#ffffff;font-size:15px;font-weight:800;letter-spacing:-0.01em;">
-                      Curral Online
+                      Easy Agro
                     </td>
                   </tr>
                 </table>
@@ -131,7 +131,7 @@ function emailVerificacaoHtml({ nome, codigo }: { nome: string | null; codigo: s
               <td style="padding:24px 32px 32px;">
                 <hr style="border:none;border-top:1px solid #ece9df;margin:0 0 20px;" />
                 <p style="margin:0;font-size:12px;color:#a3ac9f;">
-                  Curral Online — gestão de rebanho, manejo e produção da sua fazenda.
+                  Easy Agro — gestão de rebanho, manejo e produção da sua fazenda.
                 </p>
               </td>
             </tr>

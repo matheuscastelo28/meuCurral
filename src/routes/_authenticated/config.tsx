@@ -15,12 +15,12 @@ import { SecaoDados } from "@/components/config/SecaoDados";
 export const Route = createFileRoute("/_authenticated/config")({
   head: () => ({
     meta: [
-      { title: "Configurações — Curral Online" },
+      { title: "Configurações — Easy Agro" },
       {
         name: "description",
         content: "Dados da fazenda, perfil, segurança, preferências e dados da conta.",
       },
-      { property: "og:title", content: "Configurações — Curral Online" },
+      { property: "og:title", content: "Configurações — Easy Agro" },
       { property: "og:description", content: "Ajuste a fazenda, o perfil e as preferências." },
       { name: "robots", content: "noindex" },
     ],

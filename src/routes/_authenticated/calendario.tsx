@@ -168,12 +168,12 @@ function FinanceiroAgendaItem({
 export const Route = createFileRoute("/_authenticated/calendario")({
   head: () => ({
     meta: [
-      { title: "Agenda — Curral Online" },
+      { title: "Agenda — Easy Agro" },
       {
         name: "description",
         content: "Agenda de vacinação, pesagem, partos e outros compromissos da fazenda.",
       },
-      { property: "og:title", content: "Agenda — Curral Online" },
+      { property: "og:title", content: "Agenda — Easy Agro" },
       { property: "og:description", content: "Agenda da fazenda." },
       { name: "robots", content: "noindex" },
     ],

@@ -1,6 +1,6 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
-import { Loader2, Sprout } from "lucide-react";
+import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { db } from "@/lib/local-db";
 import { Button } from "@/components/ui/button";
@@ -11,10 +11,10 @@ import { PasswordField } from "@/components/PasswordField";
 export const Route = createFileRoute("/auth")({
   head: () => ({
     meta: [
-      { title: "Entrar — Curral Online" },
-      { name: "description", content: "Acesse sua fazenda no Curral Online." },
-      { property: "og:title", content: "Entrar — Curral Online" },
-      { property: "og:description", content: "Acesse sua fazenda no Curral Online." },
+      { title: "Entrar — Easy Agro" },
+      { name: "description", content: "Acesse sua fazenda no Easy Agro." },
+      { property: "og:title", content: "Entrar — Easy Agro" },
+      { property: "og:description", content: "Acesse sua fazenda no Easy Agro." },
       { name: "robots", content: "noindex" },
     ],
   }),
@@ -64,7 +64,9 @@ function Login() {
           return;
         }
         if (err.code === "cadastro_incompleto") {
-          setErro("Esse cadastro não foi concluído. Crie a conta novamente para receber um novo código.");
+          setErro(
+            "Esse cadastro não foi concluído. Crie a conta novamente para receber um novo código.",
+          );
           return;
         }
         throw error;
@@ -104,10 +106,10 @@ function Login() {
     <div className="flex min-h-screen flex-col bg-background">
       <header className="mx-auto flex w-full max-w-6xl items-center justify-between px-5 py-5">
         <Link to="/" className="flex items-center gap-2">
-          <span className="flex size-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
-            <Sprout className="size-4" aria-hidden="true" />
+          <span className="flex size-8 items-center justify-center rounded-lg bg-card">
+            <img src="/logo-icon.png" alt="" className="size-6" />
           </span>
-          <span className="font-display text-sm font-extrabold">Curral Online</span>
+          <span className="font-display text-sm font-extrabold">Easy Agro</span>
         </Link>
       </header>
 

@@ -80,12 +80,12 @@ interface AlimentacaoRow {
 export const Route = createFileRoute("/_authenticated/engorda")({
   head: () => ({
     meta: [
-      { title: "Engorda — Curral Online" },
+      { title: "Engorda — Easy Agro" },
       {
         name: "description",
         content: "Acompanhamento de peso, GMD, custo e venda do lote em engorda.",
       },
-      { property: "og:title", content: "Engorda — Curral Online" },
+      { property: "og:title", content: "Engorda — Easy Agro" },
       { property: "og:description", content: "Pesagens, GMD, custo e venda por lote em engorda." },
       { name: "robots", content: "noindex" },
     ],
