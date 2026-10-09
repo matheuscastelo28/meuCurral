@@ -6,10 +6,12 @@ import {
   Beef,
   Coins,
   Layers,
+  Pencil,
   Plus,
   Scale,
   Skull,
   Tag,
+  Trash2,
   TrendingUp,
   Weight,
   Wheat,
@@ -33,6 +35,16 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart";
 import { useFazenda } from "@/hooks/use-fazenda";
 import { useIndicesRebanho } from "@/hooks/use-indices-rebanho";
@@ -50,6 +62,20 @@ import { encontrarPrecoVigente } from "@/lib/precos-produto";
 
 const KG_POR_ARROBA = 15;
 const SEM_LOTE = "Sem lote";
+
+interface AlimentacaoRow {
+  id: string;
+  lote: string | null;
+  data: string;
+  forragem_kg: number | string | null;
+  silagem_kg: number | string | null;
+  racao_kg: number | string | null;
+  outro_kg: number | string | null;
+  outro_descricao: string | null;
+  custo_dia: number | string | null;
+  observacoes: string | null;
+  despesa_id: string | null;
+}
 
 export const Route = createFileRoute("/_authenticated/engorda")({
   head: () => ({
@@ -151,7 +177,7 @@ function Engorda() {
       const { data, error } = await db
         .from("alimentacao_lote")
         .select(
-          "id, lote, data, forragem_kg, silagem_kg, racao_kg, outro_kg, outro_descricao, custo_dia, observacoes",
+          "id, lote, data, forragem_kg, silagem_kg, racao_kg, outro_kg, outro_descricao, custo_dia, observacoes, despesa_id",
         )
         .eq("fazenda_id", fazenda!.id)
         .order("data", { ascending: false })
@@ -454,6 +480,31 @@ function Engorda() {
   );
   const ultimaAlimentacao = alimentacaoDoLoteAtual[0] ?? null;
 
+  const [alimentacaoEditando, setAlimentacaoEditando] = useState<AlimentacaoRow | null>(null);
+  const [alimentacaoExcluindo, setAlimentacaoExcluindo] = useState<AlimentacaoRow | null>(null);
+
+  const excluirAlimentacao = useMutation({
+    mutationFn: async (registro: AlimentacaoRow) => {
+      // Apaga a despesa vinculada primeiro (se existir) — assim o custo
+      // acumulado do lote já sai correto sem deixar lançamento órfão.
+      if (registro.despesa_id) {
+        const { error: erroDespesa } = await db
+          .from("financeiro_lancamentos")
+          .delete()
+          .eq("id", registro.despesa_id);
+        if (erroDespesa) throw erroDespesa;
+      }
+      const { error } = await db.from("alimentacao_lote").delete().eq("id", registro.id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      toast.success("Registro de alimentação excluído.");
+      setAlimentacaoExcluindo(null);
+      invalidarEngordaGeral();
+    },
+    onError: () => toast.error("Não conseguimos excluir agora. Tente novamente."),
+  });
+
   const [pesoMetaAbate, setPesoMetaAbate] = useState("");
   useEffect(() => {
     setPesoMetaAbate("");
@@ -640,13 +691,47 @@ function Engorda() {
       </div>
 
       <DialogAlimentacaoLote
-        aberto={alimentacaoLoteAberto}
-        onFechar={() => setAlimentacaoLoteAberto(false)}
+        aberto={alimentacaoLoteAberto || !!alimentacaoEditando}
+        onFechar={() => {
+          setAlimentacaoLoteAberto(false);
+          setAlimentacaoEditando(null);
+        }}
         loteInicial={null}
         lotesDisponiveis={lotes.map((l) => l.nome)}
+        registroEditar={alimentacaoEditando}
         fazendaId={fazenda?.id}
         onSalvo={invalidarEngordaGeral}
       />
+
+      <AlertDialog
+        open={!!alimentacaoExcluindo}
+        onOpenChange={(v) => !v && setAlimentacaoExcluindo(null)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Excluir registro de alimentação?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {alimentacaoExcluindo
+                ? `Remove o registro de ${dataCurta(alimentacaoExcluindo.data)}${
+                    alimentacaoExcluindo.lote
+                      ? ` do lote "${alimentacaoExcluindo.lote}"`
+                      : " (todo o rebanho)"
+                  }. ${alimentacaoExcluindo.despesa_id ? "A despesa gerada por ele também é removida." : ""}`
+                : ""}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Voltar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() =>
+                alimentacaoExcluindo && excluirAlimentacao.mutate(alimentacaoExcluindo)
+              }
+            >
+              Excluir
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {(animais.data?.length ?? 0) === 0 ? (
         <EmptyState
@@ -921,6 +1006,53 @@ function Engorda() {
                         Nenhuma alimentação registrada ainda para este lote.
                       </p>
                     )}
+
+                    {alimentacaoDoLoteAtual.length > 0 ? (
+                      <div className="mt-3 border-t border-border pt-2">
+                        <p className="text-[11px] font-semibold text-muted-foreground">Histórico</p>
+                        <ul className="mt-1.5 max-h-36 space-y-1.5 overflow-y-auto">
+                          {alimentacaoDoLoteAtual.slice(0, 10).map((a) => (
+                            <li
+                              key={a.id}
+                              className="flex items-center justify-between gap-2 rounded-md bg-card px-2 py-1.5 text-xs"
+                            >
+                              <div className="min-w-0">
+                                <p className="truncate font-medium">
+                                  {dataCurta(a.data)}
+                                  {a.lote === null ? " · todo o rebanho" : ""}
+                                </p>
+                                <p className="truncate text-muted-foreground">
+                                  {resumoAlimentacao(a)}
+                                  {a.custo_dia !== null ? ` · ${moeda(Number(a.custo_dia))}` : ""}
+                                </p>
+                              </div>
+                              <div className="flex shrink-0 gap-0.5">
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="icon"
+                                  className="size-6"
+                                  onClick={() => setAlimentacaoEditando(a)}
+                                  aria-label="Editar registro de alimentação"
+                                >
+                                  <Pencil className="size-3.5" aria-hidden="true" />
+                                </Button>
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="icon"
+                                  className="size-6 text-destructive hover:text-destructive"
+                                  onClick={() => setAlimentacaoExcluindo(a)}
+                                  aria-label="Excluir registro de alimentação"
+                                >
+                                  <Trash2 className="size-3.5" aria-hidden="true" />
+                                </Button>
+                              </div>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    ) : null}
 
                     <div className="mt-3 space-y-1.5">
                       <Label htmlFor="peso-meta-abate" className="text-xs">
@@ -1304,6 +1436,19 @@ function Engorda() {
       )}
     </AppShell>
   );
+}
+
+function resumoAlimentacao(a: AlimentacaoRow) {
+  const partes: string[] = [];
+  if (a.forragem_kg !== null)
+    partes.push(`Forragem ${Number(a.forragem_kg).toLocaleString("pt-BR")}kg`);
+  if (a.silagem_kg !== null)
+    partes.push(`Silagem ${Number(a.silagem_kg).toLocaleString("pt-BR")}kg`);
+  if (a.racao_kg !== null) partes.push(`Ração ${Number(a.racao_kg).toLocaleString("pt-BR")}kg`);
+  if (a.outro_kg !== null) {
+    partes.push(`${a.outro_descricao || "Outro"} ${Number(a.outro_kg).toLocaleString("pt-BR")}kg`);
+  }
+  return partes.length > 0 ? partes.join(" · ") : "Sem quantidades registradas";
 }
 
 function Kpi({
@@ -1715,11 +1860,19 @@ const TIPOS_ALIMENTO: {
   { chave: "outro", rotulo: "Outro", coluna: "outro_kg" },
 ];
 
+const TIPOS_VAZIOS: Record<TipoAlimento, EstadoTipoAlimento> = {
+  forragem: { ativo: false, kg: "", descricao: "" },
+  silagem: { ativo: false, kg: "", descricao: "" },
+  racao: { ativo: false, kg: "", descricao: "" },
+  outro: { ativo: false, kg: "", descricao: "" },
+};
+
 function DialogAlimentacaoLote({
   aberto,
   onFechar,
   loteInicial,
   lotesDisponiveis,
+  registroEditar,
   fazendaId,
   onSalvo,
 }: {
@@ -1727,36 +1880,58 @@ function DialogAlimentacaoLote({
   onFechar: () => void;
   loteInicial: string | null;
   lotesDisponiveis: string[];
+  registroEditar: AlimentacaoRow | null;
   fazendaId: string | undefined;
   onSalvo: () => void;
 }) {
+  const modoEdicao = !!registroEditar;
+
   const [data, setData] = useState(hojeISO());
   const [escopo, setEscopo] = useState<"rebanho" | "lotes">("lotes");
   const [lotesSelecionados, setLotesSelecionados] = useState<string[]>([]);
-  const [tipos, setTipos] = useState<Record<TipoAlimento, EstadoTipoAlimento>>({
-    forragem: { ativo: false, kg: "", descricao: "" },
-    silagem: { ativo: false, kg: "", descricao: "" },
-    racao: { ativo: false, kg: "", descricao: "" },
-    outro: { ativo: false, kg: "", descricao: "" },
-  });
+  const [tipos, setTipos] = useState<Record<TipoAlimento, EstadoTipoAlimento>>(TIPOS_VAZIOS);
   const [custoDia, setCustoDia] = useState("");
   const [observacoes, setObservacoes] = useState("");
 
   useEffect(() => {
-    if (aberto) {
+    if (!aberto) return;
+    if (registroEditar) {
+      setData(dataISO(registroEditar.data));
+      setEscopo(registroEditar.lote === null ? "rebanho" : "lotes");
+      setLotesSelecionados(registroEditar.lote ? [registroEditar.lote] : []);
+      setTipos({
+        forragem: {
+          ativo: registroEditar.forragem_kg !== null,
+          kg: registroEditar.forragem_kg !== null ? String(registroEditar.forragem_kg) : "",
+          descricao: "",
+        },
+        silagem: {
+          ativo: registroEditar.silagem_kg !== null,
+          kg: registroEditar.silagem_kg !== null ? String(registroEditar.silagem_kg) : "",
+          descricao: "",
+        },
+        racao: {
+          ativo: registroEditar.racao_kg !== null,
+          kg: registroEditar.racao_kg !== null ? String(registroEditar.racao_kg) : "",
+          descricao: "",
+        },
+        outro: {
+          ativo: registroEditar.outro_kg !== null,
+          kg: registroEditar.outro_kg !== null ? String(registroEditar.outro_kg) : "",
+          descricao: registroEditar.outro_descricao ?? "",
+        },
+      });
+      setCustoDia(registroEditar.custo_dia !== null ? String(registroEditar.custo_dia) : "");
+      setObservacoes(registroEditar.observacoes ?? "");
+    } else {
       setData(hojeISO());
       setEscopo("lotes");
       setLotesSelecionados(loteInicial ? [loteInicial] : []);
-      setTipos({
-        forragem: { ativo: false, kg: "", descricao: "" },
-        silagem: { ativo: false, kg: "", descricao: "" },
-        racao: { ativo: false, kg: "", descricao: "" },
-        outro: { ativo: false, kg: "", descricao: "" },
-      });
+      setTipos(TIPOS_VAZIOS);
       setCustoDia("");
       setObservacoes("");
     }
-  }, [aberto, loteInicial]);
+  }, [aberto, loteInicial, registroEditar]);
 
   function alternarTipo(chave: TipoAlimento) {
     setTipos((prev) => ({ ...prev, [chave]: { ...prev[chave], ativo: !prev[chave].ativo } }));
@@ -1809,7 +1984,32 @@ function DialogAlimentacaoLote({
         if (t.chave === "outro") camposAlimento["outro_descricao"] = tipos.outro.descricao.trim();
       }
 
+      // Custo do dia também entra como despesa (igual ao fluxo manual de
+      // "Registrar custo"), uma por lote — ou uma só, sem lote, quando a
+      // rotina vale pro rebanho todo — assim já soma no custo acumulado e
+      // na margem estimada sem precisar lançar duas vezes. A despesa é
+      // criada antes pra o registro de alimentação já nascer com o
+      // despesa_id ligado — sem isso, editar o registro depois não acharia
+      // a despesa e criaria uma nova em vez de atualizar a existente.
       for (const loteAlvo of lotesAlvo) {
+        let despesaId: string | null = null;
+        if (custo > 0) {
+          const descricaoAlvo = loteAlvo ? `lote ${loteAlvo}` : "todo o rebanho";
+          const { data: criadas, error: erroDespesa } = await db
+            .from("financeiro_lancamentos")
+            .insert({
+              fazenda_id: fazendaId,
+              tipo: "despesa",
+              descricao: `Alimentação — ${descricaoAlvo} (${dataCurta(data)})`,
+              valor: custoPorLote,
+              data,
+              categoria: "racao",
+              lote: loteAlvo,
+            } as never);
+          if (erroDespesa) throw erroDespesa;
+          despesaId = (criadas?.[0]?.id as string | undefined) ?? null;
+        }
+
         const { error } = await db.from("alimentacao_lote").insert({
           fazenda_id: fazendaId,
           lote: loteAlvo,
@@ -1817,28 +2017,9 @@ function DialogAlimentacaoLote({
           ...camposAlimento,
           custo_dia: custo > 0 ? custoPorLote : null,
           observacoes: observacoes.trim() || null,
+          despesa_id: despesaId,
         } as never);
         if (error) throw error;
-      }
-
-      // Custo do dia também entra como despesa (igual ao fluxo manual de
-      // "Registrar custo"), uma por lote — ou uma só, sem lote, quando a
-      // rotina vale pro rebanho todo — assim já soma no custo acumulado e
-      // na margem estimada sem precisar lançar duas vezes.
-      if (custo > 0) {
-        for (const loteAlvo of lotesAlvo) {
-          const descricaoAlvo = loteAlvo ? `lote ${loteAlvo}` : "todo o rebanho";
-          const { error: erroDespesa } = await db.from("financeiro_lancamentos").insert({
-            fazenda_id: fazendaId,
-            tipo: "despesa",
-            descricao: `Alimentação — ${descricaoAlvo} (${dataCurta(data)})`,
-            valor: custoPorLote,
-            data,
-            categoria: "racao",
-            lote: loteAlvo,
-          } as never);
-          if (erroDespesa) throw erroDespesa;
-        }
       }
     },
     onSuccess: () => {
@@ -1850,14 +2031,118 @@ function DialogAlimentacaoLote({
       toast.error(erro.message || "Não conseguimos salvar agora. Tente novamente."),
   });
 
+  const atualizar = useMutation({
+    mutationFn: async () => {
+      if (!fazendaId || !registroEditar) return;
+
+      const ativos = TIPOS_ALIMENTO.filter(
+        (t) => tipos[t.chave].ativo && Number(tipos[t.chave].kg) > 0,
+      );
+      if (ativos.length === 0) {
+        throw new Error("Marque ao menos um tipo de alimento e informe a quantidade (kg/dia).");
+      }
+      if (ativos.some((t) => t.chave === "outro") && !tipos.outro.descricao.trim()) {
+        throw new Error('Descreva o que é o alimento marcado como "Outro".');
+      }
+
+      const custo = custoDia ? Number(custoDia) : 0;
+      const camposAlimento: Record<string, number | string | null> = {
+        forragem_kg: null,
+        silagem_kg: null,
+        racao_kg: null,
+        outro_kg: null,
+        outro_descricao: null,
+      };
+      for (const t of ativos) {
+        camposAlimento[t.coluna] = Number(tipos[t.chave].kg);
+        if (t.chave === "outro") camposAlimento["outro_descricao"] = tipos.outro.descricao.trim();
+      }
+
+      const { error } = await db
+        .from("alimentacao_lote")
+        .update({
+          data,
+          ...camposAlimento,
+          custo_dia: custo > 0 ? custo : null,
+          observacoes: observacoes.trim() || null,
+        } as never)
+        .eq("id", registroEditar.id);
+      if (error) throw error;
+
+      // A despesa vinculada acompanha a edição: atualiza se já existia,
+      // cria se passou a ter custo, ou remove se o custo foi zerado —
+      // nunca deixa o custo acumulado do lote dessincronizado do registro.
+      const descricaoAlvo = registroEditar.lote ? `lote ${registroEditar.lote}` : "todo o rebanho";
+      if (registroEditar.despesa_id && custo > 0) {
+        const { error: erroDespesa } = await db
+          .from("financeiro_lancamentos")
+          .update({
+            valor: custo,
+            data,
+            descricao: `Alimentação — ${descricaoAlvo} (${dataCurta(data)})`,
+          } as never)
+          .eq("id", registroEditar.despesa_id);
+        if (erroDespesa) throw erroDespesa;
+      } else if (registroEditar.despesa_id && custo <= 0) {
+        const { error: erroDespesa } = await db
+          .from("financeiro_lancamentos")
+          .delete()
+          .eq("id", registroEditar.despesa_id);
+        if (erroDespesa) throw erroDespesa;
+        const { error: erroLimpar } = await db
+          .from("alimentacao_lote")
+          .update({ despesa_id: null } as never)
+          .eq("id", registroEditar.id);
+        if (erroLimpar) throw erroLimpar;
+      } else if (!registroEditar.despesa_id && custo > 0) {
+        const { data: criadas, error: erroDespesa } = await db
+          .from("financeiro_lancamentos")
+          .insert({
+            fazenda_id: fazendaId,
+            tipo: "despesa",
+            descricao: `Alimentação — ${descricaoAlvo} (${dataCurta(data)})`,
+            valor: custo,
+            data,
+            categoria: "racao",
+            lote: registroEditar.lote,
+          } as never);
+        if (erroDespesa) throw erroDespesa;
+        const novaDespesaId = criadas?.[0]?.id as string | undefined;
+        if (novaDespesaId) {
+          const { error: erroLigar } = await db
+            .from("alimentacao_lote")
+            .update({ despesa_id: novaDespesaId } as never)
+            .eq("id", registroEditar.id);
+          if (erroLigar) throw erroLigar;
+        }
+      }
+    },
+    onSuccess: () => {
+      toast.success("Registro de alimentação atualizado.");
+      onSalvo();
+      onFechar();
+    },
+    onError: (erro: Error) =>
+      toast.error(erro.message || "Não conseguimos salvar agora. Tente novamente."),
+  });
+
+  const salvando = modoEdicao ? atualizar.isPending : salvar.isPending;
+  function enviar() {
+    if (modoEdicao) atualizar.mutate();
+    else salvar.mutate();
+  }
+
   return (
     <Dialog open={aberto} onOpenChange={(v) => !v && onFechar()}>
       <DialogContent className="max-h-[85vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Rotina de alimentação</DialogTitle>
+          <DialogTitle>
+            {modoEdicao ? "Editar registro de alimentação" : "Rotina de alimentação"}
+          </DialogTitle>
           <DialogDescription>
-            Registre quanto cada tipo de alimento é oferecido por dia — pro rebanho todo ou só pra
-            lotes específicos. Se informar o custo do dia, ele também entra como despesa.
+            {modoEdicao
+              ? `${registroEditar?.lote ? `Lote "${registroEditar.lote}"` : "Todo o rebanho"}. Ajuste as quantidades, o custo ou a data deste registro.`
+              : "Registre quanto cada tipo de alimento é oferecido por dia — pro rebanho todo ou só pra lotes específicos. Se informar o custo do dia, ele também entra como despesa."}
           </DialogDescription>
         </DialogHeader>
 
@@ -1865,7 +2150,7 @@ function DialogAlimentacaoLote({
           className="space-y-4"
           onSubmit={(e) => {
             e.preventDefault();
-            salvar.mutate();
+            enviar();
           }}
         >
           <div className="space-y-1.5">
@@ -1879,29 +2164,31 @@ function DialogAlimentacaoLote({
             />
           </div>
 
-          <div className="space-y-1.5">
-            <Label>Essa rotina vale para</Label>
-            <div className="flex gap-2">
-              <Button
-                type="button"
-                size="sm"
-                variant={escopo === "rebanho" ? "default" : "outline"}
-                onClick={() => setEscopo("rebanho")}
-              >
-                Todo o rebanho
-              </Button>
-              <Button
-                type="button"
-                size="sm"
-                variant={escopo === "lotes" ? "default" : "outline"}
-                onClick={() => setEscopo("lotes")}
-              >
-                Selecionar lotes
-              </Button>
+          {!modoEdicao ? (
+            <div className="space-y-1.5">
+              <Label>Essa rotina vale para</Label>
+              <div className="flex gap-2">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant={escopo === "rebanho" ? "default" : "outline"}
+                  onClick={() => setEscopo("rebanho")}
+                >
+                  Todo o rebanho
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant={escopo === "lotes" ? "default" : "outline"}
+                  onClick={() => setEscopo("lotes")}
+                >
+                  Selecionar lotes
+                </Button>
+              </div>
             </div>
-          </div>
+          ) : null}
 
-          {escopo === "lotes" ? (
+          {!modoEdicao && escopo === "lotes" ? (
             <div className="rounded-lg border border-border bg-muted p-3">
               <p className="text-xs font-semibold">Lotes desta rotina</p>
               {lotesDisponiveis.length === 0 ? (
@@ -1990,8 +2277,8 @@ function DialogAlimentacaoLote({
           <Button variant="outline" type="button" onClick={onFechar}>
             Cancelar
           </Button>
-          <Button type="button" disabled={salvar.isPending} onClick={() => salvar.mutate()}>
-            {salvar.isPending ? "Salvando..." : "Salvar rotina"}
+          <Button type="button" disabled={salvando} onClick={enviar}>
+            {salvando ? "Salvando..." : modoEdicao ? "Salvar alterações" : "Salvar rotina"}
           </Button>
         </DialogFooter>
       </DialogContent>

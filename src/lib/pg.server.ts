@@ -327,6 +327,12 @@ alter table alimentacao_lote alter column lote drop not null;
 alter table alimentacao_lote add column if not exists outro_kg numeric;
 alter table alimentacao_lote add column if not exists outro_descricao text;
 
+-- Liga o registro de alimentação à despesa que ele gerou (quando tinha
+-- custo do dia), pra editar/excluir a rotina já arrastar a despesa junto
+-- em vez de deixar um lançamento órfão no financeiro.
+alter table alimentacao_lote add column if not exists despesa_id uuid
+  references financeiro_lancamentos(id) on delete set null;
+
 create index if not exists idx_animais_fazenda on animais(fazenda_id);
 create index if not exists idx_manejos_fazenda on manejos(fazenda_id);
 create index if not exists idx_leite_fazenda on producao_leite(fazenda_id);
