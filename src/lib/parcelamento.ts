@@ -67,3 +67,19 @@ export function statusExibicaoConta(
   if (temAtrasada) return "atrasado";
   return conta.status === "parcial" ? "parcial" : "pendente";
 }
+
+// Um lançamento simples não tem conceito de "parcial" ou "cancelado" — só
+// "pago" (despesa, ou receita já recebida) ou "pendente"/"atrasado"
+// (receita ainda a receber). Aqui ele "empresta" o vocabulário de StatusConta
+// pra entrar na mesma lista/filtro das contas em Financeiro e no resumo do
+// Início. Despesa lançada na mão sempre nasce "pago": quem precisa de
+// controle de "a pagar" usa o próprio formulário com Situação = "A pagar"
+// (vira conta).
+export function statusUnificadoLancamento(
+  l: { tipo: string; status: string; data: string | Date },
+  hoje: string,
+): StatusConta {
+  if (l.tipo !== "receita") return "pago";
+  if (l.status === "recebido") return "pago";
+  return dataISO(l.data) < hoje ? "atrasado" : "pendente";
+}

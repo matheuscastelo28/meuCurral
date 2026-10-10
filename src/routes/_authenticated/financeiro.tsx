@@ -34,6 +34,7 @@ import {
   gerarParcelas,
   statusExibicaoConta,
   statusExibicaoParcela,
+  statusUnificadoLancamento,
   type StatusConta,
   type StatusParcela,
 } from "@/lib/parcelamento";
@@ -80,20 +81,6 @@ const STATUS_INFO_PARCELA: Record<StatusParcela, { rotulo: string; classe: strin
   atrasado: { rotulo: "Atrasado", classe: "bg-destructive/15 text-destructive" },
   cancelado: { rotulo: "Cancelado", classe: "bg-muted text-muted-foreground" },
 };
-
-// Lançamento simples não guarda um status no mesmo vocabulário de conta —
-// aqui ele "empresta" o vocabulário (pendente/pago/atrasado) só pra entrar
-// na lista única com o mesmo filtro de status das contas. Despesa lançada
-// na mão sempre nasce "pago": quem precisa de controle de "a pagar" agora
-// usa o próprio formulário com Situação = "A pagar" (vira conta).
-function statusUnificadoLancamento(
-  l: { tipo: string; status: string; data: string | Date },
-  hoje: string,
-): StatusConta {
-  if (l.tipo !== "receita") return "pago";
-  if (l.status === "recebido") return "pago";
-  return dataISO(l.data) < hoje ? "atrasado" : "pendente";
-}
 
 function StatusBadge({
   status,

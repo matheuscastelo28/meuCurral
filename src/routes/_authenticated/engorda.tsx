@@ -580,7 +580,7 @@ function Engorda() {
         />
       </div>
 
-      <div className="mb-5">
+      <div className="mb-5 grid gap-5 lg:grid-cols-2">
         <CartaoConfig
           id="preco-boi"
           titulo="Preço do boi"
@@ -670,9 +670,7 @@ function Engorda() {
             </Button>
           )}
         </CartaoConfig>
-      </div>
 
-      <div className="mb-5">
         <CartaoConfig
           id="alimentacao"
           titulo="Alimentação"
@@ -1860,6 +1858,31 @@ const TIPOS_ALIMENTO: {
   { chave: "outro", rotulo: "Outro", coluna: "outro_kg" },
 ];
 
+const MAX_OCORRENCIAS = 60;
+
+/**
+ * "Somente hoje" gera 1 data; "diário" avança 1 dia por ocorrência;
+ * "intervalar" avança de `intervaloDias` em `intervaloDias` — mesma lógica
+ * de data por dia de calendário (não por mês) usada em gerarParcelas.
+ */
+function gerarDatasOcorrencias(
+  frequencia: "unico" | "diario" | "intervalar",
+  dataInicio: string,
+  intervaloDias: number,
+  numOcorrencias: number,
+): string[] {
+  if (frequencia === "unico") return [dataInicio];
+  const passo = frequencia === "diario" ? 1 : Math.max(1, intervaloDias);
+  const base = new Date(`${dataInicio}T00:00:00Z`);
+  const datas: string[] = [];
+  for (let i = 0; i < numOcorrencias; i++) {
+    const d = new Date(base);
+    d.setUTCDate(d.getUTCDate() + passo * i);
+    datas.push(d.toISOString().slice(0, 10));
+  }
+  return datas;
+}
+
 const TIPOS_VAZIOS: Record<TipoAlimento, EstadoTipoAlimento> = {
   forragem: { ativo: false, kg: "", descricao: "" },
   silagem: { ativo: false, kg: "", descricao: "" },
@@ -1887,6 +1910,9 @@ function DialogAlimentacaoLote({
   const modoEdicao = !!registroEditar;
 
   const [data, setData] = useState(hojeISO());
+  const [frequencia, setFrequencia] = useState<"unico" | "diario" | "intervalar">("unico");
+  const [numOcorrencias, setNumOcorrencias] = useState("7");
+  const [intervaloDias, setIntervaloDias] = useState("2");
   const [escopo, setEscopo] = useState<"rebanho" | "lotes">("lotes");
   const [lotesSelecionados, setLotesSelecionados] = useState<string[]>([]);
   const [tipos, setTipos] = useState<Record<TipoAlimento, EstadoTipoAlimento>>(TIPOS_VAZIOS);
@@ -1897,6 +1923,7 @@ function DialogAlimentacaoLote({
     if (!aberto) return;
     if (registroEditar) {
       setData(dataISO(registroEditar.data));
+      setFrequencia("unico");
       setEscopo(registroEditar.lote === null ? "rebanho" : "lotes");
       setLotesSelecionados(registroEditar.lote ? [registroEditar.lote] : []);
       setTipos({
@@ -1925,6 +1952,9 @@ function DialogAlimentacaoLote({
       setObservacoes(registroEditar.observacoes ?? "");
     } else {
       setData(hojeISO());
+      setFrequencia("unico");
+      setNumOcorrencias("7");
+      setIntervaloDias("2");
       setEscopo("lotes");
       setLotesSelecionados(loteInicial ? [loteInicial] : []);
       setTipos(TIPOS_VAZIOS);
@@ -1964,6 +1994,13 @@ function DialogAlimentacaoLote({
         throw new Error('Selecione ao menos um lote, ou escolha "Todo o rebanho".');
       }
 
+      const qtdOcorrencias =
+        frequencia === "unico"
+          ? 1
+          : Math.max(1, Math.min(MAX_OCORRENCIAS, Math.floor(Number(numOcorrencias) || 1)));
+      const passoDias = Math.max(1, Math.floor(Number(intervaloDias) || 1));
+      const datasOcorrencias = gerarDatasOcorrencias(frequencia, data, passoDias, qtdOcorrencias);
+
       const custo = custoDia ? Number(custoDia) : 0;
       // Custo informado pra "todo o rebanho" não é de nenhum lote específico
       // (lançamento sem lote); pra vários lotes selecionados, divide o custo
@@ -1985,41 +2022,47 @@ function DialogAlimentacaoLote({
       }
 
       // Custo do dia também entra como despesa (igual ao fluxo manual de
-      // "Registrar custo"), uma por lote — ou uma só, sem lote, quando a
-      // rotina vale pro rebanho todo — assim já soma no custo acumulado e
-      // na margem estimada sem precisar lançar duas vezes. A despesa é
-      // criada antes pra o registro de alimentação já nascer com o
-      // despesa_id ligado — sem isso, editar o registro depois não acharia
-      // a despesa e criaria uma nova em vez de atualizar a existente.
+      // "Registrar custo"), uma por lote por ocorrência — ou uma só, sem
+      // lote, quando a rotina vale pro rebanho todo — assim já soma no
+      // custo acumulado e na margem estimada sem precisar lançar duas
+      // vezes. A despesa é criada antes pra o registro de alimentação já
+      // nascer com o despesa_id ligado — sem isso, editar o registro
+      // depois não acharia a despesa e criaria uma nova em vez de
+      // atualizar a existente. "Diário"/"intervalar" repetem a mesma
+      // rotina (mesmas quantidades e mesmo custo do dia) em cada data
+      // gerada — o custo não é dividido entre as ocorrências, só entre os
+      // lotes marcados na mesma rotina.
       for (const loteAlvo of lotesAlvo) {
-        let despesaId: string | null = null;
-        if (custo > 0) {
-          const descricaoAlvo = loteAlvo ? `lote ${loteAlvo}` : "todo o rebanho";
-          const { data: criadas, error: erroDespesa } = await db
-            .from("financeiro_lancamentos")
-            .insert({
-              fazenda_id: fazendaId,
-              tipo: "despesa",
-              descricao: `Alimentação — ${descricaoAlvo} (${dataCurta(data)})`,
-              valor: custoPorLote,
-              data,
-              categoria: "racao",
-              lote: loteAlvo,
-            } as never);
-          if (erroDespesa) throw erroDespesa;
-          despesaId = (criadas?.[0]?.id as string | undefined) ?? null;
-        }
+        for (const dataOcorrencia of datasOcorrencias) {
+          let despesaId: string | null = null;
+          if (custo > 0) {
+            const descricaoAlvo = loteAlvo ? `lote ${loteAlvo}` : "todo o rebanho";
+            const { data: criadas, error: erroDespesa } = await db
+              .from("financeiro_lancamentos")
+              .insert({
+                fazenda_id: fazendaId,
+                tipo: "despesa",
+                descricao: `Alimentação — ${descricaoAlvo} (${dataCurta(dataOcorrencia)})`,
+                valor: custoPorLote,
+                data: dataOcorrencia,
+                categoria: "racao",
+                lote: loteAlvo,
+              } as never);
+            if (erroDespesa) throw erroDespesa;
+            despesaId = (criadas?.[0]?.id as string | undefined) ?? null;
+          }
 
-        const { error } = await db.from("alimentacao_lote").insert({
-          fazenda_id: fazendaId,
-          lote: loteAlvo,
-          data,
-          ...camposAlimento,
-          custo_dia: custo > 0 ? custoPorLote : null,
-          observacoes: observacoes.trim() || null,
-          despesa_id: despesaId,
-        } as never);
-        if (error) throw error;
+          const { error } = await db.from("alimentacao_lote").insert({
+            fazenda_id: fazendaId,
+            lote: loteAlvo,
+            data: dataOcorrencia,
+            ...camposAlimento,
+            custo_dia: custo > 0 ? custoPorLote : null,
+            observacoes: observacoes.trim() || null,
+            despesa_id: despesaId,
+          } as never);
+          if (error) throw error;
+        }
       }
     },
     onSuccess: () => {
@@ -2153,16 +2196,102 @@ function DialogAlimentacaoLote({
             enviar();
           }}
         >
-          <div className="space-y-1.5">
-            <Label htmlFor="alim-data">Data</Label>
-            <Input
-              id="alim-data"
-              type="date"
-              value={data}
-              onChange={(ev) => setData(ev.target.value)}
-              required
-            />
-          </div>
+          {modoEdicao ? (
+            <div className="space-y-1.5">
+              <Label htmlFor="alim-data">Data</Label>
+              <Input
+                id="alim-data"
+                type="date"
+                value={data}
+                onChange={(ev) => setData(ev.target.value)}
+                required
+              />
+            </div>
+          ) : (
+            <>
+              <div className="space-y-1.5">
+                <Label>Frequência</Label>
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant={frequencia === "unico" ? "default" : "outline"}
+                    onClick={() => {
+                      setFrequencia("unico");
+                      setData(hojeISO());
+                    }}
+                  >
+                    Somente hoje
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant={frequencia === "diario" ? "default" : "outline"}
+                    onClick={() => setFrequencia("diario")}
+                  >
+                    Diário
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant={frequencia === "intervalar" ? "default" : "outline"}
+                    onClick={() => setFrequencia("intervalar")}
+                  >
+                    Intervalar
+                  </Button>
+                </div>
+              </div>
+
+              {frequencia === "unico" ? (
+                <p className="text-xs text-muted-foreground">
+                  Um registro só, com data de hoje ({dataCurta(hojeISO())}).
+                </p>
+              ) : (
+                <div className="flex flex-wrap items-start gap-3">
+                  <div className="min-w-[160px] flex-1 space-y-1.5">
+                    <Label htmlFor="alim-data-inicio">Data de início</Label>
+                    <Input
+                      id="alim-data-inicio"
+                      type="date"
+                      value={data}
+                      onChange={(ev) => setData(ev.target.value)}
+                      required
+                    />
+                  </div>
+                  {frequencia === "intervalar" ? (
+                    <div className="min-w-[120px] space-y-1.5">
+                      <Label htmlFor="alim-intervalo">Intervalo (dias)</Label>
+                      <Input
+                        id="alim-intervalo"
+                        type="number"
+                        min="1"
+                        max="90"
+                        step="1"
+                        value={intervaloDias}
+                        onChange={(ev) => setIntervaloDias(ev.target.value)}
+                      />
+                    </div>
+                  ) : null}
+                  <div className="min-w-[140px] space-y-1.5">
+                    <Label htmlFor="alim-ocorrencias">
+                      {frequencia === "diario"
+                        ? "Repetir por quantos dias"
+                        : "Repetir quantas vezes"}
+                    </Label>
+                    <Input
+                      id="alim-ocorrencias"
+                      type="number"
+                      min="1"
+                      max={MAX_OCORRENCIAS}
+                      step="1"
+                      value={numOcorrencias}
+                      onChange={(ev) => setNumOcorrencias(ev.target.value)}
+                    />
+                  </div>
+                </div>
+              )}
+            </>
+          )}
 
           {!modoEdicao ? (
             <div className="space-y-1.5">

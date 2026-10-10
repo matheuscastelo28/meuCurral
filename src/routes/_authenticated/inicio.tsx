@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { useFazenda } from "@/hooks/use-fazenda";
 import { dataCurta, hojeISO, moeda as formatarMoeda } from "@/lib/formato";
 import { usePreferencias } from "@/hooks/use-preferencias";
+import { useResumoFinanceiro } from "@/hooks/use-resumo-financeiro";
 
 export const Route = createFileRoute("/_authenticated/inicio")({
   head: () => ({
@@ -34,7 +35,7 @@ function Inicio() {
     enabled: !!fazendaId,
     queryFn: async () => {
       const hoje = hojeISO();
-      const [animais, eventos, leite, lancamentos] = await Promise.all([
+      const [animais, eventos, leite] = await Promise.all([
         db.from("animais").select("id, categoria, status").eq("fazenda_id", fazendaId!),
         db
           .from("eventos_agenda")
@@ -45,32 +46,20 @@ function Inicio() {
           .gte("data", hoje)
           .order("data")
           .limit(5),
-        db
-          .from("producao_leite")
-          .select("litros")
-          .eq("fazenda_id", fazendaId!)
-          .eq("data", hoje),
-        db
-          .from("financeiro_lancamentos")
-          .select("tipo, valor, data")
-          .eq("fazenda_id", fazendaId!)
-          .gte("data", hoje.slice(0, 8) + "01"),
+        db.from("producao_leite").select("litros").eq("fazenda_id", fazendaId!).eq("data", hoje),
       ]);
-      const receitas = (lancamentos.data ?? [])
-        .filter((l) => l.tipo === "receita")
-        .reduce((s, l) => s + Number(l.valor), 0);
-      const despesas = (lancamentos.data ?? [])
-        .filter((l) => l.tipo === "despesa")
-        .reduce((s, l) => s + Number(l.valor), 0);
       return {
         animais: animais.data ?? [],
         eventos: eventos.data ?? [],
         leiteHoje: (leite.data ?? []).reduce((s, l) => s + Number(l.litros), 0),
-        receitas,
-        despesas,
       };
     },
   });
+
+  // Mesmos números dos cards "Recebido"/"Despesas" da aba Financeiro — não
+  // é só o que foi lançado no mês, é o total realizado (lançamento simples
+  // + parte já paga de cada conta), pra bater com o que o produtor vê lá.
+  const financeiroResumo = useResumoFinanceiro(fazendaId);
 
   const animais = resumo.data?.animais ?? [];
   // Vendido/morto não contam no rebanho ativo — mesmo critério de
@@ -122,18 +111,22 @@ function Inicio() {
               rotulo="Leite hoje"
               valor={`${(resumo.data?.leiteHoje ?? 0).toLocaleString("pt-BR")} L`}
             />
-            <Cartao
-              icon={TrendingUp}
-              rotulo="Receitas do mês"
-              valor={moeda(resumo.data?.receitas)}
-              tom="ok"
-            />
-            <Cartao
-              icon={TrendingDown}
-              rotulo="Despesas do mês"
-              valor={moeda(resumo.data?.despesas)}
-              tom="alerta"
-            />
+            <Link to="/financeiro" className="block">
+              <Cartao
+                icon={TrendingUp}
+                rotulo="Recebido"
+                valor={moeda(financeiroResumo.data?.recebido)}
+                tom="ok"
+              />
+            </Link>
+            <Link to="/financeiro" className="block">
+              <Cartao
+                icon={TrendingDown}
+                rotulo="Despesas"
+                valor={moeda(financeiroResumo.data?.despesas)}
+                tom="alerta"
+              />
+            </Link>
           </div>
 
           <div className="grid gap-4 lg:grid-cols-2">
