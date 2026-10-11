@@ -1,13 +1,14 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Beef, Plus, Search } from "lucide-react";
+import { Beef, Plus, Search, Users, X } from "lucide-react";
 import { toast } from "sonner";
 import { db } from "@/lib/local-db";
 import { AppShell } from "@/components/AppShell";
 import { EmptyState } from "@/components/EmptyState";
 import { UpgradeDialog } from "@/components/UpgradeDialog";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -50,7 +51,8 @@ const SEXOS = ["femea", "macho", "castrado"] as const;
  * pra nunca vazar um erro técnico do banco na tela.
  */
 function mensagemErroAnimal(erro: unknown, padrao: string): string {
-  const msg = erro && typeof erro === "object" && "message" in erro ? String((erro as any).message) : "";
+  const msg =
+    erro && typeof erro === "object" && "message" in erro ? String((erro as any).message) : "";
   return msg.startsWith("Já existe um animal com o brinco") ? msg : padrao;
 }
 
@@ -71,6 +73,75 @@ const RACAS_BOVINO: string[] = [
   OUTRA_RACA,
 ];
 
+// Campos opcionais que o usuário pode escolher incluir no cadastro em
+// grupo — nome é sempre pedido (identificação obrigatória de cada animal,
+// mesmo atributo obrigatório do cadastro individual) e lote é do grupo
+// inteiro, não entra nessa lista de escolha por campo.
+type CampoGrupo =
+  | "brinco"
+  | "sexo"
+  | "categoria"
+  | "status"
+  | "nascimento"
+  | "peso_kg"
+  | "raca"
+  | "mae"
+  | "observacoes";
+
+const CAMPOS_GRUPO: { chave: CampoGrupo; rotulo: string }[] = [
+  { chave: "brinco", rotulo: "Brinco" },
+  { chave: "sexo", rotulo: "Sexo" },
+  { chave: "categoria", rotulo: "Categoria" },
+  { chave: "status", rotulo: "Situação" },
+  { chave: "nascimento", rotulo: "Nascimento" },
+  { chave: "peso_kg", rotulo: "Peso (kg)" },
+  { chave: "raca", rotulo: "Raça" },
+  { chave: "mae", rotulo: "Mãe" },
+  { chave: "observacoes", rotulo: "Observações" },
+];
+
+const CAMPOS_GRUPO_PADRAO: Record<CampoGrupo, boolean> = {
+  brinco: true,
+  sexo: true,
+  categoria: true,
+  status: true,
+  nascimento: false,
+  peso_kg: false,
+  raca: true,
+  mae: false,
+  observacoes: false,
+};
+
+interface EntradaAnimalGrupo {
+  nome: string;
+  brinco: string;
+  sexo: string;
+  categoria: string;
+  status: string;
+  nascimento: string;
+  peso_kg: string;
+  raca: string;
+  racaCustom: string;
+  mae: string;
+  observacoes: string;
+}
+
+function entradaGrupoVazia(): EntradaAnimalGrupo {
+  return {
+    nome: "",
+    brinco: "",
+    sexo: SEXOS[0],
+    categoria: "vaca",
+    status: STATUS[0],
+    nascimento: "",
+    peso_kg: "",
+    raca: RACAS_BOVINO[0]!,
+    racaCustom: "",
+    mae: "",
+    observacoes: "",
+  };
+}
+
 function Rebanho() {
   const prefs = usePreferencias();
   const { fazenda, atingiu, usados, limite, plano } = useLimitePlano();
@@ -83,6 +154,13 @@ function Rebanho() {
   const [raca, setRaca] = useState<string>(RACAS_BOVINO[0]!);
   const [racaCustom, setRacaCustom] = useState("");
   const [editando, setEditando] = useState<any>(null);
+
+  // ---- Cadastro em grupo (2 cards: escolha de campos, depois o laço) ----
+  const [grupoEtapa, setGrupoEtapa] = useState<"campos" | "animais" | null>(null);
+  const [grupoLote, setGrupoLote] = useState("");
+  const [camposGrupo, setCamposGrupo] = useState<Record<CampoGrupo, boolean>>(CAMPOS_GRUPO_PADRAO);
+  const [animaisGrupo, setAnimaisGrupo] = useState<EntradaAnimalGrupo[]>([]);
+  const [entradaAtual, setEntradaAtual] = useState<EntradaAnimalGrupo>(entradaGrupoVazia());
 
   const animais = useQuery({
     queryKey: ["animais", fazenda?.id],
@@ -147,7 +225,12 @@ function Rebanho() {
       queryClient.invalidateQueries({ queryKey: ["inicio-resumo"] });
     },
     onError: (erro) =>
-      toast.error(mensagemErroAnimal(erro, "Não conseguimos salvar agora. Confira os campos e tente de novo.")),
+      toast.error(
+        mensagemErroAnimal(
+          erro,
+          "Não conseguimos salvar agora. Confira os campos e tente de novo.",
+        ),
+      ),
   });
 
   const editar = useMutation({
@@ -185,8 +268,139 @@ function Rebanho() {
       queryClient.invalidateQueries({ queryKey: ["indices-engorda"] });
     },
     onError: (erro) =>
-      toast.error(mensagemErroAnimal(erro, "Não conseguimos salvar agora. Confira os campos e tente de novo.")),
+      toast.error(
+        mensagemErroAnimal(
+          erro,
+          "Não conseguimos salvar agora. Confira os campos e tente de novo.",
+        ),
+      ),
   });
+
+  function construirPayloadGrupo(
+    entrada: EntradaAnimalGrupo,
+    campos: Record<CampoGrupo, boolean>,
+    lote: string,
+    fazendaId: string,
+  ) {
+    const racaFinal = entrada.raca === OUTRA_RACA ? entrada.racaCustom.trim() : entrada.raca;
+    return {
+      fazenda_id: fazendaId,
+      nome: entrada.nome.trim(),
+      brinco: campos.brinco ? entrada.brinco.trim() || null : null,
+      sexo: campos.sexo ? entrada.sexo : SEXOS[0],
+      categoria: campos.categoria ? entrada.categoria : "vaca",
+      status: campos.status ? entrada.status : STATUS[0],
+      nascimento: campos.nascimento ? entrada.nascimento || null : null,
+      peso_kg: campos.peso_kg && entrada.peso_kg ? Number(entrada.peso_kg) : null,
+      raca: campos.raca ? racaFinal || null : null,
+      lote: lote.trim(),
+      mae: campos.mae ? entrada.mae.trim() || null : null,
+      observacoes: campos.observacoes ? entrada.observacoes.trim() || null : null,
+    };
+  }
+
+  const criarGrupo = useMutation({
+    mutationFn: async (entradas: EntradaAnimalGrupo[]) => {
+      const payloads = entradas.map((e) =>
+        construirPayloadGrupo(e, camposGrupo, grupoLote, fazenda!.id),
+      );
+      const { error } = await db.from("animais").insert(payloads as never);
+      if (error) throw error;
+      return payloads.length;
+    },
+    onSuccess: (qtd) => {
+      toast.success(
+        `${qtd} ${qtd === 1 ? "animal cadastrado" : "animais cadastrados"} no lote "${grupoLote.trim()}".`,
+      );
+      fecharGrupo();
+      queryClient.invalidateQueries({ queryKey: ["animais"] });
+      queryClient.invalidateQueries({ queryKey: ["animais-contagem"] });
+      queryClient.invalidateQueries({ queryKey: ["inicio-resumo"] });
+    },
+    onError: (erro) =>
+      toast.error(
+        mensagemErroAnimal(
+          erro,
+          "Não conseguimos salvar o grupo agora. Confira os campos e tente de novo.",
+        ),
+      ),
+  });
+
+  function novoGrupo() {
+    if (atingiu) {
+      setUpgrade(true);
+      return;
+    }
+    setGrupoLote("");
+    setCamposGrupo(CAMPOS_GRUPO_PADRAO);
+    setAnimaisGrupo([]);
+    setEntradaAtual(entradaGrupoVazia());
+    setGrupoEtapa("campos");
+  }
+
+  function fecharGrupo() {
+    setGrupoEtapa(null);
+    setGrupoLote("");
+    setAnimaisGrupo([]);
+    setEntradaAtual(entradaGrupoVazia());
+  }
+
+  function alternarCampoGrupo(chave: CampoGrupo) {
+    setCamposGrupo((prev) => ({ ...prev, [chave]: !prev[chave] }));
+  }
+
+  function continuarParaAnimais() {
+    if (!grupoLote.trim()) {
+      toast.error("Informe o lote do grupo.");
+      return;
+    }
+    setGrupoEtapa("animais");
+  }
+
+  function limiteAtingidoNoGrupo() {
+    return usados + animaisGrupo.length + 1 > limite;
+  }
+
+  function adicionarAoGrupo() {
+    if (!entradaAtual.nome.trim()) {
+      toast.error("Informe o nome do animal antes de adicionar.");
+      return;
+    }
+    if (limiteAtingidoNoGrupo()) {
+      toast.error(`O plano ${plano.nome} permite ${limite} cabeças.`);
+      return;
+    }
+    setAnimaisGrupo((prev) => [...prev, entradaAtual]);
+    // Mantém sexo/categoria/situação/raça (costumam se repetir dentro do
+    // mesmo grupo) e limpa o que é único de cada animal — reduz quanto o
+    // usuário precisa redigitar a cada volta do laço.
+    setEntradaAtual((prev) => ({
+      ...entradaGrupoVazia(),
+      sexo: prev.sexo,
+      categoria: prev.categoria,
+      status: prev.status,
+      raca: prev.raca,
+      racaCustom: prev.raca === OUTRA_RACA ? prev.racaCustom : "",
+    }));
+  }
+
+  function removerDoGrupo(index: number) {
+    setAnimaisGrupo((prev) => prev.filter((_, i) => i !== index));
+  }
+
+  function finalizarGrupo() {
+    const temEntradaPendente = entradaAtual.nome.trim() !== "";
+    if (!temEntradaPendente && animaisGrupo.length === 0) {
+      toast.error("Adicione ao menos um animal.");
+      return;
+    }
+    if (temEntradaPendente && limiteAtingidoNoGrupo()) {
+      toast.error(`O plano ${plano.nome} permite ${limite} cabeças.`);
+      return;
+    }
+    const entradasFinal = temEntradaPendente ? [...animaisGrupo, entradaAtual] : animaisGrupo;
+    criarGrupo.mutate(entradasFinal);
+  }
 
   function novoAnimal() {
     if (atingiu) {
@@ -219,10 +433,16 @@ function Rebanho() {
       titulo="Rebanho"
       descricao="Todos os animais da fazenda, com brinco, categoria e situação."
       acao={
-        <Button onClick={novoAnimal}>
-          <Plus className="size-4" aria-hidden="true" />
-          Novo animal
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={novoGrupo}>
+            <Users className="size-4" aria-hidden="true" />
+            Novo grupo
+          </Button>
+          <Button onClick={novoAnimal}>
+            <Plus className="size-4" aria-hidden="true" />
+            Novo animal
+          </Button>
+        </div>
       }
     >
       <div className="relative mb-4 max-w-sm">
@@ -504,6 +724,302 @@ function Rebanho() {
                 </Button>
                 <Button type="submit" form="form-editar-animal" disabled={editar.isPending}>
                   {editar.isPending ? "Salvando..." : "Salvar alterações"}
+                </Button>
+              </DialogFooter>
+            </>
+          ) : null}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={grupoEtapa !== null} onOpenChange={(v) => !v && fecharGrupo()}>
+        <DialogContent className="max-h-[85vh] overflow-y-auto">
+          {grupoEtapa === "campos" ? (
+            <>
+              <DialogHeader>
+                <DialogTitle>Novo grupo de animais</DialogTitle>
+                <DialogDescription>
+                  Escolha os campos que vai preencher pra cada animal do grupo — o resto fica em
+                  branco e pode ser completado depois.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="space-y-4">
+                <div className="space-y-1.5">
+                  <Label htmlFor="grupo-lote">Lote</Label>
+                  <Input
+                    id="grupo-lote"
+                    value={grupoLote}
+                    onChange={(e) => setGrupoLote(e.target.value)}
+                    placeholder="Ex: Pasto 2"
+                    required
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Campos por animal</Label>
+                  <div className="grid grid-cols-2 gap-x-4 gap-y-2">
+                    {CAMPOS_GRUPO.map((c) => (
+                      <div key={c.chave} className="flex items-center gap-2">
+                        <Checkbox
+                          id={`campo-grupo-${c.chave}`}
+                          checked={camposGrupo[c.chave]}
+                          onCheckedChange={() => alternarCampoGrupo(c.chave)}
+                        />
+                        <Label htmlFor={`campo-grupo-${c.chave}`} className="text-sm font-normal">
+                          {c.rotulo}
+                        </Label>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+              <DialogFooter>
+                <Button variant="outline" type="button" onClick={fecharGrupo}>
+                  Cancelar
+                </Button>
+                <Button type="button" onClick={continuarParaAnimais}>
+                  Continuar
+                </Button>
+              </DialogFooter>
+            </>
+          ) : grupoEtapa === "animais" ? (
+            <>
+              <DialogHeader>
+                <DialogTitle>Adicionar animais — lote "{grupoLote.trim()}"</DialogTitle>
+                <DialogDescription>
+                  Preencha os dados e clique em "+ Animal" pra adicionar o próximo. Quando terminar,
+                  clique em "Finalizar".
+                </DialogDescription>
+              </DialogHeader>
+
+              {animaisGrupo.length > 0 ? (
+                <div className="rounded-lg border border-border bg-muted p-2">
+                  <p className="text-xs font-semibold text-muted-foreground">
+                    {animaisGrupo.length}{" "}
+                    {animaisGrupo.length === 1 ? "animal adicionado" : "animais adicionados"}
+                  </p>
+                  <ul className="mt-1.5 max-h-24 space-y-1 overflow-y-auto">
+                    {animaisGrupo.map((a, i) => (
+                      <li
+                        key={i}
+                        className="flex items-center justify-between gap-2 rounded-md bg-card px-2 py-1 text-xs"
+                      >
+                        <span className="truncate">
+                          {a.nome}
+                          {a.brinco ? ` (${a.brinco})` : ""}
+                        </span>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          className="size-5"
+                          onClick={() => removerDoGrupo(i)}
+                          aria-label={`Remover ${a.nome}`}
+                        >
+                          <X className="size-3" aria-hidden="true" />
+                        </Button>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
+
+              <form
+                id="form-grupo-animal"
+                className="space-y-4"
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  adicionarAoGrupo();
+                }}
+              >
+                <div className="space-y-1.5">
+                  <Label htmlFor="grupo-nome">Nome ou identificação</Label>
+                  <Input
+                    id="grupo-nome"
+                    value={entradaAtual.nome}
+                    onChange={(e) => setEntradaAtual((prev) => ({ ...prev, nome: e.target.value }))}
+                    placeholder="Ex: Mimosa"
+                    required
+                    autoFocus
+                  />
+                </div>
+
+                {camposGrupo.brinco || camposGrupo.peso_kg ? (
+                  <div className="grid grid-cols-2 gap-3">
+                    {camposGrupo.brinco ? (
+                      <div className="space-y-1.5">
+                        <Label htmlFor="grupo-brinco">Brinco</Label>
+                        <Input
+                          id="grupo-brinco"
+                          value={entradaAtual.brinco}
+                          onChange={(e) =>
+                            setEntradaAtual((prev) => ({ ...prev, brinco: e.target.value }))
+                          }
+                          placeholder="Ex: 0231"
+                        />
+                      </div>
+                    ) : null}
+                    {camposGrupo.peso_kg ? (
+                      <div className="space-y-1.5">
+                        <Label htmlFor="grupo-peso">Peso (kg)</Label>
+                        <Input
+                          id="grupo-peso"
+                          type="number"
+                          step="0.1"
+                          min="0"
+                          value={entradaAtual.peso_kg}
+                          onChange={(e) =>
+                            setEntradaAtual((prev) => ({ ...prev, peso_kg: e.target.value }))
+                          }
+                        />
+                      </div>
+                    ) : null}
+                  </div>
+                ) : null}
+
+                {camposGrupo.sexo || camposGrupo.categoria || camposGrupo.status ? (
+                  <div className="grid grid-cols-3 gap-3">
+                    {camposGrupo.sexo ? (
+                      <div className="space-y-1.5">
+                        <Label htmlFor="grupo-sexo">Sexo</Label>
+                        <select
+                          id="grupo-sexo"
+                          value={entradaAtual.sexo}
+                          onChange={(e) =>
+                            setEntradaAtual((prev) => ({ ...prev, sexo: e.target.value }))
+                          }
+                          className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm capitalize"
+                        >
+                          {SEXOS.map((s) => (
+                            <option key={s} value={s} className="capitalize">
+                              {s}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    ) : null}
+                    {camposGrupo.categoria ? (
+                      <div className="space-y-1.5">
+                        <Label htmlFor="grupo-categoria">Categoria</Label>
+                        <select
+                          id="grupo-categoria"
+                          value={entradaAtual.categoria}
+                          onChange={(e) =>
+                            setEntradaAtual((prev) => ({ ...prev, categoria: e.target.value }))
+                          }
+                          className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm capitalize"
+                        >
+                          {CATEGORIAS.map((c) => (
+                            <option key={c} value={c} className="capitalize">
+                              {c}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    ) : null}
+                    {camposGrupo.status ? (
+                      <div className="space-y-1.5">
+                        <Label htmlFor="grupo-status">Situação</Label>
+                        <select
+                          id="grupo-status"
+                          value={entradaAtual.status}
+                          onChange={(e) =>
+                            setEntradaAtual((prev) => ({ ...prev, status: e.target.value }))
+                          }
+                          className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm capitalize"
+                        >
+                          {STATUS.map((s) => (
+                            <option key={s} value={s} className="capitalize">
+                              {s}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    ) : null}
+                  </div>
+                ) : null}
+
+                {camposGrupo.nascimento ? (
+                  <div className="space-y-1.5">
+                    <Label htmlFor="grupo-nascimento">Nascimento</Label>
+                    <Input
+                      id="grupo-nascimento"
+                      type="date"
+                      value={entradaAtual.nascimento}
+                      onChange={(e) =>
+                        setEntradaAtual((prev) => ({ ...prev, nascimento: e.target.value }))
+                      }
+                    />
+                  </div>
+                ) : null}
+
+                {camposGrupo.raca ? (
+                  <div className="space-y-1.5">
+                    <Label htmlFor="grupo-raca">Raça</Label>
+                    <select
+                      id="grupo-raca"
+                      value={entradaAtual.raca}
+                      onChange={(e) =>
+                        setEntradaAtual((prev) => ({ ...prev, raca: e.target.value }))
+                      }
+                      className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+                    >
+                      {RACAS_BOVINO.map((r) => (
+                        <option key={r} value={r}>
+                          {r}
+                        </option>
+                      ))}
+                    </select>
+                    {entradaAtual.raca === OUTRA_RACA ? (
+                      <Input
+                        className="mt-1.5"
+                        placeholder="Informe a raça"
+                        value={entradaAtual.racaCustom}
+                        onChange={(e) =>
+                          setEntradaAtual((prev) => ({ ...prev, racaCustom: e.target.value }))
+                        }
+                        aria-label="Raça (informe)"
+                      />
+                    ) : null}
+                  </div>
+                ) : null}
+
+                {camposGrupo.mae ? (
+                  <div className="space-y-1.5">
+                    <Label htmlFor="grupo-mae">Mãe</Label>
+                    <Input
+                      id="grupo-mae"
+                      value={entradaAtual.mae}
+                      onChange={(e) =>
+                        setEntradaAtual((prev) => ({ ...prev, mae: e.target.value }))
+                      }
+                      placeholder="Nome ou brinco da mãe (opcional)"
+                    />
+                  </div>
+                ) : null}
+
+                {camposGrupo.observacoes ? (
+                  <div className="space-y-1.5">
+                    <Label htmlFor="grupo-observacoes">Observações</Label>
+                    <Input
+                      id="grupo-observacoes"
+                      value={entradaAtual.observacoes}
+                      onChange={(e) =>
+                        setEntradaAtual((prev) => ({ ...prev, observacoes: e.target.value }))
+                      }
+                    />
+                  </div>
+                ) : null}
+              </form>
+
+              <DialogFooter className="flex-row flex-wrap justify-end gap-2 sm:space-x-0">
+                <Button variant="outline" type="button" onClick={fecharGrupo}>
+                  Cancelar
+                </Button>
+                <Button type="submit" form="form-grupo-animal" variant="secondary">
+                  <Plus className="size-4" aria-hidden="true" />
+                  Animal
+                </Button>
+                <Button type="button" onClick={finalizarGrupo} disabled={criarGrupo.isPending}>
+                  {criarGrupo.isPending ? "Salvando..." : "Finalizar"}
                 </Button>
               </DialogFooter>
             </>
