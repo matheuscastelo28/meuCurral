@@ -1,13 +1,24 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useQuery } from "@tanstack/react-query";
-import { Beef, CalendarDays, Milk, Plus, TrendingDown, TrendingUp, Weight } from "lucide-react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  Beef,
+  CalendarDays,
+  Check,
+  Milk,
+  Plus,
+  Receipt,
+  TrendingDown,
+  TrendingUp,
+  Weight,
+} from "lucide-react";
 import type { LucideIcon } from "lucide-react";
+import { toast } from "sonner";
 import { db } from "@/lib/local-db";
 import { AppShell } from "@/components/AppShell";
 import { EmptyState } from "@/components/EmptyState";
 import { Button } from "@/components/ui/button";
 import { useFazenda } from "@/hooks/use-fazenda";
-import { dataCurta, hojeISO, moeda as formatarMoeda } from "@/lib/formato";
+import { dataCurta, dataISO, hojeISO, moeda as formatarMoeda } from "@/lib/formato";
 import { usePreferencias } from "@/hooks/use-preferencias";
 import { useResumoFinanceiro } from "@/hooks/use-resumo-financeiro";
 
@@ -29,6 +40,7 @@ function Inicio() {
   const fazendaId = fazenda?.id;
   const prefs = usePreferencias();
   const moeda = (v: number | null | undefined) => formatarMoeda(v, prefs.moeda);
+  const queryClient = useQueryClient();
 
   const resumo = useQuery({
     queryKey: ["inicio-resumo", fazendaId],
@@ -43,14 +55,20 @@ function Inicio() {
           .eq("fazenda_id", fazendaId!)
           .eq("concluido", false)
           .eq("cancelado", false)
-          .gte("data", hoje)
           .order("data")
-          .limit(5),
+          .limit(30),
         db.from("producao_leite").select("litros").eq("fazenda_id", fazendaId!).eq("data", hoje),
       ]);
+      // Ordenado por data crescente: o que já venceu vem primeiro (o mais
+      // atrasado primeiro), depois o que ainda vai vencer (o mais próximo
+      // primeiro) — mesma classificação "atrasado" usada na Agenda.
+      const todosEventos = eventos.data ?? [];
+      const atrasados = todosEventos.filter((e) => dataISO(e.data) < hoje).slice(0, 8);
+      const proximos = todosEventos.filter((e) => dataISO(e.data) >= hoje).slice(0, 5);
       return {
         animais: animais.data ?? [],
-        eventos: eventos.data ?? [],
+        atrasados,
+        proximos,
         leiteHoje: (leite.data ?? []).reduce((s, l) => s + Number(l.litros), 0),
       };
     },
@@ -60,6 +78,22 @@ function Inicio() {
   // é só o que foi lançado no mês, é o total realizado (lançamento simples
   // + parte já paga de cada conta), pra bater com o que o produtor vê lá.
   const financeiroResumo = useResumoFinanceiro(fazendaId);
+
+  // Mesmo padrão de "marcar como feito" já usado na Agenda (calendario.tsx)
+  // — reaproveitado aqui pra não obrigar o produtor a navegar pra outra
+  // tela só pra confirmar uma tarefa do dia a dia.
+  const concluirEvento = useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await db.from("eventos_agenda").update({ concluido: true }).eq("id", id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      toast.success("Marcado como feito.");
+      queryClient.invalidateQueries({ queryKey: ["inicio-resumo"] });
+      queryClient.invalidateQueries({ queryKey: ["eventos"] });
+    },
+    onError: () => toast.error("Não conseguimos atualizar agora."),
+  });
 
   const animais = resumo.data?.animais ?? [];
   // Vendido/morto não contam no rebanho ativo — mesmo critério de
@@ -129,6 +163,27 @@ function Inicio() {
             </Link>
           </div>
 
+          <div className="flex flex-wrap gap-2">
+            <Button variant="outline" size="sm" asChild>
+              <Link to="/financeiro" search={{ novo: true }}>
+                <Receipt className="size-4" aria-hidden="true" />
+                Novo lançamento
+              </Link>
+            </Button>
+            <Button variant="outline" size="sm" asChild>
+              <Link to="/leite">
+                <Milk className="size-4" aria-hidden="true" />
+                Registrar leite
+              </Link>
+            </Button>
+            <Button variant="outline" size="sm" asChild>
+              <Link to="/engorda">
+                <Weight className="size-4" aria-hidden="true" />
+                Registrar pesagem
+              </Link>
+            </Button>
+          </div>
+
           <div className="grid gap-4 lg:grid-cols-2">
             <section className="rounded-xl border border-border bg-card p-5">
               <h2 className="text-base font-semibold">Distribuição do rebanho</h2>
@@ -160,24 +215,30 @@ function Inicio() {
                   Ver calendário
                 </Link>
               </div>
-              {(resumo.data?.eventos.length ?? 0) === 0 ? (
+              {(resumo.data?.atrasados.length ?? 0) === 0 &&
+              (resumo.data?.proximos.length ?? 0) === 0 ? (
                 <p className="mt-4 text-sm text-muted-foreground">
                   Nada agendado por enquanto. Registre uma vacinação ou pesagem e ela aparece aqui.
                 </p>
               ) : (
                 <ul className="mt-4 space-y-3">
-                  {resumo.data?.eventos.map((ev) => (
-                    <li key={ev.id} className="flex items-start gap-3">
-                      <span className="mt-0.5 flex size-9 shrink-0 items-center justify-center rounded-lg bg-accent text-primary">
-                        <CalendarDays className="size-4" aria-hidden="true" />
-                      </span>
-                      <span>
-                        <span className="block text-sm font-medium">{ev.titulo}</span>
-                        <span className="block text-xs text-muted-foreground">
-                          {dataCurta(ev.data)} · {ev.tipo}
-                        </span>
-                      </span>
-                    </li>
+                  {resumo.data?.atrasados.map((ev) => (
+                    <EventoItem
+                      key={ev.id}
+                      ev={ev}
+                      atrasado
+                      onConcluir={() => concluirEvento.mutate(ev.id)}
+                      concluindo={concluirEvento.isPending}
+                    />
+                  ))}
+                  {resumo.data?.proximos.map((ev) => (
+                    <EventoItem
+                      key={ev.id}
+                      ev={ev}
+                      atrasado={false}
+                      onConcluir={() => concluirEvento.mutate(ev.id)}
+                      concluindo={concluirEvento.isPending}
+                    />
                   ))}
                 </ul>
               )}
@@ -186,6 +247,55 @@ function Inicio() {
         </div>
       )}
     </AppShell>
+  );
+}
+
+function EventoItem({
+  ev,
+  atrasado,
+  onConcluir,
+  concluindo,
+}: {
+  ev: { id: string; titulo: string | null; data: string | Date; tipo: string | null };
+  atrasado: boolean;
+  onConcluir: () => void;
+  concluindo: boolean;
+}) {
+  return (
+    <li className="flex items-start gap-3">
+      <span
+        className={
+          atrasado
+            ? "mt-0.5 flex size-9 shrink-0 items-center justify-center rounded-lg bg-destructive/15 text-destructive"
+            : "mt-0.5 flex size-9 shrink-0 items-center justify-center rounded-lg bg-accent text-primary"
+        }
+      >
+        <CalendarDays className="size-4" aria-hidden="true" />
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="flex items-center gap-1.5">
+          <span className="block truncate text-sm font-medium">{ev.titulo}</span>
+          {atrasado ? (
+            <span className="shrink-0 rounded-full bg-destructive/15 px-2 py-0.5 text-[11px] font-semibold text-destructive">
+              Atrasado
+            </span>
+          ) : null}
+        </span>
+        <span className="block text-xs text-muted-foreground">
+          {dataCurta(ev.data)} · {ev.tipo}
+        </span>
+      </span>
+      <Button
+        variant="ghost"
+        size="sm"
+        className="shrink-0"
+        onClick={onConcluir}
+        disabled={concluindo}
+      >
+        <Check className="size-4" aria-hidden="true" />
+        Concluir
+      </Button>
+    </li>
   );
 }
 

@@ -50,9 +50,10 @@ export const Route = createFileRoute("/_authenticated/financeiro")({
       { name: "robots", content: "noindex" },
     ],
   }),
-  validateSearch: (search: Record<string, unknown>): { conta?: string } => {
+  validateSearch: (search: Record<string, unknown>): { conta?: string; novo?: boolean } => {
     const conta = typeof search["conta"] === "string" ? search["conta"] : undefined;
-    return conta ? { conta } : {};
+    const novo = search["novo"] === true || search["novo"] === "1" ? true : undefined;
+    return { ...(conta ? { conta } : {}), ...(novo ? { novo } : {}) };
   },
   component: Financeiro,
 });
@@ -131,7 +132,7 @@ function Financeiro() {
   const { data: fazenda } = useFazenda();
   const queryClient = useQueryClient();
   const hoje = hojeISO();
-  const { conta: contaIdNaUrl } = Route.useSearch();
+  const { conta: contaIdNaUrl, novo: novoNaUrl } = Route.useSearch();
   const navigate = Route.useNavigate();
 
   const [selecionados, setSelecionados] = useState<Set<string>>(new Set());
@@ -427,6 +428,15 @@ function Financeiro() {
     navigate({ search: {}, replace: true });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [contaIdNaUrl, contas.data]);
+
+  // Permite abrir o formulário de novo lançamento direto de outra tela (ex:
+  // "Novo lançamento" no Início) navegando para /financeiro?novo=1.
+  useEffect(() => {
+    if (!novoNaUrl) return;
+    setFormAberto(true);
+    navigate({ search: {}, replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [novoNaUrl]);
 
   const marcarPagaMutation = useMutation({
     mutationFn: async () => {
