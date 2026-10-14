@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Dialog,
   DialogContent,
@@ -43,6 +44,13 @@ export const Route = createFileRoute("/_authenticated/rebanho")({
 const CATEGORIAS = ["bezerro", "novilha", "vaca", "boi", "touro", "outro"] as const;
 const STATUS = ["ativo", "lactacao", "seca", "prenhe", "engorda", "vendido", "morto"] as const;
 const SEXOS = ["femea", "macho", "castrado"] as const;
+
+// `text-transform: capitalize` no <select> não é confiável entre
+// navegadores pra exibir o valor selecionado fechado — texto já
+// capitalizado na própria option evita essa inconsistência.
+function capitalizar(s: string): string {
+  return s.charAt(0).toUpperCase() + s.slice(1);
+}
 
 /**
  * O servidor devolve uma mensagem amigável quando o brinco já está em uso
@@ -176,16 +184,42 @@ function Rebanho() {
     },
   });
 
+  // Rebanho (pertencente à fazenda) e Vendidos são duas listas separadas —
+  // igual ao "Por lote"/"Por animal" da Engorda, cada aba com sua própria
+  // contagem. Vendido some do operacional do dia a dia, mas continua
+  // consultável na própria aba.
+  const [abaRebanho, setAbaRebanho] = useState<"ativo" | "vendido">("ativo");
+  const [filtroCategoria, setFiltroCategoria] = useState<"todas" | (typeof CATEGORIAS)[number]>(
+    "todas",
+  );
+  const [filtroSituacao, setFiltroSituacao] = useState<"todas" | (typeof STATUS)[number]>("todas");
+  const [filtroSexo, setFiltroSexo] = useState<"todos" | (typeof SEXOS)[number]>("todos");
+
+  const porAba = useMemo(
+    () => ({
+      ativo: (animais.data ?? []).filter((a) => a.status !== "vendido"),
+      vendido: (animais.data ?? []).filter((a) => a.status === "vendido"),
+    }),
+    [animais.data],
+  );
+
+  const filtroAtivo =
+    filtroCategoria !== "todas" || filtroSituacao !== "todas" || filtroSexo !== "todos";
+
   const lista = useMemo(() => {
     const termo = busca.trim().toLowerCase();
-    if (!termo) return animais.data ?? [];
-    return (animais.data ?? []).filter(
-      (a) =>
+    return porAba[abaRebanho].filter((a) => {
+      if (filtroCategoria !== "todas" && a.categoria !== filtroCategoria) return false;
+      if (filtroSituacao !== "todas" && a.status !== filtroSituacao) return false;
+      if (filtroSexo !== "todos" && a.sexo !== filtroSexo) return false;
+      if (!termo) return true;
+      return (
         a.nome.toLowerCase().includes(termo) ||
         (a.brinco ?? "").toLowerCase().includes(termo) ||
-        (a.lote ?? "").toLowerCase().includes(termo),
-    );
-  }, [animais.data, busca]);
+        (a.lote ?? "").toLowerCase().includes(termo)
+      );
+    });
+  }, [porAba, abaRebanho, busca, filtroCategoria, filtroSituacao, filtroSexo]);
 
   // Permite abrir a edição direto de outra tela (ex: "Editar dados do
   // animal" na ficha) navegando para /rebanho?editar=<id>.
@@ -445,30 +479,109 @@ function Rebanho() {
         </div>
       }
     >
-      <div className="relative mb-4 max-w-sm">
-        <Search
-          className="pointer-events-none absolute top-2.5 left-3 size-4 text-muted-foreground"
-          aria-hidden="true"
-        />
-        <Input
-          value={busca}
-          onChange={(e) => setBusca(e.target.value)}
-          placeholder="Buscar por nome, brinco ou lote"
-          className="pl-9"
-          aria-label="Buscar animal"
-        />
+      <Tabs
+        value={abaRebanho}
+        onValueChange={(v) => setAbaRebanho(v as "ativo" | "vendido")}
+        className="mb-4"
+      >
+        <TabsList>
+          <TabsTrigger value="ativo">Rebanho ({porAba.ativo.length})</TabsTrigger>
+          <TabsTrigger value="vendido">Vendidos ({porAba.vendido.length})</TabsTrigger>
+        </TabsList>
+      </Tabs>
+
+      <div className="mb-4 flex flex-wrap items-center gap-2">
+        <div className="relative max-w-sm flex-1">
+          <Search
+            className="pointer-events-none absolute top-2.5 left-3 size-4 text-muted-foreground"
+            aria-hidden="true"
+          />
+          <Input
+            value={busca}
+            onChange={(e) => setBusca(e.target.value)}
+            placeholder="Buscar por nome, brinco ou lote"
+            className="pl-9"
+            aria-label="Buscar animal"
+          />
+        </div>
+        <select
+          aria-label="Filtrar por categoria"
+          value={filtroCategoria}
+          onChange={(e) => setFiltroCategoria(e.target.value as typeof filtroCategoria)}
+          className="h-9 rounded-md border border-input bg-background px-2.5 text-sm"
+        >
+          <option value="todas">Todas as categorias</option>
+          {CATEGORIAS.map((c) => (
+            <option key={c} value={c}>
+              {capitalizar(c)}
+            </option>
+          ))}
+        </select>
+        {abaRebanho === "ativo" ? (
+          <select
+            aria-label="Filtrar por situação"
+            value={filtroSituacao}
+            onChange={(e) => setFiltroSituacao(e.target.value as typeof filtroSituacao)}
+            className="h-9 rounded-md border border-input bg-background px-2.5 text-sm"
+          >
+            <option value="todas">Todas as situações</option>
+            {STATUS.filter((s) => s !== "vendido").map((s) => (
+              <option key={s} value={s}>
+                {capitalizar(s)}
+              </option>
+            ))}
+          </select>
+        ) : null}
+        <select
+          aria-label="Filtrar por sexo"
+          value={filtroSexo}
+          onChange={(e) => setFiltroSexo(e.target.value as typeof filtroSexo)}
+          className="h-9 rounded-md border border-input bg-background px-2.5 text-sm"
+        >
+          <option value="todos">Todos os sexos</option>
+          {SEXOS.map((s) => (
+            <option key={s} value={s}>
+              {capitalizar(s)}
+            </option>
+          ))}
+        </select>
+        {filtroAtivo ? (
+          <button
+            type="button"
+            onClick={() => {
+              setFiltroCategoria("todas");
+              setFiltroSituacao("todas");
+              setFiltroSexo("todos");
+            }}
+            className="text-xs font-medium text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
+          >
+            Limpar filtros
+          </button>
+        ) : null}
       </div>
 
       {lista.length === 0 ? (
         <EmptyState
           icon={Beef}
-          titulo={busca ? "Nenhum animal encontrado" : "Nenhum animal cadastrado"}
-          descricao={
-            busca
-              ? "Tente outro nome, brinco ou lote."
-              : "Cadastre o primeiro animal para começar a acompanhar manejo, leite e reprodução."
+          titulo={
+            busca || filtroAtivo
+              ? "Nenhum animal encontrado"
+              : abaRebanho === "vendido"
+                ? "Nenhum animal vendido ainda"
+                : "Nenhum animal cadastrado"
           }
-          acao={busca ? undefined : <Button onClick={novoAnimal}>Cadastrar animal</Button>}
+          descricao={
+            busca || filtroAtivo
+              ? "Tente outro nome, brinco, lote ou ajuste os filtros."
+              : abaRebanho === "vendido"
+                ? "Animais marcados como vendidos aparecem aqui."
+                : "Cadastre o primeiro animal para começar a acompanhar manejo, leite e reprodução."
+          }
+          acao={
+            busca || filtroAtivo || abaRebanho === "vendido" ? undefined : (
+              <Button onClick={novoAnimal}>Cadastrar animal</Button>
+            )
+          }
         />
       ) : (
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">

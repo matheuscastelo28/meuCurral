@@ -115,15 +115,22 @@ function Leite() {
     queryKey: ["lotes-rebanho", fazenda?.id],
     enabled: !!fazenda?.id,
     queryFn: async () => {
-      const { data, error } = await db.from("animais").select("lote").eq("fazenda_id", fazenda!.id);
+      const { data, error } = await db
+        .from("animais")
+        .select("lote, status")
+        .eq("fazenda_id", fazenda!.id);
       if (error) throw error;
       return data;
     },
   });
 
+  // Só lotes com animal em lactação ou seca (mesmo critério de "vaca
+  // leiteira" já usado no modo "Por vaca", acima) — um lote só de bezerros,
+  // engorda etc. não entra aqui, porque ele não produz leite.
   const lotesDisponiveis = Array.from(
     new Set(
       (lotesDoRebanho.data ?? [])
+        .filter((a) => a.status === "lactacao" || a.status === "seca")
         .map((a) => String(a.lote ?? "").trim())
         .filter((l) => l.length > 0),
     ),
@@ -1457,7 +1464,8 @@ function Leite() {
               </select>
               {lotesDisponiveis.length === 0 ? (
                 <p className="text-xs text-muted-foreground">
-                  Nenhum lote cadastrado — defina o lote no cadastro dos animais.
+                  Nenhum lote com vaca em lactação ou seca — defina o lote e a situação no cadastro
+                  dos animais.
                 </p>
               ) : null}
             </div>
