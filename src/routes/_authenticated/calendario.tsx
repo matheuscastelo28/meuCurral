@@ -12,6 +12,7 @@ import {
   Receipt,
   RotateCcw,
   Undo2,
+  X,
 } from "lucide-react";
 import { toast } from "sonner";
 import { db } from "@/lib/local-db";
@@ -80,6 +81,14 @@ function somarDias(dataISOStr: string, dias: number): string {
 /** Último dia do mês (ano/mês em base 1) no formato ISO. */
 function fimDoMes(ano: number, mes: number): string {
   return new Date(Date.UTC(ano, mes, 0)).toISOString().slice(0, 10);
+}
+
+/** Soma (ou subtrai) meses a um ano/mês em base 1, com virada de ano. */
+function somarMes(ano: number, mes: number, delta: number): { ano: number; mes: number } {
+  const total = mes - 1 + delta;
+  const anoNovo = ano + Math.floor(total / 12);
+  const mesNovo = (((total % 12) + 12) % 12) + 1;
+  return { ano: anoNovo, mes: mesNovo };
 }
 
 const TIPOS_EVENTO = [
@@ -315,18 +324,38 @@ function Calendario() {
     [financeiroPorDia],
   );
 
-  const doDia =
-    filtroOrigem === "financeiro"
-      ? []
-      : (eventos.data ?? []).filter(
-          (e) => selecionado && dataISO(e.data) === paraDataISO(selecionado),
-        );
-  const financeiroDoDia =
-    filtroOrigem === "eventos" || !selecionado
-      ? []
-      : (financeiroPorDia.get(paraDataISO(selecionado)) ?? []);
-
   const inicioSemanaPref: 0 | 1 = prefs.inicio_semana === 1 ? 1 : 0;
+
+  /** Clicar num dia no calendário vai direto pra semana daquele dia na lista abaixo. */
+  function selecionarDiaNoCalendario(data: Date | undefined) {
+    setSelecionado(data);
+    if (!data) return;
+    setFiltroPeriodoTipo("semana");
+    setSemanaRef(paraDataISO(data));
+  }
+
+  function irParaHoje() {
+    setSelecionado(new Date());
+    if (filtroPeriodoTipo === "semana") setSemanaRef(hoje);
+    else if (filtroPeriodoTipo === "mes") {
+      setFiltroMesNum(Number(hoje.slice(5, 7)));
+      setFiltroAno(Number(hoje.slice(0, 4)));
+    } else {
+      setPeriodoInicio(hoje);
+      setPeriodoFim(hoje);
+    }
+  }
+
+  function mudarMes(delta: number) {
+    const { ano, mes } = somarMes(filtroAno, filtroMesNum, delta);
+    setFiltroAno(ano);
+    setFiltroMesNum(mes);
+  }
+
+  function aplicarAtalhoPeriodo(inicio: string, fim: string) {
+    setPeriodoInicio(inicio);
+    setPeriodoFim(fim);
+  }
 
   const periodo = useMemo(() => {
     if (filtroPeriodoTipo === "semana") return limitesSemana(semanaRef, inicioSemanaPref);
@@ -384,6 +413,14 @@ function Calendario() {
     }
     return Array.from(anos).sort((a, b) => a - b);
   }, [eventos.data, hoje]);
+
+  const filtroAtivo = filtroOrigem !== "todos" || filtroStatus !== "todos";
+  const totalItens = eventosDoPeriodo.length + financeiroDoPeriodo.length;
+
+  function limparFiltros() {
+    setFiltroOrigem("todos");
+    setFiltroStatus("todos");
+  }
 
   function invalidar() {
     queryClient.invalidateQueries({ queryKey: ["eventos"] });
@@ -481,13 +518,13 @@ function Calendario() {
         </Button>
       }
     >
-      <div className="grid gap-4 lg:grid-cols-[25rem_1fr]">
+      <div className="grid gap-4 lg:grid-cols-[22rem_1fr]">
         <div className="rounded-xl border border-border bg-card p-4">
           <Calendar
             mode="single"
             weekStartsOn={prefs.inicio_semana === 1 ? 1 : 0}
             selected={selecionado}
-            onSelect={setSelecionado}
+            onSelect={selecionarDiaNoCalendario}
             modifiers={{ evento: marcados, financeiro: marcadosFinanceiro }}
             modifiersClassNames={{
               evento:
@@ -498,52 +535,181 @@ function Calendario() {
             className="w-full [--cell-size:1.95rem] sm:[--cell-size:2.25rem]"
           />
           <p className="mt-2 px-2 text-center text-xs text-muted-foreground">
-            Bolinha embaixo = compromisso. Bolinha laranja no canto = vencimento financeiro.
+            Bolinha embaixo = compromisso. Bolinha laranja no canto = vencimento financeiro. Clique
+            num dia pra ver a semana dele na lista ao lado.
           </p>
         </div>
 
         <section className="rounded-xl border border-border bg-card p-5">
-          <h2 className="text-base font-semibold">
-            {selecionado ? dataCurta(paraDataISO(selecionado)) : "Selecione um dia"}
-          </h2>
-          {doDia.length === 0 && financeiroDoDia.length === 0 ? (
-            <EmptyState
-              icon={CalendarDays}
-              titulo="Nada marcado nesse dia"
-              descricao='Use "Novo evento" pra marcar uma vacinação, pesagem ou outro compromisso nesse dia.'
-            />
-          ) : (
-            <ul className="mt-4 space-y-3">
-              {doDia.map((e) => (
-                <EventoItem key={e.id} evento={e} hoje={hoje} {...acoesEvento} />
-              ))}
-              {financeiroDoDia.map((item) => (
-                <FinanceiroAgendaItem key={item.parcela.id} item={item} />
-              ))}
-            </ul>
-          )}
-        </section>
-      </div>
+          {/* Alternância do tipo de período — visual de abas/segmented control
+              pra deixar claro que é um modo de visualização, não um botão solto. */}
+          <div className="inline-flex rounded-lg bg-muted p-1">
+            {(
+              [
+                ["semana", "Semana"],
+                ["mes", "Mês"],
+                ["periodo", "Período"],
+              ] as const
+            ).map(([valor, rotulo]) => (
+              <button
+                key={valor}
+                type="button"
+                onClick={() => setFiltroPeriodoTipo(valor)}
+                className={cn(
+                  "rounded-md px-3 py-1.5 text-sm font-medium transition-colors",
+                  filtroPeriodoTipo === valor
+                    ? "bg-background text-foreground shadow-sm"
+                    : "text-muted-foreground hover:text-foreground",
+                )}
+              >
+                {rotulo}
+              </button>
+            ))}
+          </div>
 
-      <section className="mt-4 rounded-xl border border-border bg-card p-5">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <h2 className="text-base font-semibold">
-            {filtroPeriodoTipo === "semana"
-              ? "Eventos da semana"
-              : filtroPeriodoTipo === "periodo"
-                ? "Eventos do período"
-                : "Eventos do mês"}
-          </h2>
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+            {filtroPeriodoTipo === "semana" ? (
+              <div className="flex items-center gap-1.5">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon"
+                  className="size-9"
+                  onClick={() => setSemanaRef((d) => somarDias(d, -7))}
+                  aria-label="Semana anterior"
+                >
+                  <ChevronLeft className="size-4" aria-hidden="true" />
+                </Button>
+                <span className="min-w-[11rem] text-center text-sm font-medium">
+                  {dataCurta(periodo.inicio)} – {dataCurta(periodo.fim)}
+                </span>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon"
+                  className="size-9"
+                  onClick={() => setSemanaRef((d) => somarDias(d, 7))}
+                  aria-label="Próxima semana"
+                >
+                  <ChevronRight className="size-4" aria-hidden="true" />
+                </Button>
+              </div>
+            ) : filtroPeriodoTipo === "mes" ? (
+              <div className="flex items-center gap-1.5">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon"
+                  className="size-9"
+                  onClick={() => mudarMes(-1)}
+                  aria-label="Mês anterior"
+                >
+                  <ChevronLeft className="size-4" aria-hidden="true" />
+                </Button>
+                <select
+                  aria-label="Filtrar por mês"
+                  value={filtroMesNum}
+                  onChange={(e) => setFiltroMesNum(Number(e.target.value))}
+                  className="h-9 rounded-md border border-input bg-background px-2.5 text-sm font-medium"
+                >
+                  {MESES.map((m, i) => (
+                    <option key={m} value={i + 1}>
+                      {m}
+                    </option>
+                  ))}
+                </select>
+                <select
+                  aria-label="Filtrar por ano"
+                  value={filtroAno}
+                  onChange={(e) => setFiltroAno(Number(e.target.value))}
+                  className="h-9 rounded-md border border-input bg-background px-2.5 text-sm font-medium"
+                >
+                  {anosDisponiveis.map((ano) => (
+                    <option key={ano} value={ano}>
+                      {ano}
+                    </option>
+                  ))}
+                </select>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon"
+                  className="size-9"
+                  onClick={() => mudarMes(1)}
+                  aria-label="Próximo mês"
+                >
+                  <ChevronRight className="size-4" aria-hidden="true" />
+                </Button>
+              </div>
+            ) : (
+              <div className="flex flex-wrap items-center gap-1.5">
+                <Input
+                  type="date"
+                  aria-label="De"
+                  value={periodoInicio}
+                  onChange={(e) => setPeriodoInicio(e.target.value)}
+                  className="h-9 w-auto"
+                />
+                <span className="text-sm text-muted-foreground">até</span>
+                <Input
+                  type="date"
+                  aria-label="Até"
+                  value={periodoFim}
+                  onChange={(e) => setPeriodoFim(e.target.value)}
+                  className="h-9 w-auto"
+                />
+              </div>
+            )}
+
+            <Button type="button" variant="ghost" size="sm" onClick={irParaHoje}>
+              Hoje
+            </Button>
+          </div>
+
+          {filtroPeriodoTipo === "periodo" ? (
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => aplicarAtalhoPeriodo(somarDias(hoje, -6), hoje)}
+              >
+                Últimos 7 dias
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => aplicarAtalhoPeriodo(hoje, somarDias(hoje, 6))}
+              >
+                Próximos 7 dias
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() =>
+                  aplicarAtalhoPeriodo(
+                    `${hoje.slice(0, 4)}-${hoje.slice(5, 7)}-01`,
+                    fimDoMes(Number(hoje.slice(0, 4)), Number(hoje.slice(5, 7))),
+                  )
+                }
+              >
+                Este mês
+              </Button>
+            </div>
+          ) : null}
+
+          <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-border pt-4">
             <select
               aria-label="Filtrar por origem"
               value={filtroOrigem}
               onChange={(e) => setFiltroOrigem(e.target.value as typeof filtroOrigem)}
               className="h-9 rounded-md border border-input bg-background px-2.5 text-sm"
             >
-              <option value="todos">Todos</option>
-              <option value="eventos">Eventos</option>
-              <option value="financeiro">Financeiro</option>
+              <option value="todos">Todas as origens</option>
+              <option value="eventos">Só eventos</option>
+              <option value="financeiro">Só financeiro</option>
             </select>
             <select
               aria-label="Filtrar por status"
@@ -556,126 +722,36 @@ function Calendario() {
               <option value="atrasado">Atrasado</option>
               <option value="feito">Concluído</option>
             </select>
-          </div>
-        </div>
-
-        <div className="mt-3 flex flex-wrap items-center gap-2">
-          <div className="flex gap-1.5">
-            <Button
-              type="button"
-              size="sm"
-              variant={filtroPeriodoTipo === "semana" ? "default" : "outline"}
-              onClick={() => setFiltroPeriodoTipo("semana")}
-            >
-              Semana
-            </Button>
-            <Button
-              type="button"
-              size="sm"
-              variant={filtroPeriodoTipo === "mes" ? "default" : "outline"}
-              onClick={() => setFiltroPeriodoTipo("mes")}
-            >
-              Mês
-            </Button>
-            <Button
-              type="button"
-              size="sm"
-              variant={filtroPeriodoTipo === "periodo" ? "default" : "outline"}
-              onClick={() => setFiltroPeriodoTipo("periodo")}
-            >
-              Período
-            </Button>
+            {filtroAtivo ? (
+              <Button type="button" variant="ghost" size="sm" onClick={limparFiltros}>
+                <X className="size-4" aria-hidden="true" />
+                Limpar filtros
+              </Button>
+            ) : null}
           </div>
 
-          {filtroPeriodoTipo === "semana" ? (
-            <div className="flex items-center gap-1.5">
-              <Button
-                type="button"
-                variant="outline"
-                size="icon"
-                className="size-9"
-                onClick={() => setSemanaRef((d) => somarDias(d, -7))}
-                aria-label="Semana anterior"
-              >
-                <ChevronLeft className="size-4" aria-hidden="true" />
-              </Button>
-              <span className="min-w-[11rem] text-center text-sm font-medium">
-                {dataCurta(periodo.inicio)} – {dataCurta(periodo.fim)}
-              </span>
-              <Button
-                type="button"
-                variant="outline"
-                size="icon"
-                className="size-9"
-                onClick={() => setSemanaRef((d) => somarDias(d, 7))}
-                aria-label="Próxima semana"
-              >
-                <ChevronRight className="size-4" aria-hidden="true" />
-              </Button>
-            </div>
-          ) : filtroPeriodoTipo === "mes" ? (
-            <div className="flex items-center gap-1.5">
-              <select
-                aria-label="Filtrar por mês"
-                value={filtroMesNum}
-                onChange={(e) => setFiltroMesNum(Number(e.target.value))}
-                className="h-9 rounded-md border border-input bg-background px-2.5 text-sm"
-              >
-                {MESES.map((m, i) => (
-                  <option key={m} value={i + 1}>
-                    {m}
-                  </option>
-                ))}
-              </select>
-              <select
-                aria-label="Filtrar por ano"
-                value={filtroAno}
-                onChange={(e) => setFiltroAno(Number(e.target.value))}
-                className="h-9 rounded-md border border-input bg-background px-2.5 text-sm"
-              >
-                {anosDisponiveis.map((ano) => (
-                  <option key={ano} value={ano}>
-                    {ano}
-                  </option>
-                ))}
-              </select>
-            </div>
+          <h2 className="mt-4 text-sm font-semibold text-muted-foreground">
+            {totalItens} {totalItens === 1 ? "compromisso" : "compromissos"} nesse período
+          </h2>
+
+          {totalItens === 0 ? (
+            <EmptyState
+              icon={CalendarDays}
+              titulo="Nada encontrado nesse período"
+              descricao='Tente outro período ou status, ou use "Novo evento" pra marcar algo.'
+            />
           ) : (
-            <div className="flex items-center gap-1.5">
-              <Input
-                type="date"
-                aria-label="De"
-                value={periodoInicio}
-                onChange={(e) => setPeriodoInicio(e.target.value)}
-                className="h-9 w-auto"
-              />
-              <span className="text-sm text-muted-foreground">até</span>
-              <Input
-                type="date"
-                aria-label="Até"
-                value={periodoFim}
-                onChange={(e) => setPeriodoFim(e.target.value)}
-                className="h-9 w-auto"
-              />
-            </div>
+            <ul className="mt-3 space-y-3">
+              {eventosDoPeriodo.map((e) => (
+                <EventoItem key={e.id} evento={e} hoje={hoje} mostrarData {...acoesEvento} />
+              ))}
+              {financeiroDoPeriodo.map((item) => (
+                <FinanceiroAgendaItem key={item.parcela.id} item={item} />
+              ))}
+            </ul>
           )}
-        </div>
-
-        {eventosDoPeriodo.length === 0 && financeiroDoPeriodo.length === 0 ? (
-          <p className="px-2 py-10 text-center text-sm text-muted-foreground">
-            Nenhum evento encontrado para esse filtro.
-          </p>
-        ) : (
-          <ul className="mt-4 space-y-3">
-            {eventosDoPeriodo.map((e) => (
-              <EventoItem key={e.id} evento={e} hoje={hoje} mostrarData {...acoesEvento} />
-            ))}
-            {financeiroDoPeriodo.map((item) => (
-              <FinanceiroAgendaItem key={item.parcela.id} item={item} />
-            ))}
-          </ul>
-        )}
-      </section>
+        </section>
+      </div>
 
       <Dialog
         open={aberto}
