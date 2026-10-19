@@ -1,7 +1,18 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Ban, CalendarDays, Check, Pencil, Plus, Receipt, RotateCcw, Undo2 } from "lucide-react";
+import {
+  Ban,
+  CalendarDays,
+  Check,
+  ChevronLeft,
+  ChevronRight,
+  Pencil,
+  Plus,
+  Receipt,
+  RotateCcw,
+  Undo2,
+} from "lucide-react";
 import { toast } from "sonner";
 import { db } from "@/lib/local-db";
 import { AppShell } from "@/components/AppShell";
@@ -48,6 +59,28 @@ const MESES = [
   "Novembro",
   "Dezembro",
 ];
+
+/** Domingo a sábado (ou segunda a domingo) da semana que contém `refISO`. */
+function limitesSemana(refISO: string, inicioSemana: 0 | 1): { inicio: string; fim: string } {
+  const ref = new Date(`${refISO}T00:00:00Z`);
+  const diff = (ref.getUTCDay() - inicioSemana + 7) % 7;
+  const inicio = new Date(ref);
+  inicio.setUTCDate(inicio.getUTCDate() - diff);
+  const fim = new Date(inicio);
+  fim.setUTCDate(fim.getUTCDate() + 6);
+  return { inicio: inicio.toISOString().slice(0, 10), fim: fim.toISOString().slice(0, 10) };
+}
+
+function somarDias(dataISOStr: string, dias: number): string {
+  const d = new Date(`${dataISOStr}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + dias);
+  return d.toISOString().slice(0, 10);
+}
+
+/** Último dia do mês (ano/mês em base 1) no formato ISO. */
+function fimDoMes(ano: number, mes: number): string {
+  return new Date(Date.UTC(ano, mes, 0)).toISOString().slice(0, 10);
+}
 
 const TIPOS_EVENTO = [
   "manual",
@@ -203,6 +236,14 @@ function Calendario() {
   const [filtroStatus, setFiltroStatus] = useState<"todos" | StatusEvento>("todos");
   const [filtroOrigem, setFiltroOrigem] = useState<"todos" | "eventos" | "financeiro">("todos");
 
+  // "Eventos do período": semana, mês (como já era) ou um intervalo de datas
+  // escolhido à mão — as três formas convergem pra um único [inicio, fim]
+  // usado no filtro abaixo.
+  const [filtroPeriodoTipo, setFiltroPeriodoTipo] = useState<"semana" | "mes" | "periodo">("mes");
+  const [semanaRef, setSemanaRef] = useState(hoje);
+  const [periodoInicio, setPeriodoInicio] = useState(hoje);
+  const [periodoFim, setPeriodoFim] = useState(hoje);
+
   const eventos = useQuery({
     queryKey: ["eventos", fazenda?.id],
     enabled: !!fazenda?.id,
@@ -285,21 +326,45 @@ function Calendario() {
       ? []
       : (financeiroPorDia.get(paraDataISO(selecionado)) ?? []);
 
-  const filtroMes = `${filtroAno}-${String(filtroMesNum).padStart(2, "0")}`;
+  const inicioSemanaPref: 0 | 1 = prefs.inicio_semana === 1 ? 1 : 0;
 
-  const eventosDoMes = useMemo(() => {
+  const periodo = useMemo(() => {
+    if (filtroPeriodoTipo === "semana") return limitesSemana(semanaRef, inicioSemanaPref);
+    if (filtroPeriodoTipo === "periodo") {
+      return periodoInicio <= periodoFim
+        ? { inicio: periodoInicio, fim: periodoFim }
+        : { inicio: periodoFim, fim: periodoInicio };
+    }
+    return {
+      inicio: `${filtroAno}-${String(filtroMesNum).padStart(2, "0")}-01`,
+      fim: fimDoMes(filtroAno, filtroMesNum),
+    };
+  }, [
+    filtroPeriodoTipo,
+    semanaRef,
+    inicioSemanaPref,
+    periodoInicio,
+    periodoFim,
+    filtroAno,
+    filtroMesNum,
+  ]);
+
+  const eventosDoPeriodo = useMemo(() => {
     if (filtroOrigem === "financeiro") return [];
     return (eventos.data ?? [])
-      .filter((e) => dataISO(e.data).slice(0, 7) === filtroMes)
+      .filter((e) => {
+        const d = dataISO(e.data);
+        return d >= periodo.inicio && d <= periodo.fim;
+      })
       .filter((e) => filtroStatus === "todos" || statusDoEvento(e, hoje) === filtroStatus)
       .sort((a, b) => dataISO(a.data).localeCompare(dataISO(b.data)));
-  }, [eventos.data, filtroMes, filtroStatus, filtroOrigem, hoje]);
+  }, [eventos.data, periodo, filtroStatus, filtroOrigem, hoje]);
 
-  const financeiroDoMes = useMemo(() => {
+  const financeiroDoPeriodo = useMemo(() => {
     if (filtroOrigem === "eventos") return [];
     const itens: { parcela: ParcelaAgendaRow; conta: ContaAgendaRow }[] = [];
     for (const [dia, lista] of financeiroPorDia) {
-      if (dia.slice(0, 7) !== filtroMes) continue;
+      if (dia < periodo.inicio || dia > periodo.fim) continue;
       for (const item of lista) {
         const statusEquivalente =
           statusExibicaoParcela(item.parcela) === "atrasado" ? "atrasado" : "a_fazer";
@@ -310,7 +375,7 @@ function Calendario() {
     return itens.sort((a, b) =>
       dataISO(a.parcela.vencimento).localeCompare(dataISO(b.parcela.vencimento)),
     );
-  }, [financeiroPorDia, filtroMes, filtroStatus, filtroOrigem]);
+  }, [financeiroPorDia, periodo, filtroStatus, filtroOrigem]);
 
   const anosDisponiveis = useMemo(() => {
     const anos = new Set<number>([Number(hoje.slice(0, 4))]);
@@ -462,7 +527,13 @@ function Calendario() {
 
       <section className="mt-4 rounded-xl border border-border bg-card p-5">
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <h2 className="text-base font-semibold">Eventos do mês</h2>
+          <h2 className="text-base font-semibold">
+            {filtroPeriodoTipo === "semana"
+              ? "Eventos da semana"
+              : filtroPeriodoTipo === "periodo"
+                ? "Eventos do período"
+                : "Eventos do mês"}
+          </h2>
           <div className="flex flex-wrap items-center gap-2">
             <select
               aria-label="Filtrar por origem"
@@ -485,43 +556,121 @@ function Calendario() {
               <option value="atrasado">Atrasado</option>
               <option value="feito">Concluído</option>
             </select>
-            <select
-              aria-label="Filtrar por mês"
-              value={filtroMesNum}
-              onChange={(e) => setFiltroMesNum(Number(e.target.value))}
-              className="h-9 rounded-md border border-input bg-background px-2.5 text-sm"
-            >
-              {MESES.map((m, i) => (
-                <option key={m} value={i + 1}>
-                  {m}
-                </option>
-              ))}
-            </select>
-            <select
-              aria-label="Filtrar por ano"
-              value={filtroAno}
-              onChange={(e) => setFiltroAno(Number(e.target.value))}
-              className="h-9 rounded-md border border-input bg-background px-2.5 text-sm"
-            >
-              {anosDisponiveis.map((ano) => (
-                <option key={ano} value={ano}>
-                  {ano}
-                </option>
-              ))}
-            </select>
           </div>
         </div>
 
-        {eventosDoMes.length === 0 && financeiroDoMes.length === 0 ? (
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          <div className="flex gap-1.5">
+            <Button
+              type="button"
+              size="sm"
+              variant={filtroPeriodoTipo === "semana" ? "default" : "outline"}
+              onClick={() => setFiltroPeriodoTipo("semana")}
+            >
+              Semana
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant={filtroPeriodoTipo === "mes" ? "default" : "outline"}
+              onClick={() => setFiltroPeriodoTipo("mes")}
+            >
+              Mês
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant={filtroPeriodoTipo === "periodo" ? "default" : "outline"}
+              onClick={() => setFiltroPeriodoTipo("periodo")}
+            >
+              Período
+            </Button>
+          </div>
+
+          {filtroPeriodoTipo === "semana" ? (
+            <div className="flex items-center gap-1.5">
+              <Button
+                type="button"
+                variant="outline"
+                size="icon"
+                className="size-9"
+                onClick={() => setSemanaRef((d) => somarDias(d, -7))}
+                aria-label="Semana anterior"
+              >
+                <ChevronLeft className="size-4" aria-hidden="true" />
+              </Button>
+              <span className="min-w-[11rem] text-center text-sm font-medium">
+                {dataCurta(periodo.inicio)} – {dataCurta(periodo.fim)}
+              </span>
+              <Button
+                type="button"
+                variant="outline"
+                size="icon"
+                className="size-9"
+                onClick={() => setSemanaRef((d) => somarDias(d, 7))}
+                aria-label="Próxima semana"
+              >
+                <ChevronRight className="size-4" aria-hidden="true" />
+              </Button>
+            </div>
+          ) : filtroPeriodoTipo === "mes" ? (
+            <div className="flex items-center gap-1.5">
+              <select
+                aria-label="Filtrar por mês"
+                value={filtroMesNum}
+                onChange={(e) => setFiltroMesNum(Number(e.target.value))}
+                className="h-9 rounded-md border border-input bg-background px-2.5 text-sm"
+              >
+                {MESES.map((m, i) => (
+                  <option key={m} value={i + 1}>
+                    {m}
+                  </option>
+                ))}
+              </select>
+              <select
+                aria-label="Filtrar por ano"
+                value={filtroAno}
+                onChange={(e) => setFiltroAno(Number(e.target.value))}
+                className="h-9 rounded-md border border-input bg-background px-2.5 text-sm"
+              >
+                {anosDisponiveis.map((ano) => (
+                  <option key={ano} value={ano}>
+                    {ano}
+                  </option>
+                ))}
+              </select>
+            </div>
+          ) : (
+            <div className="flex items-center gap-1.5">
+              <Input
+                type="date"
+                aria-label="De"
+                value={periodoInicio}
+                onChange={(e) => setPeriodoInicio(e.target.value)}
+                className="h-9 w-auto"
+              />
+              <span className="text-sm text-muted-foreground">até</span>
+              <Input
+                type="date"
+                aria-label="Até"
+                value={periodoFim}
+                onChange={(e) => setPeriodoFim(e.target.value)}
+                className="h-9 w-auto"
+              />
+            </div>
+          )}
+        </div>
+
+        {eventosDoPeriodo.length === 0 && financeiroDoPeriodo.length === 0 ? (
           <p className="px-2 py-10 text-center text-sm text-muted-foreground">
             Nenhum evento encontrado para esse filtro.
           </p>
         ) : (
           <ul className="mt-4 space-y-3">
-            {eventosDoMes.map((e) => (
+            {eventosDoPeriodo.map((e) => (
               <EventoItem key={e.id} evento={e} hoje={hoje} mostrarData {...acoesEvento} />
             ))}
-            {financeiroDoMes.map((item) => (
+            {financeiroDoPeriodo.map((item) => (
               <FinanceiroAgendaItem key={item.parcela.id} item={item} />
             ))}
           </ul>

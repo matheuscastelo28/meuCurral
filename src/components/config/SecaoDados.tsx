@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { useQueryClient } from "@tanstack/react-query";
-import { Download, Loader2, Trash2 } from "lucide-react";
+import { Download, FileSpreadsheet, Loader2, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { db } from "@/lib/local-db";
 import { Button } from "@/components/ui/button";
@@ -16,7 +16,11 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { useFazenda } from "@/hooks/use-fazenda";
-import { apagarRegistrosDaFazenda, exportarDadosDaFazenda } from "@/lib/exportar";
+import {
+  apagarRegistrosDaFazenda,
+  exportarDadosDaFazenda,
+  exportarReceitasExcel,
+} from "@/lib/exportar";
 import { excluirContaAtual } from "@/lib/local-db";
 import { CartaoConfig } from "./CartaoConfig";
 
@@ -27,6 +31,7 @@ export function SecaoDados() {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const [exportando, setExportando] = useState(false);
+  const [exportandoReceitas, setExportandoReceitas] = useState(false);
   const [acao, setAcao] = useState<Acao>(null);
   const [confirmacao, setConfirmacao] = useState("");
   const [processando, setProcessando] = useState(false);
@@ -44,6 +49,19 @@ export function SecaoDados() {
       toast.error("Não conseguimos gerar o arquivo agora.");
     } finally {
       setExportando(false);
+    }
+  }
+
+  async function exportarReceitas() {
+    if (!fazenda) return;
+    setExportandoReceitas(true);
+    try {
+      await exportarReceitasExcel(fazenda.id, fazenda.nome);
+      toast.success("Download iniciado: planilha de receitas em Excel.");
+    } catch {
+      toast.error("Não conseguimos gerar o arquivo agora.");
+    } finally {
+      setExportandoReceitas(false);
     }
   }
 
@@ -89,6 +107,18 @@ export function SecaoDados() {
             <Download className="size-4" aria-hidden="true" />
           )}
           Exportar meus dados
+        </Button>
+        <Button
+          variant="outline"
+          onClick={exportarReceitas}
+          disabled={exportandoReceitas || !fazenda}
+        >
+          {exportandoReceitas ? (
+            <Loader2 className="size-4 animate-spin" aria-hidden="true" />
+          ) : (
+            <FileSpreadsheet className="size-4" aria-hidden="true" />
+          )}
+          Exportar receitas (Excel)
         </Button>
         <Button variant="outline" onClick={() => setAcao("limpar")} disabled={!fazenda}>
           <Trash2 className="size-4" aria-hidden="true" />
