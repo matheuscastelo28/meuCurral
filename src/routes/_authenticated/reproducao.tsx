@@ -32,13 +32,13 @@ const TIPOS = ["cobertura", "inseminacao", "diagnostico", "parto", "secagem"] as
 // Touro não entra como "Animal" (o animal sendo coberto/inseminado/secado/
 // parindo) nesses tipos — só faz sentido escolher um touro ali em diagnóstico.
 const TIPOS_SEM_TOURO_NO_ANIMAL = new Set(["cobertura", "inseminacao", "secagem", "parto"]);
-// Média bovina — o sistema ainda não distingue por espécie/raça. É só uma
-// estimativa: a UI deixa isso explícito e permite ajustar a data manualmente.
-// Único lugar onde essa constante existe no app.
-const DIAS_GESTACAO = 283;
+// Médias por espécie — o sistema não distingue por raça individual. São só
+// estimativas: a UI deixa isso explícito e permite ajustar a data manualmente.
+const DIAS_GESTACAO_BOVINO = 283;
+const DIAS_GESTACAO_OVINO = 150;
 
-function previsaoPartoDe(data: string) {
-  return dataISO(new Date(new Date(data).getTime() + DIAS_GESTACAO * 86400000));
+function previsaoPartoDe(data: string, diasGestacao: number) {
+  return dataISO(new Date(new Date(data).getTime() + diasGestacao * 86400000));
 }
 
 function Reproducao() {
@@ -47,6 +47,7 @@ function Reproducao() {
     !!fazenda?.atividades?.includes("ovino") && !fazenda.atividades.includes("bovino");
   const categoriaReprodutor = soOvino ? "carneiro" : "touro";
   const rotuloReprodutor = soOvino ? "Carneiro" : "Touro";
+  const diasGestacao = soOvino ? DIAS_GESTACAO_OVINO : DIAS_GESTACAO_BOVINO;
   const queryClient = useQueryClient();
   const [tipo, setTipo] = useState<string>("cobertura");
   const [data, setData] = useState(hojeISO());
@@ -54,14 +55,16 @@ function Reproducao() {
   // "" = nenhum, "outro" = touro não cadastrado (usa touroCustom), senão é o id do animal touro.
   const [touroId, setTouroId] = useState("");
   const [touroCustom, setTouroCustom] = useState("");
-  const [previsaoParto, setPrevisaoParto] = useState(() => previsaoPartoDe(hojeISO()));
+  const [previsaoParto, setPrevisaoParto] = useState(() =>
+    previsaoPartoDe(hojeISO(), diasGestacao),
+  );
 
   const requerPrevisao = tipo === "cobertura" || tipo === "inseminacao";
 
   useEffect(() => {
-    if (requerPrevisao) setPrevisaoParto(previsaoPartoDe(data));
+    if (requerPrevisao) setPrevisaoParto(previsaoPartoDe(data, diasGestacao));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tipo, data]);
+  }, [tipo, data, diasGestacao]);
 
   const animais = useQuery({
     queryKey: ["animais-simples", fazenda?.id],
@@ -287,7 +290,8 @@ function Reproducao() {
               onChange={(e) => setPrevisaoParto(e.target.value)}
             />
             <p className="text-xs text-muted-foreground">
-              Calculada com base em uma gestação média de {DIAS_GESTACAO} dias.
+              Calculada com base em uma gestação média de {diasGestacao} dias
+              {soOvino ? " (ovinos)" : ""}.
             </p>
           </div>
         ) : null}

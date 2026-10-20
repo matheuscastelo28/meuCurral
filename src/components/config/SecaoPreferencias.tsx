@@ -5,24 +5,30 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { usePerfil, useSalvarPerfil, PREFERENCIAS_PADRAO } from "@/hooks/use-preferencias";
+import { useFazenda } from "@/hooks/use-fazenda";
 import { CartaoConfig } from "./CartaoConfig";
 
 export function SecaoPreferencias() {
   const { data: perfil } = usePerfil();
+  const { data: fazenda } = useFazenda();
+  // Arroba é unidade de boi — some do seletor quando a fazenda é só de
+  // ovinos (ali o peso é sempre em kg).
+  const soOvino =
+    !!fazenda?.atividades?.includes("ovino") && !fazenda.atividades.includes("bovino");
   const salvar = useSalvarPerfil();
   const [valores, setValores] = useState(PREFERENCIAS_PADRAO);
 
   useEffect(() => {
     if (!perfil) return;
     setValores({
-      unidade_peso: perfil.unidade_peso ?? "kg",
+      unidade_peso: soOvino ? "kg" : (perfil.unidade_peso ?? "kg"),
       moeda: perfil.moeda ?? "BRL",
       inicio_semana: perfil.inicio_semana ?? 0,
       alerta_vacina: perfil.alerta_vacina ?? true,
       alerta_pesagem: perfil.alerta_pesagem ?? true,
       alerta_parto: perfil.alerta_parto ?? true,
     });
-  }, [perfil]);
+  }, [perfil, soOvino]);
 
   const alertas = [
     { chave: "alerta_vacina", rotulo: "Vacinação e vermifugação" },
@@ -56,7 +62,7 @@ export function SecaoPreferencias() {
               className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
             >
               <option value="kg">Quilos (kg)</option>
-              <option value="arroba">Arroba (@)</option>
+              {soOvino ? null : <option value="arroba">Arroba (@)</option>}
             </select>
           </div>
           <div className="space-y-1.5">

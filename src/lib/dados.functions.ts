@@ -1170,6 +1170,10 @@ export const registrarVendaLote = createServerFn({ method: "POST" })
       data: string;
       pago?: boolean;
       formaPagamento?: string;
+      // "boi"/"arroba" (padrão, mantém o comportamento de sempre) ou
+      // "ovino"/"kg" pra fazenda que não usa arroba.
+      produto?: string;
+      unidade?: string;
     }) => dados,
   )
   .handler(async ({ data }) => {
@@ -1183,6 +1187,10 @@ export const registrarVendaLote = createServerFn({ method: "POST" })
       if (data.precoUnitario <= 0) {
         return { data: null, error: { message: "Informe um preço maior que zero." } };
       }
+
+      const produto = data.produto ?? "boi";
+      const unidade = data.unidade ?? "arroba";
+      const kgPorUnidade = unidade === "kg" ? 1 : 15;
 
       const resultado = await sql.begin(async (tx) => {
         // Trava as linhas do lote pra evitar duas vendas simultâneas do
@@ -1200,7 +1208,7 @@ export const registrarVendaLote = createServerFn({ method: "POST" })
             "Os animais do lote não têm peso registrado — registre uma pesagem antes de vender.",
           );
         }
-        const arrobas = pesoTotal / 15;
+        const arrobas = pesoTotal / kgPorUnidade;
         const valorTotal = Math.round(arrobas * data.precoUnitario * 100) / 100;
         const status = data.pago ? "recebido" : "a_receber";
         const formaPagamento = data.pago ? (data.formaPagamento ?? "dinheiro") : "dinheiro";
@@ -1217,7 +1225,7 @@ export const registrarVendaLote = createServerFn({ method: "POST" })
             fazenda_id, produto, quantidade, unidade, preco_unitario, valor_total, comprador, data, financeiro_id, lote
           )
           values (
-            ${data.fazendaId}, 'boi', ${arrobas}, 'arroba', ${data.precoUnitario},
+            ${data.fazendaId}, ${produto}, ${arrobas}, ${unidade}, ${data.precoUnitario},
             ${valorTotal}, ${data.comprador ?? null}, ${data.data}, ${financeiroId}, ${data.lote}
           )
           returning *`;

@@ -455,6 +455,8 @@ export const db = {
       data: string;
       pago?: boolean;
       formaPagamento?: string;
+      produto?: string;
+      unidade?: string;
     }) {
       return registrarVendaLote({ data: { token: tokenSessao(), ...params } });
     },

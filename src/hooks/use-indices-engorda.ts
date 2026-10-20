@@ -10,9 +10,9 @@ export interface IndicesEngorda {
   ganho30d: number;
 }
 
-export function useIndicesEngorda(fazendaId: string | undefined) {
+export function useIndicesEngorda(fazendaId: string | undefined, kgPorUnidade = 15) {
   return useQuery({
-    queryKey: ["indices-engorda", fazendaId],
+    queryKey: ["indices-engorda", fazendaId, kgPorUnidade],
     enabled: !!fazendaId,
     queryFn: async (): Promise<IndicesEngorda> => {
       const [animaisRes, pesagensRes] = await Promise.all([
@@ -34,7 +34,7 @@ export function useIndicesEngorda(fazendaId: string | undefined) {
       const pesos = animais.map((a) => Number(a.peso_kg)).filter((p) => p > 0);
       const somaPesos = pesos.reduce((s, p) => s + p, 0);
       const pesoMedio = pesos.length > 0 ? somaPesos / pesos.length : 0;
-      const arrobasTotais = somaPesos / 15;
+      const arrobasTotais = somaPesos / kgPorUnidade;
 
       const idsEngorda = new Set(animais.map((a) => a.id));
       const porAnimal = new Map<string, { data: string; valor: number }[]>();

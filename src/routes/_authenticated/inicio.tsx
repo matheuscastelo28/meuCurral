@@ -38,6 +38,8 @@ export const Route = createFileRoute("/_authenticated/inicio")({
 function Inicio() {
   const { data: fazenda } = useFazenda();
   const fazendaId = fazenda?.id;
+  const soOvino =
+    !!fazenda?.atividades?.includes("ovino") && !fazenda.atividades.includes("bovino");
   const prefs = usePreferencias();
   const moeda = (v: number | null | undefined) => formatarMoeda(v, prefs.moeda);
   const queryClient = useQueryClient();
@@ -136,15 +138,17 @@ function Inicio() {
             <Link to="/engorda" className="block">
               <Cartao
                 icon={Weight}
-                rotulo="Animais em engorda"
+                rotulo={soOvino ? "Em confinamento" : "Animais em engorda"}
                 valor={String(animais.filter((a) => a.status === "engorda").length)}
               />
             </Link>
-            <Cartao
-              icon={Milk}
-              rotulo="Leite hoje"
-              valor={`${(resumo.data?.leiteHoje ?? 0).toLocaleString("pt-BR")} L`}
-            />
+            {soOvino ? null : (
+              <Cartao
+                icon={Milk}
+                rotulo="Leite hoje"
+                valor={`${(resumo.data?.leiteHoje ?? 0).toLocaleString("pt-BR")} L`}
+              />
+            )}
             <Link to="/financeiro" className="block">
               <Cartao
                 icon={TrendingUp}
@@ -170,12 +174,14 @@ function Inicio() {
                 Novo lançamento
               </Link>
             </Button>
-            <Button variant="outline" size="sm" asChild>
-              <Link to="/leite">
-                <Milk className="size-4" aria-hidden="true" />
-                Registrar leite
-              </Link>
-            </Button>
+            {soOvino ? null : (
+              <Button variant="outline" size="sm" asChild>
+                <Link to="/leite">
+                  <Milk className="size-4" aria-hidden="true" />
+                  Registrar leite
+                </Link>
+              </Button>
+            )}
             <Button variant="outline" size="sm" asChild>
               <Link to="/engorda">
                 <Weight className="size-4" aria-hidden="true" />

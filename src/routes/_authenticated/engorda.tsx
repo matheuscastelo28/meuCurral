@@ -97,8 +97,20 @@ function Engorda() {
   const { data: fazenda } = useFazenda();
   const prefs = usePreferencias();
   const queryClient = useQueryClient();
+  // Ovino não usa arroba (unidade de boi) — o preço e o peso total do lote
+  // são direto em kg nesse caso. "arroba(s)" no código continua sendo só o
+  // nome interno da variável/coluna; o que muda é o valor e o rótulo mostrado.
+  const soOvino =
+    !!fazenda?.atividades?.includes("ovino") && !fazenda.atividades.includes("bovino");
+  const produtoPreco = soOvino ? "ovino" : "boi";
+  const unidadePreco = soOvino ? "kg" : "arroba";
+  const simboloUnidade = soOvino ? "kg" : "@";
+  const kgPorUnidade = soOvino ? 1 : KG_POR_ARROBA;
+  function paraUnidade(pesoKg: number) {
+    return soOvino ? pesoKg : pesoKg / KG_POR_ARROBA;
+  }
   const indices = useIndicesRebanho(fazenda?.id);
-  const indicesEngorda = useIndicesEngorda(fazenda?.id);
+  const indicesEngorda = useIndicesEngorda(fazenda?.id, kgPorUnidade);
   const moeda = (v: number | null | undefined) => formatarMoeda(v, prefs.moeda);
   const hoje = hojeISO();
 
@@ -230,16 +242,16 @@ function Engorda() {
   const [peso, setPeso] = useState("");
   const [data, setData] = useState(hoje);
 
-  // ---- Preço da arroba vigente ------------------------------------------
+  // ---- Preço vigente (arroba pro boi, kg pro ovino) ----------------------
   const precos = useQuery({
-    queryKey: ["precos-produto", fazenda?.id, "boi"],
+    queryKey: ["precos-produto", fazenda?.id, produtoPreco],
     enabled: !!fazenda?.id,
     queryFn: async () => {
       const { data, error } = await db
         .from("precos_produto")
         .select("*")
         .eq("fazenda_id", fazenda!.id)
-        .eq("produto", "boi")
+        .eq("produto", produtoPreco)
         .order("data_inicio", { ascending: false });
       if (error) throw error;
       return data;
@@ -257,9 +269,9 @@ function Engorda() {
     mutationFn: async () => {
       const { error } = await db.from("precos_produto").insert({
         fazenda_id: fazenda!.id,
-        produto: "boi",
+        produto: produtoPreco,
         valor: Number(precoValor),
-        unidade: "arroba",
+        unidade: unidadePreco,
         comprador: precoComprador.trim() || null,
         data_inicio: precoDataInicio,
       } as never);
@@ -286,8 +298,7 @@ function Engorda() {
   const [vendaAvulsaFormaPagamento, setVendaAvulsaFormaPagamento] = useState("dinheiro");
   const [vendaAvulsaParcelas, setVendaAvulsaParcelas] = useState("1");
 
-  const arrobasVendaAvulsa =
-    Number(vendaAvulsaPeso) > 0 ? Number(vendaAvulsaPeso) / KG_POR_ARROBA : 0;
+  const arrobasVendaAvulsa = Number(vendaAvulsaPeso) > 0 ? paraUnidade(Number(vendaAvulsaPeso)) : 0;
   const vendaAvulsaTotal = arrobasVendaAvulsa * (Number(vendaAvulsaPreco) || 0);
 
   function selecionarAnimalVenda(id: string) {
@@ -299,12 +310,12 @@ function Engorda() {
   const salvarVendaAvulsa = useMutation({
     mutationFn: async () => {
       const pesoKg = Number(vendaAvulsaPeso);
-      const arrobas = pesoKg / KG_POR_ARROBA;
+      const arrobas = paraUnidade(pesoKg);
       const { error } = await db.leite.registrarVenda({
         fazendaId: fazenda!.id,
-        produto: "boi",
+        produto: produtoPreco,
         quantidade: arrobas,
-        unidade: "arroba",
+        unidade: unidadePreco,
         precoUnitario: Number(vendaAvulsaPreco),
         comprador: vendaAvulsaComprador.trim() || null,
         data: vendaAvulsaData,
@@ -362,7 +373,7 @@ function Engorda() {
       const pesos = grupo.animais.map((a) => Number(a.peso_kg ?? 0)).filter((p) => p > 0);
       const pesoTotal = pesos.reduce((s, p) => s + p, 0);
       const pesoMedio = pesos.length > 0 ? pesoTotal / pesos.length : 0;
-      const arrobasTotais = pesoTotal / KG_POR_ARROBA;
+      const arrobasTotais = paraUnidade(pesoTotal);
 
       const gmds: number[] = [];
       const porDia = new Map<string, { soma: number; qtd: number }>();
@@ -450,7 +461,8 @@ function Engorda() {
         diasDesdeEntrada,
       };
     });
-  }, [animais.data, pesagensPorAnimal, despesasLote.data, precoVigente, hoje]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- paraUnidade só depende de soOvino, já listado
+  }, [animais.data, pesagensPorAnimal, despesasLote.data, precoVigente, hoje, soOvino]);
 
   const [loteSelecionado, setLoteSelecionado] = useState<string | null>(null);
   useEffect(() => {
@@ -538,7 +550,7 @@ function Engorda() {
 
   return (
     <AppShell
-      titulo="Engorda"
+      titulo={soOvino ? "Confinamento" : "Engorda"}
       descricao="Peso, ganho médio diário, custo e venda do lote em engorda."
     >
       <div className="mb-5 grid gap-3 sm:grid-cols-3 lg:grid-cols-4">
@@ -557,9 +569,11 @@ function Engorda() {
         />
         <Kpi
           icon={Scale}
-          rotulo="Arrobas totais"
+          rotulo={soOvino ? "Peso total" : "Arrobas totais"}
           valor={
-            e ? `${e.arrobasTotais.toLocaleString("pt-BR", { maximumFractionDigits: 1 })} @` : "—"
+            e
+              ? `${e.arrobasTotais.toLocaleString("pt-BR", { maximumFractionDigits: 1 })} ${simboloUnidade}`
+              : "—"
           }
         />
         <Kpi
@@ -583,8 +597,8 @@ function Engorda() {
       <div className="mb-5 grid gap-5 lg:grid-cols-2">
         <CartaoConfig
           id="preco-boi"
-          titulo="Preço do boi"
-          descricao="Vale para as arrobas vendidas a partir da data de vigência — o histórico anterior continua usando o preço antigo."
+          titulo={soOvino ? "Preço do ovino" : "Preço do boi"}
+          descricao={`Vale para os ${simboloUnidade === "kg" ? "quilos" : "arrobas"} vendidos a partir da data de vigência — o histórico anterior continua usando o preço antigo.`}
         >
           {precoVigente ? (
             <div className="flex items-center gap-3">
@@ -593,7 +607,7 @@ function Engorda() {
               </span>
               <div>
                 <p className="font-display text-xl font-extrabold">
-                  {moeda(Number(precoVigente.valor))}/@
+                  {moeda(Number(precoVigente.valor))}/{simboloUnidade}
                 </p>
                 <p className="text-xs text-muted-foreground">
                   desde {dataCurta(precoVigente.data_inicio)}
@@ -614,7 +628,7 @@ function Engorda() {
               }}
             >
               <div className="space-y-1.5">
-                <Label htmlFor="preco-boi-valor">Preço (R$/@)</Label>
+                <Label htmlFor="preco-boi-valor">Preço (R$/{simboloUnidade})</Label>
                 <Input
                   id="preco-boi-valor"
                   type="number"
@@ -864,7 +878,7 @@ function Engorda() {
                         <span className="font-semibold">
                           {precoVigente
                             ? moeda(loteAtual.arrobasTotais * Number(precoVigente.valor))
-                            : "cadastre o preço do boi"}
+                            : `cadastre o preço do ${soOvino ? "ovino" : "boi"}`}
                         </span>
                       </div>
                     </div>
@@ -1147,6 +1161,8 @@ function Engorda() {
               precoSugerido={precoVigente ? Number(precoVigente.valor) : null}
               moeda={moeda}
               onSalvo={invalidarEngordaGeral}
+              produto={produtoPreco}
+              simboloUnidade={simboloUnidade}
             />
           </TabsContent>
 
@@ -1197,12 +1213,12 @@ function Engorda() {
                     {arrobasVendaAvulsa > 0 ? (
                       <p className="text-xs text-muted-foreground">
                         ≈ {arrobasVendaAvulsa.toLocaleString("pt-BR", { maximumFractionDigits: 2 })}{" "}
-                        @
+                        {simboloUnidade}
                       </p>
                     ) : null}
                   </div>
                   <div className="space-y-1.5">
-                    <Label htmlFor="venda-boi-preco">Preço (R$/@)</Label>
+                    <Label htmlFor="venda-boi-preco">Preço (R$/{simboloUnidade})</Label>
                     <Input
                       id="venda-boi-preco"
                       type="number"
@@ -1683,6 +1699,8 @@ function DialogVenderLote({
   precoSugerido,
   moeda,
   onSalvo,
+  produto = "boi",
+  simboloUnidade = "@",
 }: {
   aberto: boolean;
   onFechar: () => void;
@@ -1691,7 +1709,10 @@ function DialogVenderLote({
   precoSugerido: number | null;
   moeda: (v: number | null | undefined) => string;
   onSalvo: () => void;
+  produto?: string;
+  simboloUnidade?: string;
 }) {
+  const unidade = simboloUnidade === "kg" ? "kg" : "arroba";
   const [preco, setPreco] = useState("");
   const [comprador, setComprador] = useState("");
   const [data, setData] = useState(hojeISO());
@@ -1721,6 +1742,8 @@ function DialogVenderLote({
         data,
         pago,
         formaPagamento,
+        produto,
+        unidade,
       });
       if (error) throw new Error(error.message);
     },
@@ -1739,7 +1762,7 @@ function DialogVenderLote({
           <DialogTitle>Vender lote</DialogTitle>
           <DialogDescription>
             {lote
-              ? `${lote.nome} — ${lote.qtd} animais, ${lote.arrobasTotais.toLocaleString("pt-BR", { maximumFractionDigits: 2 })} @ no total. Todos serão marcados como vendidos.`
+              ? `${lote.nome} — ${lote.qtd} animais, ${lote.arrobasTotais.toLocaleString("pt-BR", { maximumFractionDigits: 2 })} ${simboloUnidade} no total. Todos serão marcados como vendidos.`
               : ""}
           </DialogDescription>
         </DialogHeader>
@@ -1752,7 +1775,7 @@ function DialogVenderLote({
           }}
         >
           <div className="space-y-1.5">
-            <Label htmlFor="vl-preco">Preço (R$/@)</Label>
+            <Label htmlFor="vl-preco">Preço (R$/{simboloUnidade})</Label>
             <Input
               id="vl-preco"
               type="number"

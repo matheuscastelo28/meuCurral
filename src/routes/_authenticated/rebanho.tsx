@@ -41,18 +41,9 @@ export const Route = createFileRoute("/_authenticated/rebanho")({
   component: Rebanho,
 });
 
-const CATEGORIAS = [
-  "bezerro",
-  "novilha",
-  "vaca",
-  "boi",
-  "touro",
-  "cordeiro",
-  "borrega",
-  "ovelha",
-  "carneiro",
-  "outro",
-] as const;
+const CATEGORIAS_BOVINO = ["bezerro", "novilha", "vaca", "boi", "touro"] as const;
+const CATEGORIAS_OVINO = ["cordeiro", "borrega", "ovelha", "carneiro"] as const;
+const CATEGORIAS = [...CATEGORIAS_BOVINO, ...CATEGORIAS_OVINO, "outro"] as const;
 const STATUS = ["ativo", "lactacao", "seca", "prenhe", "engorda", "vendido", "morto"] as const;
 const SEXOS = ["femea", "macho", "castrado"] as const;
 
@@ -160,16 +151,19 @@ interface EntradaAnimalGrupo {
   observacoes: string;
 }
 
-function entradaGrupoVazia(): EntradaAnimalGrupo {
+function entradaGrupoVazia(
+  categoriaPadrao = "vaca",
+  racaPadrao = RACAS_BOVINO[0]!,
+): EntradaAnimalGrupo {
   return {
     nome: "",
     brinco: "",
     sexo: SEXOS[0],
-    categoria: "vaca",
+    categoria: categoriaPadrao,
     status: STATUS[0],
     nascimento: "",
     peso_kg: "",
-    raca: RACAS_BOVINO[0]!,
+    raca: racaPadrao,
     racaCustom: "",
     mae: "",
     pai: "",
@@ -180,16 +174,31 @@ function entradaGrupoVazia(): EntradaAnimalGrupo {
 function Rebanho() {
   const prefs = usePreferencias();
   const { fazenda, atingiu, usados, limite, plano } = useLimitePlano();
-  const soOvino =
-    !!fazenda?.atividades?.includes("ovino") && !fazenda.atividades.includes("bovino");
-  const racasAtual = soOvino ? RACAS_OVINO : RACAS_BOVINO;
+  // Só mostra raça/categoria de bovino OU de ovino conforme a atividade da
+  // fazenda — a lista combinada só aparece quando as duas estão marcadas.
+  const atividades = fazenda?.atividades ?? ["bovino"];
+  const temBovino = atividades.includes("bovino");
+  const temOvino = atividades.includes("ovino");
+  const soOvino = temOvino && !temBovino;
+  const soBovino = temBovino && !temOvino;
+  const racasAtual = soOvino
+    ? RACAS_OVINO
+    : soBovino
+      ? RACAS_BOVINO
+      : [...RACAS_BOVINO, ...RACAS_OVINO];
+  const categoriasAtual = soOvino
+    ? [...CATEGORIAS_OVINO, "outro"]
+    : soBovino
+      ? [...CATEGORIAS_BOVINO, "outro"]
+      : CATEGORIAS;
+  const categoriaPadrao = soOvino ? "ovelha" : "vaca";
   const queryClient = useQueryClient();
   const { editar: editarId } = Route.useSearch();
   const navigate = Route.useNavigate();
   const [busca, setBusca] = useState("");
   const [aberto, setAberto] = useState(false);
   const [upgrade, setUpgrade] = useState(false);
-  const [raca, setRaca] = useState<string>(RACAS_BOVINO[0]!);
+  const [raca, setRaca] = useState<string>(racasAtual[0]!);
   const [racaCustom, setRacaCustom] = useState("");
   const [editando, setEditando] = useState<any>(null);
 
@@ -198,7 +207,9 @@ function Rebanho() {
   const [grupoLote, setGrupoLote] = useState("");
   const [camposGrupo, setCamposGrupo] = useState<Record<CampoGrupo, boolean>>(CAMPOS_GRUPO_PADRAO);
   const [animaisGrupo, setAnimaisGrupo] = useState<EntradaAnimalGrupo[]>([]);
-  const [entradaAtual, setEntradaAtual] = useState<EntradaAnimalGrupo>(entradaGrupoVazia());
+  const [entradaAtual, setEntradaAtual] = useState<EntradaAnimalGrupo>(
+    entradaGrupoVazia(categoriaPadrao, racasAtual[0]!),
+  );
 
   const animais = useQuery({
     queryKey: ["animais", fazenda?.id],
@@ -270,7 +281,7 @@ function Rebanho() {
         brinco: String(form.get("brinco") ?? "").trim() || null,
         raca: racaFinal || null,
         sexo: String(form.get("sexo") ?? "femea"),
-        categoria: String(form.get("categoria") ?? "vaca"),
+        categoria: String(form.get("categoria") ?? categoriaPadrao),
         status: String(form.get("status") ?? "ativo"),
         nascimento: String(form.get("nascimento") ?? "") || null,
         peso_kg: form.get("peso_kg") ? Number(form.get("peso_kg")) : null,
@@ -282,7 +293,7 @@ function Rebanho() {
     onSuccess: () => {
       toast.success("Animal cadastrado.");
       setAberto(false);
-      setRaca(RACAS_BOVINO[0]!);
+      setRaca(racasAtual[0]!);
       setRacaCustom("");
       queryClient.invalidateQueries({ queryKey: ["animais"] });
       queryClient.invalidateQueries({ queryKey: ["animais-contagem"] });
@@ -305,7 +316,7 @@ function Rebanho() {
         brinco: String(form.get("brinco") ?? "").trim() || null,
         raca: racaFinal || null,
         sexo: String(form.get("sexo") ?? "femea"),
-        categoria: String(form.get("categoria") ?? "vaca"),
+        categoria: String(form.get("categoria") ?? categoriaPadrao),
         status: String(form.get("status") ?? "ativo"),
         nascimento: String(form.get("nascimento") ?? "") || null,
         peso_kg: form.get("peso_kg") ? Number(form.get("peso_kg")) : null,
@@ -353,7 +364,7 @@ function Rebanho() {
       nome: entrada.nome.trim(),
       brinco: campos.brinco ? entrada.brinco.trim() || null : null,
       sexo: campos.sexo ? entrada.sexo : SEXOS[0],
-      categoria: campos.categoria ? entrada.categoria : "vaca",
+      categoria: campos.categoria ? entrada.categoria : categoriaPadrao,
       status: campos.status ? entrada.status : STATUS[0],
       nascimento: campos.nascimento ? entrada.nascimento || null : null,
       peso_kg: campos.peso_kg && entrada.peso_kg ? Number(entrada.peso_kg) : null,
@@ -400,7 +411,7 @@ function Rebanho() {
     setGrupoLote("");
     setCamposGrupo(CAMPOS_GRUPO_PADRAO);
     setAnimaisGrupo([]);
-    setEntradaAtual(entradaGrupoVazia());
+    setEntradaAtual(entradaGrupoVazia(categoriaPadrao, racasAtual[0]!));
     setGrupoEtapa("campos");
   }
 
@@ -408,7 +419,7 @@ function Rebanho() {
     setGrupoEtapa(null);
     setGrupoLote("");
     setAnimaisGrupo([]);
-    setEntradaAtual(entradaGrupoVazia());
+    setEntradaAtual(entradaGrupoVazia(categoriaPadrao, racasAtual[0]!));
   }
 
   function alternarCampoGrupo(chave: CampoGrupo) {
@@ -441,7 +452,7 @@ function Rebanho() {
     // mesmo grupo) e limpa o que é único de cada animal — reduz quanto o
     // usuário precisa redigitar a cada volta do laço.
     setEntradaAtual((prev) => ({
-      ...entradaGrupoVazia(),
+      ...entradaGrupoVazia(categoriaPadrao, racasAtual[0]!),
       sexo: prev.sexo,
       categoria: prev.categoria,
       status: prev.status,
@@ -474,21 +485,21 @@ function Rebanho() {
       return;
     }
     setEditando(null);
-    setRaca(RACAS_BOVINO[0]!);
+    setRaca(racasAtual[0]!);
     setRacaCustom("");
     setAberto(true);
   }
 
   function abrirEdicao(a: any) {
     setAberto(false);
-    if (a.raca && RACAS_BOVINO.includes(a.raca)) {
+    if (a.raca && racasAtual.includes(a.raca)) {
       setRaca(a.raca);
       setRacaCustom("");
     } else if (a.raca) {
       setRaca(OUTRA_RACA);
       setRacaCustom(a.raca);
     } else {
-      setRaca(RACAS_BOVINO[0]!);
+      setRaca(racasAtual[0]!);
       setRacaCustom("");
     }
     setEditando(a);
@@ -543,7 +554,7 @@ function Rebanho() {
           className="h-9 rounded-md border border-input bg-background px-2.5 text-sm"
         >
           <option value="todas">Todas as categorias</option>
-          {CATEGORIAS.map((c) => (
+          {categoriasAtual.map((c) => (
             <option key={c} value={c}>
               {capitalizar(c)}
             </option>
@@ -696,7 +707,12 @@ function Rebanho() {
             </div>
             <div className="grid grid-cols-3 gap-3">
               <Selecao id="sexo" nome="Sexo" opcoes={SEXOS} />
-              <Selecao id="categoria" nome="Categoria" opcoes={CATEGORIAS} padrao="vaca" />
+              <Selecao
+                id="categoria"
+                nome="Categoria"
+                opcoes={categoriasAtual}
+                padrao={categoriaPadrao}
+              />
               <Selecao id="status" nome="Situação" opcoes={STATUS} />
             </div>
             <div className="grid grid-cols-2 gap-3">
@@ -789,8 +805,8 @@ function Rebanho() {
                   <Selecao
                     id="categoria"
                     nome="Categoria"
-                    opcoes={CATEGORIAS}
-                    padrao={editando.categoria ?? "vaca"}
+                    opcoes={categoriasAtual}
+                    padrao={editando.categoria ?? categoriaPadrao}
                   />
                   <Selecao
                     id="status"
@@ -1061,7 +1077,7 @@ function Rebanho() {
                           }
                           className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm capitalize"
                         >
-                          {CATEGORIAS.map((c) => (
+                          {categoriasAtual.map((c) => (
                             <option key={c} value={c} className="capitalize">
                               {c}
                             </option>
