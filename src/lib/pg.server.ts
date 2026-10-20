@@ -113,6 +113,13 @@ create table if not exists fazendas (
   updated_at timestamptz not null default now()
 );
 
+-- Atividade(s) da fazenda: ["bovino"], ["ovino"] ou os dois. Nula = conta
+-- ainda não escolheu (só acontece em fazenda nova — ver insert em
+-- dados.functions.ts); o app mostra a tela de escolha uma única vez nesse
+-- caso. ADD COLUMN com DEFAULT preenche sozinho toda fazenda já existente
+-- com ["bovino"], que é o comportamento que elas já tinham.
+alter table fazendas add column if not exists atividades jsonb default '["bovino"]'::jsonb;
+
 create table if not exists fazenda_membros (
   id uuid primary key default gen_random_uuid(),
   fazenda_id uuid references fazendas(id) on delete cascade,
@@ -140,6 +147,8 @@ create table if not exists animais (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
+
+alter table animais add column if not exists pai text;
 
 create table if not exists manejos (
   id uuid primary key default gen_random_uuid(),

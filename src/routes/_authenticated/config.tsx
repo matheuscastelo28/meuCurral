@@ -6,6 +6,7 @@ import { AppShell } from "@/components/AppShell";
 import { Button } from "@/components/ui/button";
 import { CartaoConfig } from "@/components/config/CartaoConfig";
 import { SecaoFazenda } from "@/components/config/SecaoFazenda";
+import { SecaoAtividade } from "@/components/config/SecaoAtividade";
 import { SecaoPerfil } from "@/components/config/SecaoPerfil";
 import { SecaoSeguranca } from "@/components/config/SecaoSeguranca";
 import { SecaoPreferencias } from "@/components/config/SecaoPreferencias";
@@ -30,6 +31,7 @@ export const Route = createFileRoute("/_authenticated/config")({
 
 const ATALHOS = [
   { id: "fazenda", rotulo: "Fazenda" },
+  { id: "atividade", rotulo: "Atividade" },
   { id: "perfil", rotulo: "Perfil" },
   { id: "seguranca", rotulo: "Segurança" },
   { id: "preferencias", rotulo: "Preferências" },
@@ -49,7 +51,10 @@ function Config() {
   }
 
   return (
-    <AppShell titulo="Configurações" descricao="Ajuste a fazenda, sua conta e como o sistema se comporta.">
+    <AppShell
+      titulo="Configurações"
+      descricao="Ajuste a fazenda, sua conta e como o sistema se comporta."
+    >
       <nav aria-label="Seções das configurações" className="mb-5 flex flex-wrap gap-2">
         {ATALHOS.map((a) => (
           <a
@@ -64,6 +69,7 @@ function Config() {
 
       <div className="space-y-4">
         <SecaoFazenda />
+        <SecaoAtividade />
         <SecaoPerfil />
         <SecaoSeguranca />
         <SecaoPreferencias />

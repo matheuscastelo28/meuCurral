@@ -2,6 +2,8 @@ import { useQuery } from "@tanstack/react-query";
 import { db } from "@/lib/local-db";
 import { getPlano } from "@/lib/planos";
 
+export type Atividade = "bovino" | "ovino";
+
 export interface Fazenda {
   id: string;
   nome: string;
@@ -10,6 +12,7 @@ export interface Fazenda {
   plano: string;
   dono_id: string;
   produtos_leite: string[];
+  atividades: Atividade[] | null;
 }
 
 export function useSessao() {
@@ -31,7 +34,7 @@ export function useFazenda() {
       if (!user) return null;
       const { data, error } = await db
         .from("fazendas")
-        .select("id, nome, cidade, estado, plano, dono_id, produtos_leite")
+        .select("id, nome, cidade, estado, plano, dono_id, produtos_leite, atividades")
         .eq("dono_id", user.id)
         .order("created_at", { ascending: true })
         .limit(1);

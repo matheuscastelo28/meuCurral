@@ -730,9 +730,12 @@ export const verificarCodigoEmail = createServerFn({ method: "POST" })
           insert into perfis (id, nome, email, objetivo)
           values (${usuario.id}, ${pendente.nome}, ${email}, ${pendente.objetivo})
           on conflict (id) do nothing`;
+        // atividades null (em vez do default) é de propósito: é o sinal pra
+        // fazenda nova mostrar a tela de "escolha sua atividade" uma vez só
+        // — fazenda já existente nunca passa por esse insert.
         await tx`
-          insert into fazendas (nome, cidade, estado, dono_id)
-          values (${pendente.nome_fazenda}, ${pendente.cidade}, ${pendente.estado}, ${usuario.id})`;
+          insert into fazendas (nome, cidade, estado, dono_id, atividades)
+          values (${pendente.nome_fazenda}, ${pendente.cidade}, ${pendente.estado}, ${usuario.id}, null)`;
         await tx`delete from cadastros_pendentes where email = ${email}`;
         return { tipo: "ok", usuario };
       });

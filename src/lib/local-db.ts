@@ -62,6 +62,7 @@ const PADROES: Record<string, () => Registro> = {
     peso_kg: null,
     lote: null,
     mae: null,
+    pai: null,
     observacoes: null,
   }),
   manejos: () => ({

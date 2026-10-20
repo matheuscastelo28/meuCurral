@@ -26,22 +26,32 @@ import { cn } from "@/lib/utils";
 type NavLink = { to: string; label: string; icon: LucideIcon };
 type NavGroup = { label: string; icon: LucideIcon; items: NavLink[] };
 
-const NAV: (NavLink | NavGroup)[] = [
-  { to: "/inicio", label: "Início", icon: Home },
-  { to: "/rebanho", label: "Rebanho", icon: Beef },
-  {
-    label: "Produção",
-    icon: Sprout,
-    items: [
-      { to: "/leite", label: "Leite", icon: Milk },
-      { to: "/engorda", label: "Engorda", icon: Weight },
-      { to: "/reproducao", label: "Reprodução", icon: Stethoscope },
-    ],
-  },
-  { to: "/financeiro", label: "Financeiro", icon: Wallet },
-  { to: "/calendario", label: "Agenda", icon: CalendarDays },
-  { to: "/config", label: "Config", icon: Settings },
-];
+/**
+ * Fazenda só de ovinos não mexe com leite — some o item e "Engorda" vira
+ * "Confinamento" (mesma tela/rota, só o nome muda). Fazenda de bovinos, ou
+ * das duas atividades, continua com o menu de sempre.
+ */
+function montarNav(atividades: string[] | null | undefined): (NavLink | NavGroup)[] {
+  const soOvino = !!atividades && atividades.includes("ovino") && !atividades.includes("bovino");
+  const producao: NavLink[] = soOvino
+    ? [
+        { to: "/engorda", label: "Confinamento", icon: Weight },
+        { to: "/reproducao", label: "Reprodução", icon: Stethoscope },
+      ]
+    : [
+        { to: "/leite", label: "Leite", icon: Milk },
+        { to: "/engorda", label: "Engorda", icon: Weight },
+        { to: "/reproducao", label: "Reprodução", icon: Stethoscope },
+      ];
+  return [
+    { to: "/inicio", label: "Início", icon: Home },
+    { to: "/rebanho", label: "Rebanho", icon: Beef },
+    { label: "Produção", icon: Sprout, items: producao },
+    { to: "/financeiro", label: "Financeiro", icon: Wallet },
+    { to: "/calendario", label: "Agenda", icon: CalendarDays },
+    { to: "/config", label: "Config", icon: Settings },
+  ];
+}
 
 function isGroup(entry: NavLink | NavGroup): entry is NavGroup {
   return "items" in entry;
@@ -59,6 +69,7 @@ export function AppShell({
   children: ReactNode;
 }) {
   const { fazenda, plano, usados, limite } = useLimitePlano();
+  const nav = montarNav(fazenda?.atividades);
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const location = useLocation();
@@ -176,7 +187,7 @@ export function AppShell({
         </div>
 
         <nav aria-label="Seções" className="flex-1 space-y-1 overflow-y-auto px-2 py-3">
-          {NAV.map((entry) => {
+          {nav.map((entry) => {
             if (isGroup(entry)) {
               const grupoAtivo = entry.items.some((item) => location.pathname.startsWith(item.to));
               const aberto = gruposAbertos[entry.label] ?? true;
@@ -364,7 +375,7 @@ export function AppShell({
           aria-label="Seções"
           className="fixed inset-x-0 bottom-0 z-30 grid grid-cols-6 border-t border-border bg-card md:hidden"
         >
-          {NAV.map((entry) => {
+          {nav.map((entry) => {
             if (isGroup(entry)) {
               const grupoAtivo = entry.items.some((item) => location.pathname.startsWith(item.to));
               return (

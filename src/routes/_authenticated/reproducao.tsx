@@ -43,6 +43,10 @@ function previsaoPartoDe(data: string) {
 
 function Reproducao() {
   const { data: fazenda } = useFazenda();
+  const soOvino =
+    !!fazenda?.atividades?.includes("ovino") && !fazenda.atividades.includes("bovino");
+  const categoriaReprodutor = soOvino ? "carneiro" : "touro";
+  const rotuloReprodutor = soOvino ? "Carneiro" : "Touro";
   const queryClient = useQueryClient();
   const [tipo, setTipo] = useState<string>("cobertura");
   const [data, setData] = useState(hojeISO());
@@ -74,7 +78,7 @@ function Reproducao() {
   });
 
   const animaisParaSelecao = (animais.data ?? []).filter(
-    (a) => !TIPOS_SEM_TOURO_NO_ANIMAL.has(tipo) || a.categoria !== "touro",
+    (a) => !TIPOS_SEM_TOURO_NO_ANIMAL.has(tipo) || a.categoria !== categoriaReprodutor,
   );
 
   useEffect(() => {
@@ -85,14 +89,14 @@ function Reproducao() {
   // Touros cadastrados no rebanho da fazenda — o campo de texto livre fica
   // só pra quando o touro/sêmen doador não é um animal cadastrado aqui.
   const touros = useQuery({
-    queryKey: ["animais-touros", fazenda?.id],
+    queryKey: ["animais-touros", fazenda?.id, categoriaReprodutor],
     enabled: !!fazenda?.id,
     queryFn: async () => {
       const { data, error } = await db
         .from("animais")
         .select("id, nome, brinco")
         .eq("fazenda_id", fazenda!.id)
-        .eq("categoria", "touro")
+        .eq("categoria", categoriaReprodutor)
         .order("nome");
       if (error) throw error;
       return data;
@@ -244,7 +248,7 @@ function Reproducao() {
         </div>
         {requerPrevisao ? (
           <div className="min-w-[150px] flex-1 space-y-1.5">
-            <Label htmlFor="touro">Touro / sêmen</Label>
+            <Label htmlFor="touro">{rotuloReprodutor} / sêmen</Label>
             <select
               id="touro"
               value={touroId}
@@ -264,12 +268,12 @@ function Reproducao() {
         ) : null}
         {requerPrevisao && touroId === "outro" ? (
           <div className="min-w-[150px] flex-1 space-y-1.5">
-            <Label htmlFor="touro-custom">Nome do touro/sêmen</Label>
+            <Label htmlFor="touro-custom">Nome do {rotuloReprodutor.toLowerCase()}/sêmen</Label>
             <Input
               id="touro-custom"
               value={touroCustom}
               onChange={(e) => setTouroCustom(e.target.value)}
-              placeholder="Ex: Touro emprestado — Fazenda X"
+              placeholder={`Ex: ${rotuloReprodutor} emprestado — Fazenda X`}
             />
           </div>
         ) : null}

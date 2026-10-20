@@ -41,7 +41,18 @@ export const Route = createFileRoute("/_authenticated/rebanho")({
   component: Rebanho,
 });
 
-const CATEGORIAS = ["bezerro", "novilha", "vaca", "boi", "touro", "outro"] as const;
+const CATEGORIAS = [
+  "bezerro",
+  "novilha",
+  "vaca",
+  "boi",
+  "touro",
+  "cordeiro",
+  "borrega",
+  "ovelha",
+  "carneiro",
+  "outro",
+] as const;
 const STATUS = ["ativo", "lactacao", "seca", "prenhe", "engorda", "vendido", "morto"] as const;
 const SEXOS = ["femea", "macho", "castrado"] as const;
 
@@ -80,6 +91,17 @@ const RACAS_BOVINO: string[] = [
   "Charolês",
   OUTRA_RACA,
 ];
+const RACAS_OVINO: string[] = [
+  "Santa Inês",
+  "Dorper",
+  "Morada Nova",
+  "Somalis",
+  "Texel",
+  "Suffolk",
+  "Ile de France",
+  "Bergamácia",
+  OUTRA_RACA,
+];
 
 // Campos opcionais que o usuário pode escolher incluir no cadastro em
 // grupo — nome é sempre pedido (identificação obrigatória de cada animal,
@@ -94,6 +116,7 @@ type CampoGrupo =
   | "peso_kg"
   | "raca"
   | "mae"
+  | "pai"
   | "observacoes";
 
 const CAMPOS_GRUPO: { chave: CampoGrupo; rotulo: string }[] = [
@@ -105,6 +128,7 @@ const CAMPOS_GRUPO: { chave: CampoGrupo; rotulo: string }[] = [
   { chave: "peso_kg", rotulo: "Peso (kg)" },
   { chave: "raca", rotulo: "Raça" },
   { chave: "mae", rotulo: "Mãe" },
+  { chave: "pai", rotulo: "Pai" },
   { chave: "observacoes", rotulo: "Observações" },
 ];
 
@@ -117,6 +141,7 @@ const CAMPOS_GRUPO_PADRAO: Record<CampoGrupo, boolean> = {
   peso_kg: false,
   raca: true,
   mae: false,
+  pai: false,
   observacoes: false,
 };
 
@@ -131,6 +156,7 @@ interface EntradaAnimalGrupo {
   raca: string;
   racaCustom: string;
   mae: string;
+  pai: string;
   observacoes: string;
 }
 
@@ -146,6 +172,7 @@ function entradaGrupoVazia(): EntradaAnimalGrupo {
     raca: RACAS_BOVINO[0]!,
     racaCustom: "",
     mae: "",
+    pai: "",
     observacoes: "",
   };
 }
@@ -153,6 +180,9 @@ function entradaGrupoVazia(): EntradaAnimalGrupo {
 function Rebanho() {
   const prefs = usePreferencias();
   const { fazenda, atingiu, usados, limite, plano } = useLimitePlano();
+  const soOvino =
+    !!fazenda?.atividades?.includes("ovino") && !fazenda.atividades.includes("bovino");
+  const racasAtual = soOvino ? RACAS_OVINO : RACAS_BOVINO;
   const queryClient = useQueryClient();
   const { editar: editarId } = Route.useSearch();
   const navigate = Route.useNavigate();
@@ -281,6 +311,7 @@ function Rebanho() {
         peso_kg: form.get("peso_kg") ? Number(form.get("peso_kg")) : null,
         lote: String(form.get("lote") ?? "").trim() || null,
         mae: String(form.get("mae") ?? "").trim() || null,
+        pai: String(form.get("pai") ?? "").trim() || null,
         observacoes: String(form.get("observacoes") ?? "").trim() || null,
       };
       const { error } = await db
@@ -329,6 +360,7 @@ function Rebanho() {
       raca: campos.raca ? racaFinal || null : null,
       lote: lote.trim(),
       mae: campos.mae ? entrada.mae.trim() || null : null,
+      pai: campos.pai ? entrada.pai.trim() || null : null,
       observacoes: campos.observacoes ? entrada.observacoes.trim() || null : null,
     };
   }
@@ -685,7 +717,7 @@ function Rebanho() {
                 onChange={(e) => setRaca(e.target.value)}
                 className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
               >
-                {RACAS_BOVINO.map((r) => (
+                {racasAtual.map((r) => (
                   <option key={r} value={r}>
                     {r}
                   </option>
@@ -797,7 +829,7 @@ function Rebanho() {
                     onChange={(e) => setRaca(e.target.value)}
                     className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
                   >
-                    {RACAS_BOVINO.map((r) => (
+                    {racasAtual.map((r) => (
                       <option key={r} value={r}>
                         {r}
                       </option>
@@ -820,6 +852,15 @@ function Rebanho() {
                     name="mae"
                     defaultValue={editando.mae ?? ""}
                     placeholder="Nome ou brinco da mãe (opcional)"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="edit-pai">Pai</Label>
+                  <Input
+                    id="edit-pai"
+                    name="pai"
+                    defaultValue={editando.pai ?? ""}
+                    placeholder="Nome ou brinco do pai (opcional)"
                   />
                 </div>
                 <div className="space-y-1.5">
@@ -1075,7 +1116,7 @@ function Rebanho() {
                       }
                       className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
                     >
-                      {RACAS_BOVINO.map((r) => (
+                      {racasAtual.map((r) => (
                         <option key={r} value={r}>
                           {r}
                         </option>
@@ -1105,6 +1146,20 @@ function Rebanho() {
                         setEntradaAtual((prev) => ({ ...prev, mae: e.target.value }))
                       }
                       placeholder="Nome ou brinco da mãe (opcional)"
+                    />
+                  </div>
+                ) : null}
+
+                {camposGrupo.pai ? (
+                  <div className="space-y-1.5">
+                    <Label htmlFor="grupo-pai">Pai</Label>
+                    <Input
+                      id="grupo-pai"
+                      value={entradaAtual.pai}
+                      onChange={(e) =>
+                        setEntradaAtual((prev) => ({ ...prev, pai: e.target.value }))
+                      }
+                      placeholder="Nome ou brinco do pai (opcional)"
                     />
                   </div>
                 ) : null}
