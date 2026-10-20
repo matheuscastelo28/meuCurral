@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Plus, Stethoscope } from "lucide-react";
+import { Plus, Stethoscope, Users } from "lucide-react";
 import { toast } from "sonner";
 import { db } from "@/lib/local-db";
 import { AppShell } from "@/components/AppShell";
@@ -10,7 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useFazenda } from "@/hooks/use-fazenda";
-import { dataCurta, dataISO, hojeISO } from "@/lib/formato";
+import { dataCurta, dataISO, hojeISO, idadeTexto } from "@/lib/formato";
 
 export const Route = createFileRoute("/_authenticated/reproducao")({
   head: () => ({
@@ -18,7 +18,7 @@ export const Route = createFileRoute("/_authenticated/reproducao")({
       { title: "Reprodução — Easy Agro" },
       {
         name: "description",
-        content: "Coberturas, inseminações, diagnósticos e previsão de parto.",
+        content: "Primeiro cio, coberturas, inseminações, diagnósticos e previsão de parto.",
       },
       { property: "og:title", content: "Reprodução — Easy Agro" },
       { property: "og:description", content: "Controle reprodutivo do rebanho." },
@@ -28,10 +28,32 @@ export const Route = createFileRoute("/_authenticated/reproducao")({
   component: Reproducao,
 });
 
-const TIPOS = ["cobertura", "inseminacao", "diagnostico", "parto", "secagem"] as const;
+const TIPOS = [
+  "primeiro_cio",
+  "cobertura",
+  "inseminacao",
+  "diagnostico",
+  "parto",
+  "secagem",
+] as const;
+const TIPO_LABEL: Record<string, string> = {
+  primeiro_cio: "Primeiro cio",
+  cobertura: "Cobertura",
+  inseminacao: "Inseminação",
+  diagnostico: "Diagnóstico",
+  parto: "Parto",
+  secagem: "Secagem",
+};
 // Touro não entra como "Animal" (o animal sendo coberto/inseminado/secado/
-// parindo) nesses tipos — só faz sentido escolher um touro ali em diagnóstico.
-const TIPOS_SEM_TOURO_NO_ANIMAL = new Set(["cobertura", "inseminacao", "secagem", "parto"]);
+// parindo/em primeiro cio) nesses tipos — só faz sentido escolher um touro
+// ali em diagnóstico.
+const TIPOS_SEM_TOURO_NO_ANIMAL = new Set([
+  "cobertura",
+  "inseminacao",
+  "secagem",
+  "parto",
+  "primeiro_cio",
+]);
 // Médias por espécie — o sistema não distingue por raça individual. São só
 // estimativas: a UI deixa isso explícito e permite ajustar a data manualmente.
 const DIAS_GESTACAO_BOVINO = 283;
@@ -72,13 +94,15 @@ function Reproducao() {
     queryFn: async () => {
       const { data, error } = await db
         .from("animais")
-        .select("id, nome, brinco, categoria")
+        .select("id, nome, brinco, categoria, nascimento, mae, pai")
         .eq("fazenda_id", fazenda!.id)
         .order("nome");
       if (error) throw error;
       return data;
     },
   });
+
+  const animalSelecionado = animais.data?.find((a) => a.id === animalId) ?? null;
 
   const animaisParaSelecao = (animais.data ?? []).filter(
     (a) => !TIPOS_SEM_TOURO_NO_ANIMAL.has(tipo) || a.categoria !== categoriaReprodutor,
@@ -118,7 +142,7 @@ function Reproducao() {
     queryFn: async () => {
       const { data, error } = await db
         .from("reproducao")
-        .select("*, animais(nome)")
+        .select("*, animais(nome, mae, pai, nascimento)")
         .eq("fazenda_id", fazenda!.id)
         .order("data", { ascending: false });
       if (error) throw error;
@@ -191,7 +215,7 @@ function Reproducao() {
   return (
     <AppShell
       titulo="Reprodução"
-      descricao="Registre coberturas, inseminações e partos para acompanhar a previsão de cada animal."
+      descricao="Primeiro cio, coberturas, inseminações e partos — com mãe, pai e idade de cada animal à mão."
     >
       <form
         className="mb-5 flex flex-wrap items-start justify-between gap-3 rounded-xl border border-border bg-card p-4"
@@ -212,11 +236,11 @@ function Reproducao() {
             id="tipo"
             value={tipo}
             onChange={(e) => setTipo(e.target.value)}
-            className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm capitalize"
+            className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
           >
             {TIPOS.map((t) => (
-              <option key={t} value={t} className="capitalize">
-                {t}
+              <option key={t} value={t}>
+                {TIPO_LABEL[t] ?? t}
               </option>
             ))}
           </select>
@@ -238,6 +262,18 @@ function Reproducao() {
               </option>
             ))}
           </select>
+          {animalSelecionado ? (
+            <p className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-muted-foreground">
+              {animalSelecionado.nascimento ? (
+                <span>
+                  Nascido em {dataCurta(animalSelecionado.nascimento)} (
+                  {idadeTexto(animalSelecionado.nascimento)})
+                </span>
+              ) : null}
+              {animalSelecionado.mae ? <span>Mãe: {animalSelecionado.mae}</span> : null}
+              {animalSelecionado.pai ? <span>Pai: {animalSelecionado.pai}</span> : null}
+            </p>
+          ) : null}
         </div>
         <div className="min-w-[150px] flex-1 space-y-1.5">
           <Label htmlFor="data-repro">Data</Label>
@@ -351,24 +387,42 @@ function Reproducao() {
         />
       ) : (
         <ul className="divide-y divide-border rounded-xl border border-border bg-card">
-          {registros.data?.map((r) => (
-            <li
-              key={r.id}
-              className="flex flex-wrap items-center justify-between gap-2 px-4 py-3 text-sm"
-            >
-              <span>
-                <span className="font-medium capitalize">{r.tipo}</span>
-                {" · "}
-                <span className="text-muted-foreground">
-                  {(r as { animais?: { nome?: string } }).animais?.nome ?? "Rebanho"}
+          {registros.data?.map((r) => {
+            const animal = (
+              r as {
+                animais?: { nome?: string; mae?: string; pai?: string; nascimento?: string } | null;
+              }
+            ).animais;
+            const genealogia = [
+              animal?.nascimento ? `nascido em ${dataCurta(animal.nascimento)}` : null,
+              animal?.mae ? `mãe: ${animal.mae}` : null,
+              animal?.pai ? `pai: ${animal.pai}` : null,
+            ].filter(Boolean);
+            return (
+              <li
+                key={r.id}
+                className="flex flex-wrap items-center justify-between gap-2 px-4 py-3 text-sm"
+              >
+                <span className="min-w-0">
+                  <span>
+                    <span className="font-medium">{TIPO_LABEL[r.tipo ?? ""] ?? r.tipo}</span>
+                    {" · "}
+                    <span className="text-muted-foreground">{animal?.nome ?? "Rebanho"}</span>
+                  </span>
+                  {genealogia.length > 0 ? (
+                    <span className="flex items-center gap-1 text-xs text-muted-foreground">
+                      <Users className="size-3 shrink-0" aria-hidden="true" />
+                      {genealogia.join(" · ")}
+                    </span>
+                  ) : null}
                 </span>
-              </span>
-              <span className="text-xs text-muted-foreground">
-                {dataCurta(r.data)}
-                {r.previsao_parto ? ` · previsão de parto ${dataCurta(r.previsao_parto)}` : ""}
-              </span>
-            </li>
-          ))}
+                <span className="text-xs text-muted-foreground">
+                  {dataCurta(r.data)}
+                  {r.previsao_parto ? ` · previsão de parto ${dataCurta(r.previsao_parto)}` : ""}
+                </span>
+              </li>
+            );
+          })}
         </ul>
       )}
     </AppShell>
