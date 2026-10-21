@@ -11,6 +11,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useFazenda } from "@/hooks/use-fazenda";
 import { dataCurta, dataISO, hojeISO, idadeTexto } from "@/lib/formato";
+import { especieDaCategoria } from "@/lib/especies";
+import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/_authenticated/reproducao")({
   head: () => ({
@@ -65,8 +67,11 @@ function previsaoPartoDe(data: string, diasGestacao: number) {
 
 function Reproducao() {
   const { data: fazenda } = useFazenda();
-  const soOvino =
-    !!fazenda?.atividades?.includes("ovino") && !fazenda.atividades.includes("bovino");
+  const temBovino = !!fazenda?.atividades?.includes("bovino");
+  const temOvino = !!fazenda?.atividades?.includes("ovino");
+  const ambasAtividades = temBovino && temOvino;
+  const [visaoEspecie, setVisaoEspecie] = useState<"bovino" | "ovino">("bovino");
+  const soOvino = ambasAtividades ? visaoEspecie === "ovino" : temOvino && !temBovino;
   const categoriaReprodutor = soOvino ? "carneiro" : "touro";
   const rotuloReprodutor = soOvino ? "Carneiro" : "Touro";
   const diasGestacao = soOvino ? DIAS_GESTACAO_OVINO : DIAS_GESTACAO_BOVINO;
@@ -104,14 +109,14 @@ function Reproducao() {
 
   const animalSelecionado = animais.data?.find((a) => a.id === animalId) ?? null;
 
-  const animaisParaSelecao = (animais.data ?? []).filter(
-    (a) => !TIPOS_SEM_TOURO_NO_ANIMAL.has(tipo) || a.categoria !== categoriaReprodutor,
-  );
+  const animaisParaSelecao = (animais.data ?? [])
+    .filter((a) => !ambasAtividades || especieDaCategoria(a.categoria) === visaoEspecie)
+    .filter((a) => !TIPOS_SEM_TOURO_NO_ANIMAL.has(tipo) || a.categoria !== categoriaReprodutor);
 
   useEffect(() => {
     if (animalId && !animaisParaSelecao.some((a) => a.id === animalId)) setAnimalId("");
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tipo, animais.data]);
+  }, [tipo, animais.data, visaoEspecie]);
 
   // Touros cadastrados no rebanho da fazenda — o campo de texto livre fica
   // só pra quando o touro/sêmen doador não é um animal cadastrado aqui.
@@ -142,12 +147,21 @@ function Reproducao() {
     queryFn: async () => {
       const { data, error } = await db
         .from("reproducao")
-        .select("*, animais(nome, mae, pai, nascimento)")
+        .select("*, animais(nome, mae, pai, nascimento, categoria)")
         .eq("fazenda_id", fazenda!.id)
         .order("data", { ascending: false });
       if (error) throw error;
       return data;
     },
+  });
+
+  // Registro sem animal vinculado (ex: diagnóstico avulso) não some — só
+  // filtra quem tem como saber a espécie e ela não bate com a visão atual.
+  const registrosFiltrados = (registros.data ?? []).filter((r) => {
+    if (!ambasAtividades) return true;
+    const categoria = (r as { animais?: { categoria?: string } | null }).animais?.categoria;
+    const especie = especieDaCategoria(categoria);
+    return especie === null || especie === visaoEspecie;
   });
 
   const [confirmarLactacao, setConfirmarLactacao] = useState<{
@@ -217,6 +231,34 @@ function Reproducao() {
       titulo="Reprodução"
       descricao="Primeiro cio, coberturas, inseminações e partos — com mãe, pai e idade de cada animal à mão."
     >
+      {ambasAtividades ? (
+        <div className="mb-4 inline-flex rounded-lg bg-muted p-1">
+          <button
+            type="button"
+            onClick={() => setVisaoEspecie("bovino")}
+            className={cn(
+              "rounded-md px-3 py-1.5 text-sm font-medium transicao-suave",
+              visaoEspecie === "bovino"
+                ? "bg-background text-foreground shadow-sm"
+                : "text-muted-foreground hover:text-foreground",
+            )}
+          >
+            Bovinos
+          </button>
+          <button
+            type="button"
+            onClick={() => setVisaoEspecie("ovino")}
+            className={cn(
+              "rounded-md px-3 py-1.5 text-sm font-medium transicao-suave",
+              visaoEspecie === "ovino"
+                ? "bg-background text-foreground shadow-sm"
+                : "text-muted-foreground hover:text-foreground",
+            )}
+          >
+            Ovinos
+          </button>
+        </div>
+      ) : null}
       <form
         className="mb-5 flex flex-wrap items-start justify-between gap-3 rounded-xl border border-border bg-card p-4"
         onSubmit={(e) => {
@@ -379,7 +421,7 @@ function Reproducao() {
         </div>
       ) : null}
 
-      {(registros.data?.length ?? 0) === 0 ? (
+      {registrosFiltrados.length === 0 ? (
         <EmptyState
           icon={Stethoscope}
           titulo="Nenhum registro reprodutivo"
@@ -387,7 +429,7 @@ function Reproducao() {
         />
       ) : (
         <ul className="divide-y divide-border rounded-xl border border-border bg-card">
-          {registros.data?.map((r) => {
+          {registrosFiltrados.map((r) => {
             const animal = (
               r as {
                 animais?: { nome?: string; mae?: string; pai?: string; nascimento?: string } | null;

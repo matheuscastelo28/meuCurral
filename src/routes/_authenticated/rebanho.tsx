@@ -23,6 +23,14 @@ import {
 import { useLimitePlano } from "@/hooks/use-fazenda";
 import { dataCurta, dataISO, idadeTexto, pesoTexto } from "@/lib/formato";
 import { usePreferencias } from "@/hooks/use-preferencias";
+import {
+  CATEGORIAS,
+  CATEGORIAS_BOVINO,
+  CATEGORIAS_OVINO,
+  OUTRA_RACA,
+  RACAS_BOVINO,
+  RACAS_OVINO,
+} from "@/lib/especies";
 
 export const Route = createFileRoute("/_authenticated/rebanho")({
   head: () => ({
@@ -41,9 +49,6 @@ export const Route = createFileRoute("/_authenticated/rebanho")({
   component: Rebanho,
 });
 
-const CATEGORIAS_BOVINO = ["bezerro", "novilha", "vaca", "boi", "touro"] as const;
-const CATEGORIAS_OVINO = ["cordeiro", "borrega", "ovelha", "carneiro"] as const;
-const CATEGORIAS = [...CATEGORIAS_BOVINO, ...CATEGORIAS_OVINO, "outro"] as const;
 const STATUS = ["ativo", "lactacao", "seca", "prenhe", "engorda", "vendido", "morto"] as const;
 const SEXOS = ["femea", "macho", "castrado"] as const;
 
@@ -65,34 +70,6 @@ function mensagemErroAnimal(erro: unknown, padrao: string): string {
     erro && typeof erro === "object" && "message" in erro ? String((erro as any).message) : "";
   return msg.startsWith("Já existe um animal com o brinco") ? msg : padrao;
 }
-
-const OUTRA_RACA = "Outra";
-const RACAS_BOVINO: string[] = [
-  "Nelore",
-  "Gir",
-  "Girolando",
-  "Holandês",
-  "Jersey",
-  "Angus",
-  "Brahman",
-  "Guzerá",
-  "Tabapuã",
-  "Senepol",
-  "Simental",
-  "Charolês",
-  OUTRA_RACA,
-];
-const RACAS_OVINO: string[] = [
-  "Santa Inês",
-  "Dorper",
-  "Morada Nova",
-  "Somalis",
-  "Texel",
-  "Suffolk",
-  "Ile de France",
-  "Bergamácia",
-  OUTRA_RACA,
-];
 
 // Campos opcionais que o usuário pode escolher incluir no cadastro em
 // grupo — nome é sempre pedido (identificação obrigatória de cada animal,
@@ -185,7 +162,8 @@ function Rebanho() {
     ? RACAS_OVINO
     : soBovino
       ? RACAS_BOVINO
-      : [...RACAS_BOVINO, ...RACAS_OVINO];
+      : // As duas listas terminam em "Outra" — tira a duplicata do meio.
+        [...RACAS_BOVINO.filter((r) => r !== OUTRA_RACA), ...RACAS_OVINO];
   const categoriasAtual = soOvino
     ? [...CATEGORIAS_OVINO, "outro"]
     : soBovino

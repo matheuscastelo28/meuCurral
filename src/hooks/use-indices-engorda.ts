@@ -10,15 +10,19 @@ export interface IndicesEngorda {
   ganho30d: number;
 }
 
-export function useIndicesEngorda(fazendaId: string | undefined, kgPorUnidade = 15) {
+export function useIndicesEngorda(
+  fazendaId: string | undefined,
+  kgPorUnidade = 15,
+  categorias?: readonly string[],
+) {
   return useQuery({
-    queryKey: ["indices-engorda", fazendaId, kgPorUnidade],
+    queryKey: ["indices-engorda", fazendaId, kgPorUnidade, categorias],
     enabled: !!fazendaId,
     queryFn: async (): Promise<IndicesEngorda> => {
       const [animaisRes, pesagensRes] = await Promise.all([
         db
           .from("animais")
-          .select("id, peso_kg")
+          .select("id, peso_kg, categoria")
           .eq("fazenda_id", fazendaId!)
           .eq("status", "engorda"),
         db
@@ -29,7 +33,12 @@ export function useIndicesEngorda(fazendaId: string | undefined, kgPorUnidade = 
           .order("data", { ascending: true }),
       ]);
 
-      const animais = animaisRes.data ?? [];
+      // Fazenda com as duas atividades filtra aqui mesmo (em vez de mandar
+      // pro servidor) porque a espécie não é uma coluna própria — é
+      // deduzida da categoria, igual no resto do app.
+      const animais = categorias
+        ? (animaisRes.data ?? []).filter((a) => categorias.includes(a.categoria ?? ""))
+        : (animaisRes.data ?? []);
       const totalEngorda = animais.length;
       const pesos = animais.map((a) => Number(a.peso_kg)).filter((p) => p > 0);
       const somaPesos = pesos.reduce((s, p) => s + p, 0);

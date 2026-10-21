@@ -59,6 +59,8 @@ import {
 } from "@/lib/formato";
 import { usePreferencias } from "@/hooks/use-preferencias";
 import { encontrarPrecoVigente } from "@/lib/precos-produto";
+import { CATEGORIAS_BOVINO, CATEGORIAS_OVINO, especieDaCategoria } from "@/lib/especies";
+import { cn } from "@/lib/utils";
 
 const KG_POR_ARROBA = 15;
 const SEM_LOTE = "Sem lote";
@@ -97,11 +99,18 @@ function Engorda() {
   const { data: fazenda } = useFazenda();
   const prefs = usePreferencias();
   const queryClient = useQueryClient();
+  // Fazenda com as duas atividades mostra um alternador Bovino/Ovino que
+  // separa totalmente o que aparece aqui (lotes, preço, KPIs) — igual ao
+  // que já existia como "soOvino" pra fazenda só de ovinos, só que agora
+  // a visão pode vir da escolha do produtor em vez de ser fixa.
+  const temBovino = !!fazenda?.atividades?.includes("bovino");
+  const temOvino = !!fazenda?.atividades?.includes("ovino");
+  const ambasAtividades = temBovino && temOvino;
+  const [visaoEspecie, setVisaoEspecie] = useState<"bovino" | "ovino">("bovino");
   // Ovino não usa arroba (unidade de boi) — o preço e o peso total do lote
   // são direto em kg nesse caso. "arroba(s)" no código continua sendo só o
   // nome interno da variável/coluna; o que muda é o valor e o rótulo mostrado.
-  const soOvino =
-    !!fazenda?.atividades?.includes("ovino") && !fazenda.atividades.includes("bovino");
+  const soOvino = ambasAtividades ? visaoEspecie === "ovino" : temOvino && !temBovino;
   const produtoPreco = soOvino ? "ovino" : "boi";
   const unidadePreco = soOvino ? "kg" : "arroba";
   const simboloUnidade = soOvino ? "kg" : "@";
@@ -110,7 +119,11 @@ function Engorda() {
     return soOvino ? pesoKg : pesoKg / KG_POR_ARROBA;
   }
   const indices = useIndicesRebanho(fazenda?.id);
-  const indicesEngorda = useIndicesEngorda(fazenda?.id, kgPorUnidade);
+  const indicesEngorda = useIndicesEngorda(
+    fazenda?.id,
+    kgPorUnidade,
+    ambasAtividades ? (soOvino ? CATEGORIAS_OVINO : CATEGORIAS_BOVINO) : undefined,
+  );
   const moeda = (v: number | null | undefined) => formatarMoeda(v, prefs.moeda);
   const hoje = hojeISO();
 
@@ -126,7 +139,7 @@ function Engorda() {
     queryFn: async () => {
       const { data, error } = await db
         .from("animais")
-        .select("id, nome, brinco, peso_kg, lote")
+        .select("id, nome, brinco, peso_kg, lote, categoria")
         .eq("fazenda_id", fazenda!.id)
         .eq("status", "engorda")
         .order("nome");
@@ -134,6 +147,14 @@ function Engorda() {
       return data;
     },
   });
+
+  // Só filtra por espécie quando as duas atividades estão ativas — fazenda
+  // de uma atividade só continua vendo tudo, sem filtro extra nenhum.
+  const animaisFiltrados = useMemo(() => {
+    const lista = animais.data ?? [];
+    if (!ambasAtividades) return lista;
+    return lista.filter((a) => especieDaCategoria(a.categoria) === visaoEspecie);
+  }, [animais.data, ambasAtividades, visaoEspecie]);
 
   const pesagens = useQuery({
     queryKey: ["pesagens-engorda", fazenda?.id],
@@ -303,7 +324,7 @@ function Engorda() {
 
   function selecionarAnimalVenda(id: string) {
     setVendaAnimalId(id);
-    const animal = animais.data?.find((a) => a.id === id);
+    const animal = animaisFiltrados.find((a) => a.id === id);
     if (animal?.peso_kg) setVendaAvulsaPeso(String(animal.peso_kg));
   }
 
@@ -362,7 +383,7 @@ function Engorda() {
 
   const lotes = useMemo(() => {
     const grupos = new Map<string, { nome: string; animais: typeof animaisLista }>();
-    const animaisLista = animais.data ?? [];
+    const animaisLista = animaisFiltrados;
     for (const an of animaisLista) {
       const chave = an.lote?.trim() || SEM_LOTE;
       if (!grupos.has(chave)) grupos.set(chave, { nome: chave, animais: [] });
@@ -462,7 +483,7 @@ function Engorda() {
       };
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps -- paraUnidade só depende de soOvino, já listado
-  }, [animais.data, pesagensPorAnimal, despesasLote.data, precoVigente, hoje, soOvino]);
+  }, [animaisFiltrados, pesagensPorAnimal, despesasLote.data, precoVigente, hoje, soOvino]);
 
   const [loteSelecionado, setLoteSelecionado] = useState<string | null>(null);
   useEffect(() => {
@@ -550,9 +571,37 @@ function Engorda() {
 
   return (
     <AppShell
-      titulo={soOvino ? "Confinamento" : "Engorda"}
-      descricao="Peso, ganho médio diário, custo e venda do lote em engorda."
+      titulo="Confinamento"
+      descricao="Peso, ganho médio diário, custo e venda do lote em confinamento."
     >
+      {ambasAtividades ? (
+        <div className="mb-4 inline-flex rounded-lg bg-muted p-1">
+          <button
+            type="button"
+            onClick={() => setVisaoEspecie("bovino")}
+            className={cn(
+              "rounded-md px-3 py-1.5 text-sm font-medium transicao-suave",
+              visaoEspecie === "bovino"
+                ? "bg-background text-foreground shadow-sm"
+                : "text-muted-foreground hover:text-foreground",
+            )}
+          >
+            Bovinos
+          </button>
+          <button
+            type="button"
+            onClick={() => setVisaoEspecie("ovino")}
+            className={cn(
+              "rounded-md px-3 py-1.5 text-sm font-medium transicao-suave",
+              visaoEspecie === "ovino"
+                ? "bg-background text-foreground shadow-sm"
+                : "text-muted-foreground hover:text-foreground",
+            )}
+          >
+            Ovinos
+          </button>
+        </div>
+      ) : null}
       <div className="mb-5 grid gap-3 sm:grid-cols-3 lg:grid-cols-4">
         <Kpi icon={Beef} rotulo="Total do rebanho" valor={i ? `${i.totalRebanho} cab` : "—"} />
         <Kpi icon={Baby} rotulo="Partos (últimos 30 dias)" valor={i ? `${i.partos30d} cab` : "—"} />
@@ -745,7 +794,7 @@ function Engorda() {
         </AlertDialogContent>
       </AlertDialog>
 
-      {(animais.data?.length ?? 0) === 0 ? (
+      {animaisFiltrados.length === 0 ? (
         <EmptyState
           icon={Weight}
           titulo="Nenhum animal em engorda"
@@ -1191,7 +1240,7 @@ function Engorda() {
                       className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
                     >
                       <option value="">Sem animal específico</option>
-                      {animais.data?.map((a) => (
+                      {animaisFiltrados.map((a) => (
                         <option key={a.id} value={a.id}>
                           {a.nome}
                           {a.brinco ? ` (${a.brinco})` : ""}
@@ -1352,7 +1401,7 @@ function Engorda() {
                   required
                 >
                   <option value="">Selecione</option>
-                  {animais.data?.map((a) => (
+                  {animaisFiltrados.map((a) => (
                     <option key={a.id} value={a.id}>
                       {a.nome}
                       {a.brinco ? ` (${a.brinco})` : ""}
@@ -1396,7 +1445,7 @@ function Engorda() {
                   Lote em engorda
                 </div>
                 <ul className="divide-y divide-border">
-                  {animais.data?.map((a) => (
+                  {animaisFiltrados.map((a) => (
                     <li
                       key={a.id}
                       className="flex items-center justify-between gap-3 px-4 py-3 text-sm"

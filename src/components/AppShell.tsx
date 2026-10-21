@@ -27,9 +27,9 @@ type NavLink = { to: string; label: string; icon: LucideIcon };
 type NavGroup = { label: string; icon: LucideIcon; items: NavLink[] };
 
 /**
- * Fazenda só de ovinos não mexe com leite — some o item e "Engorda" vira
- * "Confinamento" (mesma tela/rota, só o nome muda). Fazenda de bovinos, ou
- * das duas atividades, continua com o menu de sempre.
+ * Fazenda só de ovinos não mexe com leite — some o item. "Engorda" sempre
+ * aparece como "Confinamento" (mesma tela/rota de sempre, só o nome muda,
+ * vale pra boi ou pra ovino).
  */
 function montarNav(atividades: string[] | null | undefined): (NavLink | NavGroup)[] {
   const soOvino = !!atividades && atividades.includes("ovino") && !atividades.includes("bovino");
@@ -40,7 +40,7 @@ function montarNav(atividades: string[] | null | undefined): (NavLink | NavGroup
       ]
     : [
         { to: "/leite", label: "Leite", icon: Milk },
-        { to: "/engorda", label: "Engorda", icon: Weight },
+        { to: "/engorda", label: "Confinamento", icon: Weight },
         { to: "/reproducao", label: "Reprodução", icon: Stethoscope },
       ];
   return [

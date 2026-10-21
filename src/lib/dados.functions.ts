@@ -312,12 +312,19 @@ export const consultar = createServerFn({ method: "POST" })
           : sql``;
         const brutas: any[] = await sql`
           select t.*, a.nome as animal_nome, a.mae as animal_mae, a.pai as animal_pai,
-            a.nascimento as animal_nascimento
+            a.nascimento as animal_nascimento, a.categoria as animal_categoria
           from ${sql(tabela)} t
           left join animais a on a.id = t.animal_id
           where ${ondeJoin} ${ordemJoin} ${limite}`;
         linhas = brutas.map((l) => {
-          const { animal_nome, animal_mae, animal_pai, animal_nascimento, ...resto } = l;
+          const {
+            animal_nome,
+            animal_mae,
+            animal_pai,
+            animal_nascimento,
+            animal_categoria,
+            ...resto
+          } = l;
           return {
             ...resto,
             animais: animal_nome
@@ -326,6 +333,7 @@ export const consultar = createServerFn({ method: "POST" })
                   mae: animal_mae,
                   pai: animal_pai,
                   nascimento: animal_nascimento,
+                  categoria: animal_categoria,
                 }
               : null,
           };
