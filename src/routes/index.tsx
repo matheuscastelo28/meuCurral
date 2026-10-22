@@ -184,29 +184,59 @@ function Landing() {
 
       <section className="border-y border-border bg-card">
         <div className="mx-auto max-w-6xl px-5 py-16 sm:py-20">
-          <div className="flex flex-wrap items-end justify-between gap-4">
-            <h2 className="text-2xl sm:text-3xl">Simples de usar, sério no que importa</h2>
-            <span className="flex items-center gap-2 text-sm text-muted-foreground">
-              <Beef className="size-4 text-primary" aria-hidden="true" />
-              Bovinos
-              <span className="text-border">·</span>
-              <Weight className="size-4 text-primary" aria-hidden="true" />
-              Ovinos
-            </span>
-          </div>
-          <div className="mt-8 grid gap-4 sm:grid-cols-2">
-            {DIFERENCIAIS.map((item) => (
-              <article
-                key={item.titulo}
-                className="rounded-xl border border-border bg-background p-5"
-              >
-                <span className="flex size-10 items-center justify-center rounded-lg bg-accent text-primary">
-                  <item.icon className="size-5" aria-hidden="true" />
-                </span>
-                <h3 className="mt-4 text-base font-semibold">{item.titulo}</h3>
-                <p className="mt-1 text-sm text-muted-foreground">{item.texto}</p>
-              </article>
-            ))}
+          <div className="grid gap-12 lg:grid-cols-[1fr_1.1fr] lg:items-center">
+            <div>
+              <p className="text-xs font-semibold tracking-[0.18em] text-primary uppercase">
+                Por dentro do sistema
+              </p>
+              <h2 className="mt-3 max-w-md text-2xl sm:text-3xl">
+                Simples de usar, sério no que importa
+              </h2>
+              <span className="mt-2 flex items-center gap-2 text-sm text-muted-foreground">
+                <Beef className="size-4 text-primary" aria-hidden="true" />
+                Bovinos
+                <span className="text-border">·</span>
+                <Weight className="size-4 text-primary" aria-hidden="true" />
+                Ovinos
+              </span>
+
+              <ul className="mt-8 space-y-6">
+                {DIFERENCIAIS.map((item) => (
+                  <li key={item.titulo} className="flex gap-4">
+                    <span className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-accent text-primary">
+                      <item.icon className="size-5" aria-hidden="true" />
+                    </span>
+                    <div>
+                      <h3 className="text-base font-semibold">{item.titulo}</h3>
+                      <p className="mt-1 text-sm text-muted-foreground">{item.texto}</p>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </div>
+
+            {/* Mockup com um print real do painel — não uma ilustração
+                genérica — dentro de uma moldura de navegador, pra dar peso
+                visual sem inventar uma "demo" que não existe. */}
+            <div className="relative">
+              <div
+                aria-hidden="true"
+                className="absolute -inset-6 -z-10 rounded-[2rem] bg-primary/10 blur-2xl"
+              />
+              <div className="overflow-hidden rounded-xl border border-border bg-background shadow-lg">
+                <div className="flex items-center gap-1.5 border-b border-border bg-card px-3 py-2.5">
+                  <span className="size-2.5 rounded-full bg-destructive/40" />
+                  <span className="size-2.5 rounded-full bg-warning/40" />
+                  <span className="size-2.5 rounded-full bg-success/40" />
+                </div>
+                <img
+                  src="/screenshot-inicio.png"
+                  alt="Painel inicial do Easy Agro, com o resumo do rebanho e os próximos compromissos"
+                  className="w-full"
+                  loading="lazy"
+                />
+              </div>
+            </div>
           </div>
         </div>
       </section>
