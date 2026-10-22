@@ -76,12 +76,6 @@ const DIFERENCIAIS = [
   },
 ];
 
-const ESTATISTICAS = [
-  { valor: "10", rotulo: "cabeças grátis pra sempre" },
-  { valor: "2", rotulo: "atividades: bovinos e ovinos" },
-  { valor: "0", rotulo: "planilhas pra manter" },
-];
-
 function Landing() {
   return (
     <div className="min-h-screen bg-background">
@@ -104,55 +98,27 @@ function Landing() {
 
       {/* Hero — fundo escuro/verde-campo pra abrir com presença, em vez de
           mais um herói branco com título centralizado. */}
-      <section className="hero-campo relative overflow-hidden">
-        <div
-          aria-hidden="true"
-          className="pointer-events-none absolute -top-24 -right-24 size-[28rem] rounded-full bg-primary-foreground/5 blur-3xl"
-        />
-        <div
-          aria-hidden="true"
-          className="pointer-events-none absolute -bottom-32 left-1/3 size-[24rem] rounded-full bg-primary-foreground/5 blur-3xl"
-        />
-        <div className="relative mx-auto grid max-w-6xl gap-10 px-5 pt-10 pb-20 sm:pt-16 sm:pb-28 lg:grid-cols-[1.3fr_1fr] lg:items-end">
-          <div>
-            <p className="text-xs font-semibold tracking-[0.18em] text-primary-foreground/70 uppercase">
-              Gestão de rebanho
-            </p>
-            <h1 className="mt-4 max-w-2xl text-4xl leading-[1.03] text-primary-foreground sm:text-6xl">
-              Sua fazenda fora da planilha, dentro do bolso.
-            </h1>
-            <p className="mt-5 max-w-lg text-base text-primary-foreground/80">
-              Cadastre o rebanho, acompanhe manejo, vacinação, pesagem, leite ou confinamento e o
-              financeiro — tudo num só lugar, feito pra bovinos e pra ovinos.
-            </p>
-            <div className="mt-8 flex flex-wrap gap-3">
-              <Button size="lg" variant="secondary" asChild>
-                <Link to="/cadastro">
-                  Criar conta grátis
-                  <ArrowRight className="size-4" aria-hidden="true" />
-                </Link>
-              </Button>
-              <Button
-                size="lg"
-                variant="outline"
-                className="border-primary-foreground/30 bg-transparent text-primary-foreground hover:bg-primary-foreground/10 hover:text-primary-foreground"
-                asChild
-              >
-                <Link to="/auth">Já tenho conta</Link>
-              </Button>
-            </div>
-          </div>
-
-          <dl className="grid grid-cols-3 gap-4 border-t border-primary-foreground/15 pt-6 lg:grid-cols-1 lg:divide-y lg:divide-primary-foreground/15 lg:border-t-0 lg:pt-0">
-            {ESTATISTICAS.map((e) => (
-              <div key={e.rotulo} className="lg:py-4 lg:first:pt-0">
-                <dt className="font-display text-3xl font-extrabold text-primary-foreground sm:text-4xl">
-                  {e.valor}
-                </dt>
-                <dd className="mt-1 text-xs text-primary-foreground/70 sm:text-sm">{e.rotulo}</dd>
-              </div>
-            ))}
-          </dl>
+      <section className="mx-auto max-w-6xl px-5 pt-10 pb-16 sm:pt-16 sm:pb-24">
+        <p className="text-xs font-semibold tracking-[0.18em] text-primary uppercase">
+          Gestão de rebanho
+        </p>
+        <h1 className="mt-4 max-w-3xl text-4xl leading-[1.05] sm:text-6xl">
+          O controle do seu rebanho fora da planilha, dentro do bolso.
+        </h1>
+        <p className="mt-5 max-w-xl text-base text-muted-foreground">
+          Cadastre animais, acompanhe manejo, vacinação, pesagem, leite e financeiro. Comece grátis
+          com até 10 cabeças e cresça quando o rebanho crescer.
+        </p>
+        <div className="mt-8 flex flex-wrap gap-3">
+          <Button size="lg" asChild>
+            <Link to="/cadastro">
+              Criar conta grátis
+              <ArrowRight className="size-4" aria-hidden="true" />
+            </Link>
+          </Button>
+          <Button size="lg" variant="outline" asChild>
+            <Link to="/auth">Já tenho conta</Link>
+          </Button>
         </div>
       </section>
 
