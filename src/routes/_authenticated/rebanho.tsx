@@ -27,9 +27,11 @@ import {
   CATEGORIAS,
   CATEGORIAS_BOVINO,
   CATEGORIAS_OVINO,
+  especieDaCategoria,
   OUTRA_RACA,
   RACAS_BOVINO,
   RACAS_OVINO,
+  type Especie,
 } from "@/lib/especies";
 
 export const Route = createFileRoute("/_authenticated/rebanho")({
@@ -51,6 +53,20 @@ export const Route = createFileRoute("/_authenticated/rebanho")({
 
 const STATUS = ["ativo", "lactacao", "seca", "prenhe", "engorda", "vendido", "morto"] as const;
 const SEXOS = ["femea", "macho", "castrado"] as const;
+
+// Categoria e raça sempre dependem da espécie escolhida no próprio
+// formulário — não mais só da atividade da fazenda — pra fazenda com as
+// duas atividades conseguir cadastrar bovino e ovino sem misturar as
+// opções no mesmo campo.
+function racasDaEspecie(especie: Especie): string[] {
+  return especie === "ovino" ? RACAS_OVINO : RACAS_BOVINO;
+}
+function categoriasDaEspecie(especie: Especie): readonly string[] {
+  return especie === "ovino" ? [...CATEGORIAS_OVINO, "outro"] : [...CATEGORIAS_BOVINO, "outro"];
+}
+function categoriaPadraoDaEspecie(especie: Especie): string {
+  return especie === "ovino" ? "ovelha" : "vaca";
+}
 
 // `text-transform: capitalize` no <select> não é confiável entre
 // navegadores pra exibir o valor selecionado fechado — texto já
@@ -115,6 +131,7 @@ const CAMPOS_GRUPO_PADRAO: Record<CampoGrupo, boolean> = {
 
 interface EntradaAnimalGrupo {
   nome: string;
+  especie: Especie;
   brinco: string;
   sexo: string;
   categoria: string;
@@ -128,19 +145,17 @@ interface EntradaAnimalGrupo {
   observacoes: string;
 }
 
-function entradaGrupoVazia(
-  categoriaPadrao = "vaca",
-  racaPadrao = RACAS_BOVINO[0]!,
-): EntradaAnimalGrupo {
+function entradaGrupoVazia(especiePadrao: Especie = "bovino"): EntradaAnimalGrupo {
   return {
     nome: "",
+    especie: especiePadrao,
     brinco: "",
     sexo: SEXOS[0],
-    categoria: categoriaPadrao,
+    categoria: categoriaPadraoDaEspecie(especiePadrao),
     status: STATUS[0],
     nascimento: "",
     peso_kg: "",
-    raca: racaPadrao,
+    raca: racasDaEspecie(especiePadrao)[0]!,
     racaCustom: "",
     mae: "",
     pai: "",
@@ -176,9 +191,18 @@ function Rebanho() {
   const [busca, setBusca] = useState("");
   const [aberto, setAberto] = useState(false);
   const [upgrade, setUpgrade] = useState(false);
+  // Compartilhado entre "Novo animal" e "Editar animal" — só um dos dois
+  // diálogos fica aberto por vez, igual já era com raça/raçaCustom.
+  const [especie, setEspecie] = useState<Especie>(soOvino ? "ovino" : "bovino");
   const [raca, setRaca] = useState<string>(racasAtual[0]!);
   const [racaCustom, setRacaCustom] = useState("");
   const [editando, setEditando] = useState<any>(null);
+
+  function selecionarEspecie(nova: Especie) {
+    setEspecie(nova);
+    setRaca(racasDaEspecie(nova)[0]!);
+    setRacaCustom("");
+  }
 
   // ---- Cadastro em grupo (2 cards: escolha de campos, depois o laço) ----
   const [grupoEtapa, setGrupoEtapa] = useState<"campos" | "animais" | null>(null);
@@ -186,7 +210,7 @@ function Rebanho() {
   const [camposGrupo, setCamposGrupo] = useState<Record<CampoGrupo, boolean>>(CAMPOS_GRUPO_PADRAO);
   const [animaisGrupo, setAnimaisGrupo] = useState<EntradaAnimalGrupo[]>([]);
   const [entradaAtual, setEntradaAtual] = useState<EntradaAnimalGrupo>(
-    entradaGrupoVazia(categoriaPadrao, racasAtual[0]!),
+    entradaGrupoVazia(soOvino ? "ovino" : "bovino"),
   );
 
   const animais = useQuery({
@@ -256,10 +280,11 @@ function Rebanho() {
       const payload = {
         fazenda_id: fazenda!.id,
         nome: String(form.get("nome") ?? "").trim(),
+        especie,
         brinco: String(form.get("brinco") ?? "").trim() || null,
         raca: racaFinal || null,
         sexo: String(form.get("sexo") ?? "femea"),
-        categoria: String(form.get("categoria") ?? categoriaPadrao),
+        categoria: String(form.get("categoria") ?? categoriaPadraoDaEspecie(especie)),
         status: String(form.get("status") ?? "ativo"),
         nascimento: String(form.get("nascimento") ?? "") || null,
         peso_kg: form.get("peso_kg") ? Number(form.get("peso_kg")) : null,
@@ -271,7 +296,7 @@ function Rebanho() {
     onSuccess: () => {
       toast.success("Animal cadastrado.");
       setAberto(false);
-      setRaca(racasAtual[0]!);
+      setRaca(racasDaEspecie(especie)[0]!);
       setRacaCustom("");
       queryClient.invalidateQueries({ queryKey: ["animais"] });
       queryClient.invalidateQueries({ queryKey: ["animais-contagem"] });
@@ -291,10 +316,11 @@ function Rebanho() {
       const racaFinal = raca === OUTRA_RACA ? racaCustom.trim() : raca;
       const payload = {
         nome: String(form.get("nome") ?? "").trim(),
+        especie,
         brinco: String(form.get("brinco") ?? "").trim() || null,
         raca: racaFinal || null,
         sexo: String(form.get("sexo") ?? "femea"),
-        categoria: String(form.get("categoria") ?? categoriaPadrao),
+        categoria: String(form.get("categoria") ?? categoriaPadraoDaEspecie(especie)),
         status: String(form.get("status") ?? "ativo"),
         nascimento: String(form.get("nascimento") ?? "") || null,
         peso_kg: form.get("peso_kg") ? Number(form.get("peso_kg")) : null,
@@ -340,9 +366,10 @@ function Rebanho() {
     return {
       fazenda_id: fazendaId,
       nome: entrada.nome.trim(),
+      especie: entrada.especie,
       brinco: campos.brinco ? entrada.brinco.trim() || null : null,
       sexo: campos.sexo ? entrada.sexo : SEXOS[0],
-      categoria: campos.categoria ? entrada.categoria : categoriaPadrao,
+      categoria: campos.categoria ? entrada.categoria : categoriaPadraoDaEspecie(entrada.especie),
       status: campos.status ? entrada.status : STATUS[0],
       nascimento: campos.nascimento ? entrada.nascimento || null : null,
       peso_kg: campos.peso_kg && entrada.peso_kg ? Number(entrada.peso_kg) : null,
@@ -389,7 +416,7 @@ function Rebanho() {
     setGrupoLote("");
     setCamposGrupo(CAMPOS_GRUPO_PADRAO);
     setAnimaisGrupo([]);
-    setEntradaAtual(entradaGrupoVazia(categoriaPadrao, racasAtual[0]!));
+    setEntradaAtual(entradaGrupoVazia(soOvino ? "ovino" : "bovino"));
     setGrupoEtapa("campos");
   }
 
@@ -397,7 +424,7 @@ function Rebanho() {
     setGrupoEtapa(null);
     setGrupoLote("");
     setAnimaisGrupo([]);
-    setEntradaAtual(entradaGrupoVazia(categoriaPadrao, racasAtual[0]!));
+    setEntradaAtual(entradaGrupoVazia(soOvino ? "ovino" : "bovino"));
   }
 
   function alternarCampoGrupo(chave: CampoGrupo) {
@@ -430,7 +457,7 @@ function Rebanho() {
     // mesmo grupo) e limpa o que é único de cada animal — reduz quanto o
     // usuário precisa redigitar a cada volta do laço.
     setEntradaAtual((prev) => ({
-      ...entradaGrupoVazia(categoriaPadrao, racasAtual[0]!),
+      ...entradaGrupoVazia(prev.especie),
       sexo: prev.sexo,
       categoria: prev.categoria,
       status: prev.status,
@@ -463,21 +490,31 @@ function Rebanho() {
       return;
     }
     setEditando(null);
-    setRaca(racasAtual[0]!);
+    const especieInicial: Especie = soOvino ? "ovino" : "bovino";
+    setEspecie(especieInicial);
+    setRaca(racasDaEspecie(especieInicial)[0]!);
     setRacaCustom("");
     setAberto(true);
   }
 
   function abrirEdicao(a: any) {
     setAberto(false);
-    if (a.raca && racasAtual.includes(a.raca)) {
+    // Categoria já escolhida é o sinal mais confiável de espécie pra
+    // animal antigo (a coluna "especie" só passou a ser preenchida pelo
+    // formulário agora) — só cai pro valor salvo quando a categoria não
+    // identifica a espécie sozinha.
+    const especieInicial: Especie =
+      especieDaCategoria(a.categoria) ?? (a.especie === "ovino" ? "ovino" : "bovino");
+    setEspecie(especieInicial);
+    const racasDoAnimal = racasDaEspecie(especieInicial);
+    if (a.raca && racasDoAnimal.includes(a.raca)) {
       setRaca(a.raca);
       setRacaCustom("");
     } else if (a.raca) {
       setRaca(OUTRA_RACA);
       setRacaCustom(a.raca);
     } else {
-      setRaca(racasAtual[0]!);
+      setRaca(racasDoAnimal[0]!);
       setRacaCustom("");
     }
     setEditando(a);
@@ -673,7 +710,20 @@ function Rebanho() {
               <Label htmlFor="nome">Nome ou identificação</Label>
               <Input id="nome" name="nome" required placeholder="Ex: Mimosa" />
             </div>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-3 gap-3">
+              <div className="space-y-1.5">
+                <Label htmlFor="especie">Espécie</Label>
+                <select
+                  id="especie"
+                  name="especie"
+                  value={especie}
+                  onChange={(e) => selecionarEspecie(e.target.value as Especie)}
+                  className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+                >
+                  <option value="bovino">Bovino</option>
+                  <option value="ovino">Ovino</option>
+                </select>
+              </div>
               <div className="space-y-1.5">
                 <Label htmlFor="brinco">Brinco</Label>
                 <Input id="brinco" name="brinco" placeholder="Ex: 0231" />
@@ -686,10 +736,11 @@ function Rebanho() {
             <div className="grid grid-cols-3 gap-3">
               <Selecao id="sexo" nome="Sexo" opcoes={SEXOS} />
               <Selecao
+                key={especie}
                 id="categoria"
                 nome="Categoria"
-                opcoes={categoriasAtual}
-                padrao={categoriaPadrao}
+                opcoes={categoriasDaEspecie(especie)}
+                padrao={categoriaPadraoDaEspecie(especie)}
               />
               <Selecao id="status" nome="Situação" opcoes={STATUS} />
             </div>
@@ -711,7 +762,7 @@ function Rebanho() {
                 onChange={(e) => setRaca(e.target.value)}
                 className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
               >
-                {racasAtual.map((r) => (
+                {racasDaEspecie(especie).map((r) => (
                   <option key={r} value={r}>
                     {r}
                   </option>
@@ -768,7 +819,20 @@ function Rebanho() {
                     placeholder="Ex: Mimosa"
                   />
                 </div>
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-3 gap-3">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="edit-especie">Espécie</Label>
+                    <select
+                      id="edit-especie"
+                      name="especie"
+                      value={especie}
+                      onChange={(e) => selecionarEspecie(e.target.value as Especie)}
+                      className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+                    >
+                      <option value="bovino">Bovino</option>
+                      <option value="ovino">Ovino</option>
+                    </select>
+                  </div>
                   <div className="space-y-1.5">
                     <Label htmlFor="edit-brinco">Brinco</Label>
                     <Input id="edit-brinco" name="brinco" defaultValue={editando.brinco ?? ""} />
@@ -781,10 +845,15 @@ function Rebanho() {
                 <div className="grid grid-cols-3 gap-3">
                   <Selecao id="sexo" nome="Sexo" opcoes={SEXOS} padrao={editando.sexo} />
                   <Selecao
+                    key={especie}
                     id="categoria"
                     nome="Categoria"
-                    opcoes={categoriasAtual}
-                    padrao={editando.categoria ?? categoriaPadrao}
+                    opcoes={categoriasDaEspecie(especie)}
+                    padrao={
+                      categoriasDaEspecie(especie).includes(editando.categoria)
+                        ? editando.categoria
+                        : categoriaPadraoDaEspecie(especie)
+                    }
                   />
                   <Selecao
                     id="status"
@@ -823,7 +892,7 @@ function Rebanho() {
                     onChange={(e) => setRaca(e.target.value)}
                     className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
                   >
-                    {racasAtual.map((r) => (
+                    {racasDaEspecie(especie).map((r) => (
                       <option key={r} value={r}>
                         {r}
                       </option>
@@ -978,16 +1047,41 @@ function Rebanho() {
                   adicionarAoGrupo();
                 }}
               >
-                <div className="space-y-1.5">
-                  <Label htmlFor="grupo-nome">Nome ou identificação</Label>
-                  <Input
-                    id="grupo-nome"
-                    value={entradaAtual.nome}
-                    onChange={(e) => setEntradaAtual((prev) => ({ ...prev, nome: e.target.value }))}
-                    placeholder="Ex: Mimosa"
-                    required
-                    autoFocus
-                  />
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="grupo-nome">Nome ou identificação</Label>
+                    <Input
+                      id="grupo-nome"
+                      value={entradaAtual.nome}
+                      onChange={(e) =>
+                        setEntradaAtual((prev) => ({ ...prev, nome: e.target.value }))
+                      }
+                      placeholder="Ex: Mimosa"
+                      required
+                      autoFocus
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="grupo-especie">Espécie</Label>
+                    <select
+                      id="grupo-especie"
+                      value={entradaAtual.especie}
+                      onChange={(e) => {
+                        const novaEspecie = e.target.value as Especie;
+                        setEntradaAtual((prev) => ({
+                          ...prev,
+                          especie: novaEspecie,
+                          categoria: categoriaPadraoDaEspecie(novaEspecie),
+                          raca: racasDaEspecie(novaEspecie)[0]!,
+                          racaCustom: "",
+                        }));
+                      }}
+                      className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+                    >
+                      <option value="bovino">Bovino</option>
+                      <option value="ovino">Ovino</option>
+                    </select>
+                  </div>
                 </div>
 
                 {camposGrupo.brinco || camposGrupo.peso_kg ? (
@@ -1055,7 +1149,7 @@ function Rebanho() {
                           }
                           className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm capitalize"
                         >
-                          {categoriasAtual.map((c) => (
+                          {categoriasDaEspecie(entradaAtual.especie).map((c) => (
                             <option key={c} value={c} className="capitalize">
                               {c}
                             </option>
@@ -1110,7 +1204,7 @@ function Rebanho() {
                       }
                       className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
                     >
-                      {racasAtual.map((r) => (
+                      {racasDaEspecie(entradaAtual.especie).map((r) => (
                         <option key={r} value={r}>
                           {r}
                         </option>
