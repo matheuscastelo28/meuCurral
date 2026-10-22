@@ -232,11 +232,25 @@ function Rebanho() {
   // contagem. Vendido some do operacional do dia a dia, mas continua
   // consultável na própria aba.
   const [abaRebanho, setAbaRebanho] = useState<"ativo" | "vendido">("ativo");
+  const [filtroEspecie, setFiltroEspecie] = useState<"todas" | Especie>("todas");
   const [filtroCategoria, setFiltroCategoria] = useState<"todas" | (typeof CATEGORIAS)[number]>(
     "todas",
   );
   const [filtroSituacao, setFiltroSituacao] = useState<"todas" | (typeof STATUS)[number]>("todas");
   const [filtroSexo, setFiltroSexo] = useState<"todos" | (typeof SEXOS)[number]>("todos");
+
+  // Categoria é o sinal mais confiável de espécie pra animal cadastrado
+  // antes do campo Espécie existir no formulário — mesma lógica de
+  // abrirEdicao, reaproveitada aqui pro filtro.
+  function especieDoAnimal(a: { categoria?: string | null; especie?: string | null }): Especie {
+    return especieDaCategoria(a.categoria) ?? (a.especie === "ovino" ? "ovino" : "bovino");
+  }
+
+  // Filtrar por espécie primeiro estreita as opções de categoria mostradas
+  // no select de categoria — não faz sentido oferecer "touro" se o filtro
+  // já está em Ovino.
+  const categoriasParaFiltro =
+    filtroEspecie === "todas" ? categoriasAtual : categoriasDaEspecie(filtroEspecie);
 
   const porAba = useMemo(
     () => ({
@@ -247,11 +261,15 @@ function Rebanho() {
   );
 
   const filtroAtivo =
-    filtroCategoria !== "todas" || filtroSituacao !== "todas" || filtroSexo !== "todos";
+    filtroEspecie !== "todas" ||
+    filtroCategoria !== "todas" ||
+    filtroSituacao !== "todas" ||
+    filtroSexo !== "todos";
 
   const lista = useMemo(() => {
     const termo = busca.trim().toLowerCase();
     return porAba[abaRebanho].filter((a) => {
+      if (filtroEspecie !== "todas" && especieDoAnimal(a) !== filtroEspecie) return false;
       if (filtroCategoria !== "todas" && a.categoria !== filtroCategoria) return false;
       if (filtroSituacao !== "todas" && a.status !== filtroSituacao) return false;
       if (filtroSexo !== "todos" && a.sexo !== filtroSexo) return false;
@@ -262,7 +280,7 @@ function Rebanho() {
         (a.lote ?? "").toLowerCase().includes(termo)
       );
     });
-  }, [porAba, abaRebanho, busca, filtroCategoria, filtroSituacao, filtroSexo]);
+  }, [porAba, abaRebanho, busca, filtroEspecie, filtroCategoria, filtroSituacao, filtroSexo]);
 
   // Permite abrir a edição direto de outra tela (ex: "Editar dados do
   // animal" na ficha) navegando para /rebanho?editar=<id>.
@@ -499,12 +517,7 @@ function Rebanho() {
 
   function abrirEdicao(a: any) {
     setAberto(false);
-    // Categoria já escolhida é o sinal mais confiável de espécie pra
-    // animal antigo (a coluna "especie" só passou a ser preenchida pelo
-    // formulário agora) — só cai pro valor salvo quando a categoria não
-    // identifica a espécie sozinha.
-    const especieInicial: Especie =
-      especieDaCategoria(a.categoria) ?? (a.especie === "ovino" ? "ovino" : "bovino");
+    const especieInicial = especieDoAnimal(a);
     setEspecie(especieInicial);
     const racasDoAnimal = racasDaEspecie(especieInicial);
     if (a.raca && racasDoAnimal.includes(a.raca)) {
@@ -563,13 +576,26 @@ function Rebanho() {
           />
         </div>
         <select
+          aria-label="Filtrar por espécie"
+          value={filtroEspecie}
+          onChange={(e) => {
+            setFiltroEspecie(e.target.value as typeof filtroEspecie);
+            setFiltroCategoria("todas");
+          }}
+          className="h-9 rounded-md border border-input bg-background px-2.5 text-sm"
+        >
+          <option value="todas">Todas as espécies</option>
+          <option value="bovino">Bovino</option>
+          <option value="ovino">Ovino</option>
+        </select>
+        <select
           aria-label="Filtrar por categoria"
           value={filtroCategoria}
           onChange={(e) => setFiltroCategoria(e.target.value as typeof filtroCategoria)}
           className="h-9 rounded-md border border-input bg-background px-2.5 text-sm"
         >
           <option value="todas">Todas as categorias</option>
-          {categoriasAtual.map((c) => (
+          {categoriasParaFiltro.map((c) => (
             <option key={c} value={c}>
               {capitalizar(c)}
             </option>
@@ -607,6 +633,7 @@ function Rebanho() {
           <button
             type="button"
             onClick={() => {
+              setFiltroEspecie("todas");
               setFiltroCategoria("todas");
               setFiltroSituacao("todas");
               setFiltroSexo("todos");
