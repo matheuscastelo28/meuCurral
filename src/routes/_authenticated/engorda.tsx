@@ -118,7 +118,10 @@ function Engorda() {
   function paraUnidade(pesoKg: number) {
     return soOvino ? pesoKg : pesoKg / KG_POR_ARROBA;
   }
-  const indices = useIndicesRebanho(fazenda?.id);
+  const indices = useIndicesRebanho(
+    fazenda?.id,
+    ambasAtividades ? (soOvino ? CATEGORIAS_OVINO : CATEGORIAS_BOVINO) : undefined,
+  );
   const indicesEngorda = useIndicesEngorda(
     fazenda?.id,
     kgPorUnidade,

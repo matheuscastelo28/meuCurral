@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Baby, Beef, Coins, Droplet, Milk, Percent, Plus, Skull, Tag } from "lucide-react";
 import { toast } from "sonner";
 import { db } from "@/lib/local-db";
+import { CATEGORIAS_BOVINO } from "@/lib/especies";
 import { AppShell } from "@/components/AppShell";
 import { CartaoConfig } from "@/components/config/CartaoConfig";
 import { EmptyState } from "@/components/EmptyState";
@@ -58,7 +59,7 @@ function Leite() {
   const prefs = usePreferencias();
   const moeda = (v: number | null | undefined) => formatarMoeda(v, prefs.moeda);
   const { data: fazenda } = useFazenda();
-  const indices = useIndicesRebanho(fazenda?.id);
+  const indices = useIndicesRebanho(fazenda?.id, CATEGORIAS_BOVINO);
   const queryClient = useQueryClient();
   const hoje = hojeISO();
   const [modoRegistro, setModoRegistro] = useState<"vaca" | "lote">("vaca");
@@ -102,12 +103,12 @@ function Leite() {
     queryFn: async () => {
       const { data, error } = await db
         .from("animais")
-        .select("id, nome, brinco")
+        .select("id, nome, brinco, categoria")
         .eq("fazenda_id", fazenda!.id)
         .eq("status", "lactacao")
         .order("nome");
       if (error) throw error;
-      return data;
+      return (data ?? []).filter((a) => CATEGORIAS_BOVINO.includes(a.categoria ?? ""));
     },
   });
 
@@ -117,10 +118,10 @@ function Leite() {
     queryFn: async () => {
       const { data, error } = await db
         .from("animais")
-        .select("lote, status")
+        .select("lote, status, categoria")
         .eq("fazenda_id", fazenda!.id);
       if (error) throw error;
-      return data;
+      return (data ?? []).filter((a) => CATEGORIAS_BOVINO.includes(a.categoria ?? ""));
     },
   });
 

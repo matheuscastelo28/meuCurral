@@ -17,9 +17,9 @@ export interface IndicesRebanho {
   dataUltimoControle: string | null;
 }
 
-export function useIndicesRebanho(fazendaId: string | undefined) {
+export function useIndicesRebanho(fazendaId: string | undefined, categorias?: readonly string[]) {
   return useQuery({
-    queryKey: ["indices-rebanho", fazendaId],
+    queryKey: ["indices-rebanho", fazendaId, categorias],
     enabled: !!fazendaId,
     queryFn: async (): Promise<IndicesRebanho> => {
       const limite30 = diasAtrasISO(30);
@@ -34,7 +34,7 @@ export function useIndicesRebanho(fazendaId: string | undefined) {
           .order("data", { ascending: false }),
         db
           .from("animais")
-          .select("id", { count: "exact", head: true })
+          .select("id, categoria")
           .eq("fazenda_id", fazendaId!)
           .eq("status", "morto")
           .gte("updated_at", `${limite30}T00:00:00`),
@@ -47,14 +47,23 @@ export function useIndicesRebanho(fazendaId: string | undefined) {
           .limit(300),
       ]);
 
-      const animais = animaisRes.data ?? [];
+      // Fazenda com as duas atividades filtra aqui (espécie vem da
+      // categoria, não existe coluna própria) pra bovino e ovino nunca
+      // aparecerem misturados nos números de um e de outro.
+      const animais = categorias
+        ? (animaisRes.data ?? []).filter((a) => categorias.includes(a.categoria ?? ""))
+        : (animaisRes.data ?? []);
+      const idsValidos = categorias ? new Set(animais.map((a) => a.id)) : null;
       const ativos = animais.filter((a) => a.status !== "vendido" && a.status !== "morto");
       const totalRebanho = ativos.length;
       const totalPrenhes = animais.filter((a) => a.status === "prenhe").length;
       const lactantes = animais.filter((a) => a.status === "lactacao").length;
       const vacas = ativos.filter((a) => a.categoria === "vaca").length;
 
-      const partos = partosRes.data ?? [];
+      const partosTodos = partosRes.data ?? [];
+      const partos = idsValidos
+        ? partosTodos.filter((p) => idsValidos.has(p.animal_id))
+        : partosTodos;
       const partos30d = partos.filter((p) => dataISO(p.data) >= limite30).length;
 
       const ultimoPartoPorAnimal = new Map<string, string>();
@@ -72,7 +81,10 @@ export function useIndicesRebanho(fazendaId: string | undefined) {
           ? Math.round(diasEmLactacao.reduce((s, d) => s + d, 0) / diasEmLactacao.length)
           : null;
 
-      const leite = leiteRes.data ?? [];
+      const leiteTodos = leiteRes.data ?? [];
+      const leite = idsValidos
+        ? leiteTodos.filter((l) => !l.animal_id || idsValidos.has(l.animal_id))
+        : leiteTodos;
       const dataUltimoControle = leite[0]?.data ? dataISO(leite[0].data) : null;
       const doUltimoControle = dataUltimoControle
         ? leite.filter((l) => dataISO(l.data) === dataUltimoControle)
@@ -83,11 +95,16 @@ export function useIndicesRebanho(fazendaId: string | undefined) {
       const mediaUltimoControle =
         animaisNoControle > 0 ? totalUltimoControle / animaisNoControle : totalUltimoControle;
 
+      const mortesTodos = mortesRes.data ?? [];
+      const mortes30d = categorias
+        ? mortesTodos.filter((a) => categorias.includes(a.categoria ?? "")).length
+        : mortesTodos.length;
+
       return {
         totalRebanho,
         totalPrenhes,
         partos30d,
-        mortes30d: mortesRes.count ?? 0,
+        mortes30d,
         lactantes,
         vacas,
         lactantesRebanhoPct: totalRebanho > 0 ? Math.round((lactantes / totalRebanho) * 100) : 0,
