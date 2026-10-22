@@ -21,13 +21,21 @@ function Termos() {
       <h1 className="mt-6 text-3xl">Termos de uso</h1>
       <div className="mt-6 space-y-4 text-sm text-muted-foreground">
         <p>
-          O Curral Online é um sistema de gestão de rebanho. Ao criar uma conta, você concorda
-          em usar a plataforma apenas para registrar informações da sua atividade rural.
+          O Curral Online é um sistema de gestão de rebanho. Ao criar uma conta, você concorda em
+          usar a plataforma apenas para registrar informações da sua atividade rural.
         </p>
         <h2 className="text-base font-semibold text-foreground">Conta e responsabilidade</h2>
         <p>
           Você é responsável por manter a senha em sigilo e pelas informações cadastradas. Cada
           fazenda acessa somente os próprios dados.
+        </p>
+        <h2 className="text-base font-semibold text-foreground">Fase de testes</h2>
+        <p>
+          O Curral Online está em fase de validação. Isso significa que o produto pode mudar,
+          apresentar instabilidades e que não garantimos resultado ou desempenho específico — como
+          qualquer sistema em avaliação, use-o como apoio à sua gestão, não como fonte única de
+          decisão. Quando essa fase terminar, avisaremos com antecedência sobre qualquer mudança nas
+          condições de uso ou de cobrança.
         </p>
         <h2 className="text-base font-semibold text-foreground">Planos e cancelamento</h2>
         <p>
@@ -36,8 +44,9 @@ function Termos() {
         </p>
         <h2 className="text-base font-semibold text-foreground">Disponibilidade</h2>
         <p>
-          Trabalhamos para manter o serviço no ar, mas ele pode passar por manutenções. Recomendamos
-          exportar seus dados periodicamente em Configurações.
+          Trabalhamos para manter o serviço no ar, mas ele pode passar por manutenções e, por estar
+          em fase de testes, por instabilidades fora do previsto. Recomendamos exportar seus dados
+          periodicamente em Configurações.
         </p>
       </div>
     </div>

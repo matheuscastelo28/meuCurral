@@ -28,13 +28,15 @@ function Privacidade() {
       <div className="mt-6 space-y-4 text-sm text-muted-foreground">
         <h2 className="text-base font-semibold text-foreground">Dados que coletamos</h2>
         <p>
-          Coletamos nome, e-mail e as informações que você cadastra sobre a fazenda, os animais, o
-          manejo, a produção e o financeiro.
+          Coletamos nome e e-mail para identificar sua conta, e as informações que você cadastra
+          sobre a fazenda, os animais, o manejo, a produção e o financeiro. Não coletamos CPF nem
+          outros documentos pessoais. Se isso mudar, atualizaremos esta política informando quais
+          dados passam a ser coletados, para qual finalidade e com quem são compartilhados.
         </p>
         <h2 className="text-base font-semibold text-foreground">Como usamos</h2>
         <p>
-          Os dados são usados apenas para operar o sistema para você. Não vendemos nem compartilhamos
-          informações da sua fazenda com terceiros para publicidade.
+          Os dados são usados apenas para operar o sistema para você. Não vendemos nem
+          compartilhamos informações da sua fazenda com terceiros para publicidade.
         </p>
         <h2 className="text-base font-semibold text-foreground">Segurança</h2>
         <p>

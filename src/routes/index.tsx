@@ -3,16 +3,12 @@ import {
   ArrowRight,
   Baby,
   Beef,
-  CalendarDays,
   Check,
   ClipboardList,
   Lock,
-  Milk,
   Smartphone,
-  Stethoscope,
   Syringe,
   ShieldCheck,
-  Wallet,
   Weight,
 } from "lucide-react";
 import { PLANOS } from "@/lib/planos";
@@ -55,15 +51,6 @@ const ETAPAS = [
     titulo: "Acompanhe o resultado",
     texto: "Agenda avisa o que vence, financeiro mostra o que entrou e o que saiu.",
   },
-];
-
-const MODULOS = [
-  { icon: Beef, rotulo: "Rebanho" },
-  { icon: Milk, rotulo: "Leite" },
-  { icon: Weight, rotulo: "Confinamento" },
-  { icon: Stethoscope, rotulo: "Reprodução" },
-  { icon: Wallet, rotulo: "Financeiro" },
-  { icon: CalendarDays, rotulo: "Agenda" },
 ];
 
 const DIFERENCIAIS = [
@@ -109,50 +96,63 @@ function Landing() {
         </div>
       </header>
 
-      {/* Hero — fundo claro, mas com blobs de cor e um recorte em verde no
-          título, pra não cair de volta num herói branco e sem vida. */}
+      {/* Hero — fundo claro com um blob de cor e um recorte em verde no
+          título, mais o print real do painel ao lado em vez de espaço
+          vazio, pra não cair de volta num herói branco e sem vida. */}
       <section className="relative overflow-hidden px-5 pt-10 pb-14 sm:pt-16 sm:pb-20">
         <div
           aria-hidden="true"
           className="pointer-events-none absolute -top-24 -left-24 size-80 rounded-full bg-primary/15 blur-3xl"
         />
-        <div
-          aria-hidden="true"
-          className="pointer-events-none absolute top-10 right-0 size-72 rounded-full bg-warning/10 blur-3xl"
-        />
         <div className="relative mx-auto max-w-6xl">
-          <span className="inline-flex items-center rounded-full bg-accent px-3 py-1 text-xs font-semibold tracking-[0.1em] text-primary uppercase">
-            Gestão de rebanho
-          </span>
-          <h1 className="mt-4 max-w-3xl text-4xl leading-[1.05] sm:text-6xl">
-            O controle do seu rebanho{" "}
-            <span className="text-primary">fora da planilha, dentro do bolso.</span>
-          </h1>
-          <p className="mt-5 max-w-xl text-base text-muted-foreground">
-            Cadastre animais, acompanhe manejo, vacinação, pesagem, leite e financeiro. Comece
-            grátis com até 10 cabeças e cresça quando o rebanho crescer.
-          </p>
-          <div className="mt-8 flex flex-wrap gap-3">
-            <Button size="lg" asChild>
-              <Link to="/cadastro">
-                Criar conta grátis
-                <ArrowRight className="size-4" aria-hidden="true" />
-              </Link>
-            </Button>
-            <Button size="lg" variant="outline" asChild>
-              <Link to="/auth">Já tenho conta</Link>
-            </Button>
-          </div>
-          <div className="mt-10 flex flex-wrap gap-2">
-            {MODULOS.map((modulo) => (
-              <span
-                key={modulo.rotulo}
-                className="inline-flex items-center gap-1.5 rounded-full bg-secondary px-3 py-1.5 text-xs font-semibold text-secondary-foreground"
-              >
-                <modulo.icon className="size-3.5 text-primary" aria-hidden="true" />
-                {modulo.rotulo}
+          <div className="grid gap-10 lg:grid-cols-[1.05fr_1fr] lg:items-center">
+            <div>
+              <span className="inline-flex items-center rounded-full bg-accent px-3 py-1 text-xs font-semibold tracking-[0.1em] text-primary uppercase">
+                Gestão de rebanho
               </span>
-            ))}
+              <h1 className="mt-4 max-w-xl text-4xl leading-[1.05] sm:text-6xl">
+                O controle do seu rebanho{" "}
+                <span className="text-primary">fora da planilha, dentro do bolso.</span>
+              </h1>
+              <p className="mt-5 max-w-xl text-base text-muted-foreground">
+                Cadastre animais, acompanhe manejo, vacinação, pesagem, leite e financeiro. Comece
+                grátis com até 10 cabeças e cresça quando o rebanho crescer.
+              </p>
+              <div className="mt-8 flex flex-wrap gap-3">
+                <Button size="lg" asChild>
+                  <Link to="/cadastro">
+                    Criar conta grátis
+                    <ArrowRight className="size-4" aria-hidden="true" />
+                  </Link>
+                </Button>
+                <Button size="lg" variant="outline" asChild>
+                  <Link to="/auth">Já tenho conta</Link>
+                </Button>
+              </div>
+            </div>
+
+            {/* Mockup com um print real do painel — não uma ilustração
+                genérica — dentro de uma moldura de navegador, pra dar peso
+                visual sem inventar uma "demo" que não existe. */}
+            <div className="relative">
+              <div
+                aria-hidden="true"
+                className="absolute -inset-6 -z-10 rounded-[2rem] bg-warning/10 blur-2xl"
+              />
+              <div className="overflow-hidden rounded-xl border border-border bg-background shadow-lg">
+                <div className="flex items-center gap-1.5 border-b border-border bg-card px-3 py-2.5">
+                  <span className="size-2.5 rounded-full bg-destructive/40" />
+                  <span className="size-2.5 rounded-full bg-warning/40" />
+                  <span className="size-2.5 rounded-full bg-success/40" />
+                </div>
+                <img
+                  src="/screenshot-inicio.png"
+                  alt="Painel inicial do Curral Online, com o resumo do rebanho e os próximos compromissos"
+                  className="w-full"
+                  loading="lazy"
+                />
+              </div>
+            </div>
           </div>
         </div>
       </section>
@@ -205,60 +205,30 @@ function Landing() {
 
       <section className="border-y border-border bg-card">
         <div className="mx-auto max-w-6xl px-5 py-16 sm:py-20">
-          <div className="grid gap-12 lg:grid-cols-[1fr_1.1fr] lg:items-center">
-            <div>
-              <p className="text-xs font-semibold tracking-[0.18em] text-primary uppercase">
-                Por dentro do sistema
-              </p>
-              <h2 className="mt-3 max-w-md text-2xl sm:text-3xl">
-                Simples de usar, sério no que importa
-              </h2>
-              <span className="mt-2 flex items-center gap-2 text-sm text-muted-foreground">
-                <Beef className="size-4 text-primary" aria-hidden="true" />
-                Bovinos
-                <span className="text-border">·</span>
-                <Weight className="size-4 text-primary" aria-hidden="true" />
-                Ovinos
-              </span>
+          <p className="text-xs font-semibold tracking-[0.18em] text-primary uppercase">
+            Por dentro do sistema
+          </p>
+          <h2 className="mt-3 max-w-md text-2xl sm:text-3xl">
+            Simples de usar, sério no que importa
+          </h2>
+          <span className="mt-2 flex items-center gap-2 text-sm text-muted-foreground">
+            <Beef className="size-4 text-primary" aria-hidden="true" />
+            Bovinos
+            <span className="text-border">·</span>
+            <Weight className="size-4 text-primary" aria-hidden="true" />
+            Ovinos
+          </span>
 
-              <div className="mt-8 grid gap-3 sm:grid-cols-2">
-                {DIFERENCIAIS.map((item) => (
-                  <div
-                    key={item.titulo}
-                    className="rounded-xl border border-border bg-background p-4"
-                  >
-                    <span className="flex size-9 items-center justify-center rounded-lg bg-primary text-primary-foreground">
-                      <item.icon className="size-4" aria-hidden="true" />
-                    </span>
-                    <h3 className="mt-3 text-sm font-semibold">{item.titulo}</h3>
-                    <p className="mt-1 text-xs text-muted-foreground">{item.texto}</p>
-                  </div>
-                ))}
+          <div className="mt-8 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            {DIFERENCIAIS.map((item) => (
+              <div key={item.titulo} className="rounded-xl border border-border bg-background p-4">
+                <span className="flex size-9 items-center justify-center rounded-lg bg-primary text-primary-foreground">
+                  <item.icon className="size-4" aria-hidden="true" />
+                </span>
+                <h3 className="mt-3 text-sm font-semibold">{item.titulo}</h3>
+                <p className="mt-1 text-xs text-muted-foreground">{item.texto}</p>
               </div>
-            </div>
-
-            {/* Mockup com um print real do painel — não uma ilustração
-                genérica — dentro de uma moldura de navegador, pra dar peso
-                visual sem inventar uma "demo" que não existe. */}
-            <div className="relative">
-              <div
-                aria-hidden="true"
-                className="absolute -inset-6 -z-10 rounded-[2rem] bg-primary/10 blur-2xl"
-              />
-              <div className="overflow-hidden rounded-xl border border-border bg-background shadow-lg">
-                <div className="flex items-center gap-1.5 border-b border-border bg-card px-3 py-2.5">
-                  <span className="size-2.5 rounded-full bg-destructive/40" />
-                  <span className="size-2.5 rounded-full bg-warning/40" />
-                  <span className="size-2.5 rounded-full bg-success/40" />
-                </div>
-                <img
-                  src="/screenshot-inicio.png"
-                  alt="Painel inicial do Curral Online, com o resumo do rebanho e os próximos compromissos"
-                  className="w-full"
-                  loading="lazy"
-                />
-              </div>
-            </div>
+            ))}
           </div>
         </div>
       </section>
