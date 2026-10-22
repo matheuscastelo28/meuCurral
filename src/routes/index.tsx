@@ -304,18 +304,20 @@ function Landing() {
       </section>
 
       <footer className="border-t border-border">
-        <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-4 px-5 py-8 text-sm text-muted-foreground">
-          <span className="flex items-center gap-2">
-            <Lock className="size-4" aria-hidden="true" />
-            Conexão segura e dados isolados por fazenda
-          </span>
-          <Link to="/termos" className="underline underline-offset-4">
-            Termos de uso
-          </Link>
-          <Link to="/privacidade" className="underline underline-offset-4">
-            Política de privacidade
-          </Link>
-          <span className="w-full text-xs">© 2026 Easy Agro</span>
+        <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-4 px-5 py-8 text-sm text-muted-foreground">
+          <div className="flex flex-wrap items-center gap-4">
+            <span className="flex items-center gap-2">
+              <Lock className="size-4" aria-hidden="true" />
+              Conexão segura e dados isolados por fazenda
+            </span>
+            <Link to="/termos" className="underline underline-offset-4">
+              Termos de uso
+            </Link>
+            <Link to="/privacidade" className="underline underline-offset-4">
+              Política de privacidade
+            </Link>
+          </div>
+          <span className="text-xs">© 2026 Easy Agro</span>
         </div>
       </footer>
     </div>
