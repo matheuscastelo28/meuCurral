@@ -1,11 +1,12 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, Baby, Coins, Milk, Pencil, Scale, Trash2, Wrench } from "lucide-react";
+import { ArrowLeft, Baby, Coins, Milk, Pencil, Scale, Syringe, Trash2, Wrench } from "lucide-react";
 import { toast } from "sonner";
 import { Area, AreaChart, CartesianGrid, XAxis, YAxis } from "recharts";
 import { db } from "@/lib/local-db";
 import { AppShell } from "@/components/AppShell";
+import { DialogManejoSanitario } from "@/components/DialogManejoSanitario";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -37,6 +38,7 @@ import {
   moeda as formatarMoeda,
   pesoTexto,
 } from "@/lib/formato";
+import { rotuloCategoria, rotuloStatus } from "@/lib/rotulos";
 import { usePreferencias } from "@/hooks/use-preferencias";
 
 export const Route = createFileRoute("/_authenticated/rebanho_/$animalId")({
@@ -68,6 +70,13 @@ interface EntradaHistorico {
   bruta: any;
 }
 
+const TITULO_MANEJO: Record<string, string> = {
+  vacina: "Vacina",
+  vermifugo: "Vermífugo",
+  tratamento: "Tratamento",
+  outro: "Manejo",
+};
+
 const ROTULO_TIPO: Record<TipoEntrada, string> = {
   leite: "Leite",
   peso: "Peso",
@@ -94,6 +103,7 @@ function Ficha() {
   const [tipoFiltro, setTipoFiltro] = useState<TipoFiltro>("todos");
   const [editando, setEditando] = useState<EntradaHistorico | null>(null);
   const [excluindo, setExcluindo] = useState<EntradaHistorico | null>(null);
+  const [sanidadeAberto, setSanidadeAberto] = useState(false);
 
   const animal = useQuery({
     queryKey: ["animal-ficha", animalId],
@@ -217,9 +227,8 @@ function Ficha() {
         data: dataISO(r.data),
         titulo: ehPesagem
           ? "Pesagem"
-          : r.tipo
-            ? r.tipo.charAt(0).toUpperCase() + r.tipo.slice(1)
-            : "Manejo",
+          : (TITULO_MANEJO[r.tipo ?? ""] ??
+            (r.tipo ? r.tipo.charAt(0).toUpperCase() + r.tipo.slice(1) : "Manejo")),
         descricao: r.descricao || (ehPesagem ? "Pesagem de rotina" : "Manejo registrado"),
         valorTexto: ehPesagem
           ? r.valor !== null
@@ -323,14 +332,27 @@ function Ficha() {
       titulo={a.nome}
       descricao={`${a.brinco ? `Brinco ${a.brinco} · ` : ""}Leite, peso, reprodução e vendas em um só lugar.`}
       acao={
-        <Button variant="outline" asChild>
-          <Link to="/rebanho">
-            <ArrowLeft className="size-4" aria-hidden="true" />
-            Voltar
-          </Link>
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          {a.status !== "vendido" && a.status !== "morto" ? (
+            <Button variant="outline" onClick={() => setSanidadeAberto(true)}>
+              <Syringe className="size-4" aria-hidden="true" />
+              Vacina / manejo
+            </Button>
+          ) : null}
+          <Button variant="outline" asChild>
+            <Link to="/rebanho">
+              <ArrowLeft className="size-4" aria-hidden="true" />
+              Voltar
+            </Link>
+          </Button>
+        </div>
       }
     >
+      <DialogManejoSanitario
+        aberto={sanidadeAberto}
+        onFechar={() => setSanidadeAberto(false)}
+        animalIdInicial={a.id}
+      />
       <div className="grid items-start gap-4 lg:grid-cols-[320px_1fr]">
         <div className="rounded-xl border border-border bg-card p-5">
           <div className="flex items-center gap-3">
@@ -343,11 +365,11 @@ function Ficha() {
                 {a.brinco ? ` · Nº ${a.brinco}` : ""}
               </h2>
               <div className="mt-1 flex flex-wrap gap-1.5">
-                <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] font-semibold text-muted-foreground capitalize">
-                  {a.categoria}
+                <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] font-semibold text-muted-foreground">
+                  {rotuloCategoria(a.categoria)}
                 </span>
-                <span className="rounded-full bg-accent px-2 py-0.5 text-[11px] font-semibold text-primary capitalize">
-                  {a.status}
+                <span className="rounded-full bg-accent px-2 py-0.5 text-[11px] font-semibold text-primary">
+                  {rotuloStatus(a.status)}
                 </span>
               </div>
             </div>

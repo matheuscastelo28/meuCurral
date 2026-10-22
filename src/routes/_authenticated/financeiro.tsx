@@ -31,6 +31,12 @@ import { useFazenda } from "@/hooks/use-fazenda";
 import { dataCurta, dataISO, hojeISO, moeda as formatarMoeda } from "@/lib/formato";
 import { usePreferencias } from "@/hooks/use-preferencias";
 import {
+  CATEGORIAS_DESPESA,
+  CATEGORIAS_RECEITA,
+  rotuloCategoriaFinanceira,
+  textoLote,
+} from "@/lib/rotulos";
+import {
   gerarParcelas,
   statusExibicaoConta,
   statusExibicaoParcela,
@@ -308,6 +314,28 @@ function Financeiro() {
 
   const saldoRealizadoUnificado = recebidoUnificado - despesasUnificado;
 
+  // Pra onde vai o dinheiro: despesa paga (lançamento + parte paga das
+  // contas) agrupada por categoria.
+  const despesasPorCategoria = useMemo(() => {
+    const mapa = new Map<string, number>();
+    for (const l of lancamentos.data ?? []) {
+      if (l.tipo !== "despesa") continue;
+      const chave = l.categoria || "";
+      mapa.set(chave, (mapa.get(chave) ?? 0) + Number(l.valor));
+    }
+    for (const c of contasComDados) {
+      if (c.tipo !== "a_pagar") continue;
+      const pago = Number(c.valor_total) - Number(c.valor_restante);
+      if (pago <= 0) continue;
+      const chave = c.categoria || "";
+      mapa.set(chave, (mapa.get(chave) ?? 0) + pago);
+    }
+    return Array.from(mapa.entries())
+      .map(([cat, valor]) => ({ cat, valor }))
+      .filter((x) => x.valor > 0)
+      .sort((a, b) => b.valor - a.valor);
+  }, [lancamentos.data, contasComDados]);
+
   const emAtrasoLancamentos = (lancamentos.data ?? [])
     .filter((l) => l.tipo === "receita" && l.status === "a_receber" && dataISO(l.data) < hoje)
     .reduce((s, l) => s + Number(l.valor), 0);
@@ -335,6 +363,28 @@ function Financeiro() {
   const [numParcelas, setNumParcelas] = useState("2");
   const [primeiroVencimento, setPrimeiroVencimento] = useState(hoje);
   const [intervaloDias, setIntervaloDias] = useState("30");
+  const [categoria, setCategoria] = useState("");
+  const [loteLanc, setLoteLanc] = useState("");
+
+  // Lote de destino de uma despesa — mesmo texto livre de animais.lote.
+  // Assim uma ração comprada aqui já entra no custo do lote no Confinamento.
+  const lotesExistentes = useQuery({
+    queryKey: ["lotes-existentes", fazenda?.id],
+    enabled: !!fazenda?.id,
+    queryFn: async () => {
+      const { data, error } = await db
+        .from("animais")
+        .select("lote, status")
+        .eq("fazenda_id", fazenda!.id);
+      if (error) throw error;
+      const nomes = new Set<string>();
+      for (const a of data ?? []) {
+        const nome = String(a.lote ?? "").trim();
+        if (nome && a.status !== "vendido" && a.status !== "morto") nomes.add(nome);
+      }
+      return Array.from(nomes).sort((x, y) => x.localeCompare(y, "pt-BR"));
+    },
+  });
 
   function limparForm() {
     setDescricao("");
@@ -347,6 +397,8 @@ function Financeiro() {
     setNumParcelas("2");
     setPrimeiroVencimento(hoje);
     setIntervaloDias("30");
+    setCategoria("");
+    setLoteLanc("");
   }
 
   const vaiVirarConta = parcelado || !jaAconteceu;
@@ -372,7 +424,7 @@ function Financeiro() {
           descricao: descricao.trim(),
           valorTotal: valorNum,
           dataEmissao: data,
-          categoria: null,
+          categoria: categoria || null,
           pessoa: pessoa.trim() || null,
           formaPagamento: formaPagamento || null,
           observacoes: null,
@@ -394,6 +446,8 @@ function Financeiro() {
           data,
           forma_pagamento: formaPagamento,
           parcelas: null,
+          categoria: categoria || null,
+          lote: tipo === "despesa" && loteLanc ? loteLanc : null,
           ...(tipo === "receita" ? { status: "recebido" } : {}),
         } as never);
         if (error) throw error;
@@ -407,6 +461,7 @@ function Financeiro() {
       queryClient.invalidateQueries({ queryKey: ["contas"] });
       queryClient.invalidateQueries({ queryKey: ["parcelas"] });
       queryClient.invalidateQueries({ queryKey: ["inicio-resumo"] });
+      queryClient.invalidateQueries({ queryKey: ["despesas-lote"] });
     },
     onError: (erro) =>
       toast.error(erro instanceof Error ? erro.message : "Não conseguimos salvar agora."),
@@ -491,7 +546,7 @@ function Financeiro() {
         </Button>
       }
     >
-      <div className="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6">
+      <div className="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-3">
         <Resumo rotulo="Recebido" valor={moeda(recebidoUnificado)} classe="text-success" />
         <Resumo rotulo="A receber" valor={moeda(aReceberUnificado)} classe="text-warning" />
         <Resumo rotulo="Despesas" valor={moeda(despesasUnificado)} classe="text-destructive" />
@@ -499,6 +554,36 @@ function Financeiro() {
         <Resumo rotulo="Saldo realizado" valor={moeda(saldoRealizadoUnificado)} classe="" />
         <Resumo rotulo="Em atraso" valor={moeda(emAtrasoUnificado)} classe="text-destructive" />
       </div>
+
+      {despesasPorCategoria.length > 0 ? (
+        <section className="mb-5 rounded-xl border border-border bg-card p-4">
+          <h2 className="text-base font-semibold">Para onde foi o dinheiro</h2>
+          <p className="text-xs text-muted-foreground">Despesas já pagas, por categoria.</p>
+          <ul className="mt-3 space-y-2.5">
+            {despesasPorCategoria.map(({ cat, valor }) => (
+              <li key={cat || "sem"}>
+                <div className="flex justify-between gap-3 text-sm">
+                  <span>{rotuloCategoriaFinanceira(cat || null)}</span>
+                  <span className="font-semibold">
+                    {moeda(valor)}
+                    <span className="ml-1.5 text-xs font-normal text-muted-foreground">
+                      {despesasUnificado > 0 ? Math.round((valor / despesasUnificado) * 100) : 0}%
+                    </span>
+                  </span>
+                </div>
+                <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-muted">
+                  <div
+                    className="h-full bg-destructive/70"
+                    style={{
+                      width: `${despesasUnificado > 0 ? (valor / despesasUnificado) * 100 : 0}%`,
+                    }}
+                  />
+                </div>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
 
       {selecionados.size > 0 ? (
         <div className="mb-3 flex items-center justify-between rounded-xl border border-border bg-accent/40 px-4 py-2.5 text-sm">
@@ -542,7 +627,11 @@ function Financeiro() {
                 <select
                   id="tipo-lanc"
                   value={tipo}
-                  onChange={(e) => setTipo(e.target.value as "despesa" | "receita")}
+                  onChange={(e) => {
+                    setTipo(e.target.value as "despesa" | "receita");
+                    setCategoria("");
+                    setLoteLanc("");
+                  }}
                   className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
                 >
                   <option value="despesa">Despesa</option>
@@ -581,6 +670,46 @@ function Financeiro() {
                   required
                 />
               </div>
+            </div>
+
+            <div className="mt-3 flex flex-wrap items-start gap-3">
+              <div className="min-w-[200px] flex-1 space-y-1.5">
+                <Label htmlFor="categoria-lanc">Categoria</Label>
+                <select
+                  id="categoria-lanc"
+                  value={categoria}
+                  onChange={(e) => setCategoria(e.target.value)}
+                  className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+                >
+                  <option value="">Sem categoria</option>
+                  {(tipo === "despesa" ? CATEGORIAS_DESPESA : CATEGORIAS_RECEITA).map((c) => (
+                    <option key={c.valor} value={c.valor}>
+                      {c.rotulo}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              {tipo === "despesa" && !vaiVirarConta && (lotesExistentes.data?.length ?? 0) > 0 ? (
+                <div className="min-w-[200px] flex-1 space-y-1.5">
+                  <Label htmlFor="lote-lanc">Lote (opcional)</Label>
+                  <select
+                    id="lote-lanc"
+                    value={loteLanc}
+                    onChange={(e) => setLoteLanc(e.target.value)}
+                    className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+                  >
+                    <option value="">Nenhum lote</option>
+                    {lotesExistentes.data?.map((l) => (
+                      <option key={l} value={l}>
+                        {l}
+                      </option>
+                    ))}
+                  </select>
+                  <p className="text-xs text-muted-foreground">
+                    Entra no custo desse lote no Confinamento.
+                  </p>
+                </div>
+              ) : null}
             </div>
 
             <div className="mt-3 flex flex-wrap items-start gap-3">
@@ -825,6 +954,10 @@ function Financeiro() {
                           linha.lancamento.parcelas > 1
                             ? ` em ${linha.lancamento.parcelas}x`
                             : ""}
+                          {linha.lancamento.categoria
+                            ? ` · ${rotuloCategoriaFinanceira(linha.lancamento.categoria)}`
+                            : ""}
+                          {linha.lancamento.lote ? ` · ${textoLote(linha.lancamento.lote)}` : ""}
                         </p>
                       </div>
                     </div>
@@ -1141,7 +1274,9 @@ function Resumo({ rotulo, valor, classe }: { rotulo: string; valor: string; clas
   return (
     <div className="rounded-xl border border-border bg-card p-4">
       <p className="text-xs text-muted-foreground">{rotulo}</p>
-      <p className={`font-display text-2xl font-extrabold ${classe}`}>{valor}</p>
+      <p className={`font-display text-xl font-extrabold whitespace-nowrap tabular-nums ${classe}`}>
+        {valor}
+      </p>
     </div>
   );
 }

@@ -12,7 +12,7 @@ export interface IndicesRebanho {
   lactantesRebanhoPct: number;
   lactantesVacasPct: number;
   delMedio: number | null;
-  mediaUltimoControle: number;
+  mediaUltimoControle: number | null;
   totalUltimoControle: number;
   dataUltimoControle: string | null;
 }
@@ -90,10 +90,14 @@ export function useIndicesRebanho(fazendaId: string | undefined, categorias?: re
         ? leite.filter((l) => dataISO(l.data) === dataUltimoControle)
         : [];
       const totalUltimoControle = doUltimoControle.reduce((s, l) => s + Number(l.litros), 0);
-      const animaisNoControle = new Set(doUltimoControle.map((l) => l.animal_id).filter(Boolean))
-        .size;
+      // Média por vaca só faz sentido com registro individual — produção
+      // lançada por lote não diz quantas vacas foram ordenhadas.
+      const individuais = doUltimoControle.filter((l) => l.animal_id);
+      const animaisNoControle = new Set(individuais.map((l) => l.animal_id)).size;
       const mediaUltimoControle =
-        animaisNoControle > 0 ? totalUltimoControle / animaisNoControle : totalUltimoControle;
+        animaisNoControle > 0
+          ? individuais.reduce((s, l) => s + Number(l.litros), 0) / animaisNoControle
+          : null;
 
       const mortesTodos = mortesRes.data ?? [];
       const mortes30d = categorias

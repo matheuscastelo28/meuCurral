@@ -1,7 +1,8 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Baby, Beef, Coins, Droplet, Milk, Percent, Plus, Skull, Tag } from "lucide-react";
+import { Coins, Droplet, Milk, Percent, Plus, Tag, Trash2 } from "lucide-react";
+import { Bar, BarChart, CartesianGrid, XAxis } from "recharts";
 import { toast } from "sonner";
 import { db } from "@/lib/local-db";
 import { CATEGORIAS_BOVINO } from "@/lib/especies";
@@ -11,9 +12,21 @@ import { EmptyState } from "@/components/EmptyState";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { useFazenda } from "@/hooks/use-fazenda";
 import { useIndicesRebanho } from "@/hooks/use-indices-rebanho";
-import { dataCurta, dataISO, hojeISO, moeda as formatarMoeda } from "@/lib/formato";
+import { dataCurta, dataISO, diasAtrasISO, hojeISO, moeda as formatarMoeda } from "@/lib/formato";
+import { rotuloTurno } from "@/lib/rotulos";
 import { usePreferencias } from "@/hooks/use-preferencias";
 import { PRODUTOS_LEITE, rotuloProduto, unidadeProduto } from "@/lib/produtos-leite";
 import { encontrarPrecoVigente } from "@/lib/precos-produto";
@@ -72,6 +85,11 @@ function Leite() {
   const [loteSelecionado, setLoteSelecionado] = useState("");
   const [loteLitros, setLoteLitros] = useState("");
   const [loteObservacao, setLoteObservacao] = useState("");
+  const [loteTurno, setLoteTurno] = useState("manha");
+  const [excluindoRegistro, setExcluindoRegistro] = useState<{
+    id: string;
+    texto: string;
+  } | null>(null);
 
   const produtosTrabalhados = fazenda?.produtos_leite?.length ? fazenda.produtos_leite : ["leite"];
   const opcoesProduto = PRODUTOS_LEITE.filter((p) => produtosTrabalhados.includes(p.valor));
@@ -87,13 +105,48 @@ function Leite() {
     queryFn: async () => {
       const { data, error } = await db
         .from("producao_leite")
-        .select("*")
+        .select("*, animais(nome)")
         .eq("fazenda_id", fazenda!.id)
         .order("data", { ascending: false })
         .limit(60);
       if (error) throw error;
       return data;
     },
+  });
+
+  // A lista acima é só "os últimos registros"; os números do dia e o
+  // gráfico precisam de tudo do período, senão uma fazenda com muitas vacas
+  // (60+ registros por dia) via o total de hoje cortado.
+  const ultimos30Dias = useQuery({
+    queryKey: ["leite-30d", fazenda?.id],
+    enabled: !!fazenda?.id,
+    queryFn: async () => {
+      const { data, error } = await db
+        .from("producao_leite")
+        .select("id, data, litros, produto, animal_id, lote")
+        .eq("fazenda_id", fazenda!.id)
+        .gte("data", diasAtrasISO(29))
+        .order("data", { ascending: true });
+      if (error) throw error;
+      return data;
+    },
+  });
+
+  const excluirRegistro = useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await db.from("producao_leite").delete().eq("id", id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      toast.success("Registro excluído.");
+      setExcluindoRegistro(null);
+      queryClient.invalidateQueries({ queryKey: ["leite"] });
+      queryClient.invalidateQueries({ queryKey: ["leite-30d"] });
+      queryClient.invalidateQueries({ queryKey: ["inicio-resumo"] });
+      queryClient.invalidateQueries({ queryKey: ["indices-rebanho"] });
+      queryClient.invalidateQueries({ queryKey: ["ficha-leite"] });
+    },
+    onError: () => toast.error("Não conseguimos excluir agora. Tente novamente."),
   });
 
   // ---- Animais compatíveis com ordenha (status "lactacao") e lotes existentes ----
@@ -155,6 +208,7 @@ function Leite() {
           lote: loteSelecionado,
           data: loteData,
           litros: Number(loteLitros),
+          turno: loteTurno,
           produto: "leite",
           observacoes: loteObservacao.trim() || null,
         } as never);
@@ -168,23 +222,36 @@ function Leite() {
       setLoteLitros("");
       setLoteObservacao("");
       queryClient.invalidateQueries({ queryKey: ["leite"] });
+      queryClient.invalidateQueries({ queryKey: ["leite-30d"] });
       queryClient.invalidateQueries({ queryKey: ["inicio-resumo"] });
       queryClient.invalidateQueries({ queryKey: ["indices-rebanho"] });
     },
     onError: () => toast.error("Não conseguimos salvar agora. Tente novamente."),
   });
 
-  const totalLeite = (registros.data ?? [])
-    .filter((r) => r.produto === "leite")
-    .reduce((s, r) => s + Number(r.litros), 0);
+  const leite30d = (ultimos30Dias.data ?? []).filter((r) => r.produto === "leite");
+  const registrosHoje = leite30d.filter((r) => dataISO(r.data) === hoje);
+  const totalHoje = registrosHoje.reduce((s, r) => s + Number(r.litros), 0);
 
-  const totalHoje = (registros.data ?? [])
-    .filter((r) => r.produto === "leite" && dataISO(r.data) === hoje)
-    .reduce((s, r) => s + Number(r.litros), 0);
-
-  const registrosHoje = (registros.data ?? []).filter(
-    (r) => r.produto === "leite" && dataISO(r.data) === hoje,
-  );
+  const porDia = useMemo(() => {
+    const mapa = new Map<string, number>();
+    for (let d = 29; d >= 0; d--) mapa.set(diasAtrasISO(d), 0);
+    for (const r of leite30d) {
+      const dia = dataISO(r.data);
+      if (mapa.has(dia)) mapa.set(dia, (mapa.get(dia) ?? 0) + Number(r.litros));
+    }
+    return Array.from(mapa.entries()).map(([dia, litros]) => ({
+      dia,
+      data: dataCurta(dia).slice(0, 5),
+      litros: Math.round(litros * 10) / 10,
+    }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ultimos30Dias.data]);
+  const ultimos7 = porDia.slice(-7);
+  const diasComProducao7 = ultimos7.filter((d) => d.litros > 0).length;
+  const media7Dias =
+    diasComProducao7 > 0 ? ultimos7.reduce((s, d) => s + d.litros, 0) / diasComProducao7 : 0;
+  const total30Dias = porDia.reduce((s, d) => s + d.litros, 0);
   const temIndividualHoje = registrosHoje.some((r) => r.animal_id);
   const temLoteHoje = registrosHoje.some((r) => r.lote);
   const misturaIndividualELote = temIndividualHoje && temLoteHoje;
@@ -535,51 +602,362 @@ function Leite() {
   const i = indices.data;
 
   return (
-    <AppShell titulo="Leite" descricao="Anote a produção por dia e turno para acompanhar a curva.">
-      <div className="mb-5 grid gap-3 sm:grid-cols-3 lg:grid-cols-4">
-        <Kpi icon={Beef} rotulo="Total do rebanho" valor={i ? `${i.totalRebanho} cab` : "—"} />
-        <Kpi icon={Baby} rotulo="Total de prenhes" valor={i ? `${i.totalPrenhes} cab` : "—"} />
-        <Kpi icon={Baby} rotulo="Partos (últimos 30 dias)" valor={i ? `${i.partos30d} cab` : "—"} />
+    <AppShell titulo="Leite" descricao="Registre a ordenha do dia e acompanhe a produção.">
+      <div className="mb-5 rounded-xl border border-border bg-card p-4">
+        <h2 className="text-base font-semibold">Registrar produção de leite</h2>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Informe a produção do dia por animal ou por lote.
+        </p>
+
+        <div className="mt-4 flex gap-2">
+          <Button
+            type="button"
+            size="sm"
+            variant={modoRegistro === "vaca" ? "default" : "outline"}
+            onClick={() => setModoRegistro("vaca")}
+          >
+            Por vaca
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            variant={modoRegistro === "lote" ? "default" : "outline"}
+            onClick={() => setModoRegistro("lote")}
+          >
+            Por lote
+          </Button>
+        </div>
+
+        {misturaIndividualELote ? (
+          <p className="mt-3 rounded-lg bg-warning/10 px-3 py-2 text-xs text-warning">
+            Hoje já tem produção registrada por vaca e por lote — confira se não é a mesma produção
+            contada duas vezes.
+          </p>
+        ) : null}
+
+        {modoRegistro === "vaca" ? (
+          <form
+            className="mt-4 grid gap-3 sm:grid-cols-5"
+            onSubmit={(e) => {
+              e.preventDefault();
+              salvar.mutate();
+            }}
+          >
+            <div className="space-y-1.5">
+              <Label htmlFor="animal">Vaca</Label>
+              <select
+                id="animal"
+                value={animalId}
+                onChange={(e) => setAnimalId(e.target.value)}
+                className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+                required
+              >
+                <option value="" disabled>
+                  Selecione
+                </option>
+                {(animaisLactantes.data ?? []).map((a) => (
+                  <option key={a.id} value={a.id}>
+                    {a.nome || a.brinco || "Sem nome"}
+                    {a.nome && a.brinco ? ` (${a.brinco})` : ""}
+                  </option>
+                ))}
+              </select>
+              {(animaisLactantes.data ?? []).length === 0 ? (
+                <p className="text-xs text-muted-foreground">
+                  Nenhuma vaca com status "lactação" cadastrada.
+                </p>
+              ) : null}
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="data">Data</Label>
+              <Input
+                id="data"
+                type="date"
+                value={data}
+                onChange={(e) => setData(e.target.value)}
+                required
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="produto">Produto</Label>
+              <select
+                id="produto"
+                value={produto}
+                onChange={(e) => setProduto(e.target.value)}
+                className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+              >
+                {opcoesProduto.map((p) => (
+                  <option key={p.valor} value={p.valor}>
+                    {p.rotulo}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="litros">Quantidade ({unidadeProduto(produto)})</Label>
+              <Input
+                id="litros"
+                type="number"
+                step="0.1"
+                min="0"
+                value={litros}
+                onChange={(e) => setLitros(e.target.value)}
+                required
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="turno">Turno</Label>
+              <select
+                id="turno"
+                value={turno}
+                onChange={(e) => setTurno(e.target.value)}
+                className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+              >
+                <option value="manha">Manhã</option>
+                <option value="tarde">Tarde</option>
+                <option value="noite">Noite</option>
+              </select>
+            </div>
+            <div className="flex items-end sm:col-span-5">
+              <Button type="submit" disabled={salvar.isPending}>
+                <Plus className="size-4" aria-hidden="true" />
+                Registrar
+              </Button>
+            </div>
+            <p className="text-xs text-muted-foreground sm:col-span-5">
+              Total registrado hoje: {totalHoje.toLocaleString("pt-BR")} L
+            </p>
+          </form>
+        ) : (
+          <form
+            className="mt-4 grid gap-3 sm:grid-cols-5"
+            onSubmit={(e) => {
+              e.preventDefault();
+              salvar.mutate();
+            }}
+          >
+            <div className="space-y-1.5">
+              <Label htmlFor="lote">Lote</Label>
+              <select
+                id="lote"
+                value={loteSelecionado}
+                onChange={(e) => setLoteSelecionado(e.target.value)}
+                className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+                required
+              >
+                <option value="" disabled>
+                  Selecione
+                </option>
+                {lotesDisponiveis.map((l) => (
+                  <option key={l} value={l}>
+                    {l}
+                  </option>
+                ))}
+              </select>
+              {lotesDisponiveis.length === 0 ? (
+                <p className="text-xs text-muted-foreground">
+                  Nenhum lote com vaca em lactação ou seca — defina o lote e a situação no cadastro
+                  dos animais.
+                </p>
+              ) : null}
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="lote-litros">Quantidade total (L)</Label>
+              <Input
+                id="lote-litros"
+                type="number"
+                step="0.1"
+                min="0"
+                value={loteLitros}
+                onChange={(e) => setLoteLitros(e.target.value)}
+                required
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="lote-data">Data</Label>
+              <Input
+                id="lote-data"
+                type="date"
+                value={loteData}
+                onChange={(e) => setLoteData(e.target.value)}
+                required
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="lote-turno">Turno</Label>
+              <select
+                id="lote-turno"
+                value={loteTurno}
+                onChange={(e) => setLoteTurno(e.target.value)}
+                className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+              >
+                <option value="manha">Manhã</option>
+                <option value="tarde">Tarde</option>
+                <option value="noite">Noite</option>
+              </select>
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="lote-observacao">Observação</Label>
+              <Input
+                id="lote-observacao"
+                value={loteObservacao}
+                onChange={(e) => setLoteObservacao(e.target.value)}
+                placeholder="Opcional"
+              />
+            </div>
+            <div className="flex items-end sm:col-span-5">
+              <Button type="submit" disabled={salvar.isPending || lotesDisponiveis.length === 0}>
+                <Plus className="size-4" aria-hidden="true" />
+                Registrar
+              </Button>
+            </div>
+            <p className="text-xs text-muted-foreground sm:col-span-5">
+              Total registrado hoje: {totalHoje.toLocaleString("pt-BR")} L
+            </p>
+          </form>
+        )}
+      </div>
+
+      <div className="mb-5 grid gap-3 grid-cols-2 sm:grid-cols-3 lg:grid-cols-6">
+        <Kpi icon={Milk} rotulo="Leite hoje" valor={`${totalHoje.toLocaleString("pt-BR")} L`} />
         <Kpi
-          icon={Skull}
-          rotulo="Mortes (últimos 30 dias)"
-          valor={i ? `${i.mortes30d} cab` : "—"}
-        />
-        <Kpi
-          icon={Percent}
-          rotulo="Lactantes / rebanho"
-          valor={i ? `${i.lactantesRebanhoPct}%` : "—"}
-        />
-        <Kpi
-          icon={Percent}
-          rotulo="Lactantes / vacas"
-          valor={i ? `${i.lactantesVacasPct}%` : "—"}
-        />
-        <Kpi
-          icon={Milk}
-          rotulo="DEL médio"
-          valor={i ? (i.delMedio !== null ? `${i.delMedio} dias` : "—") : "—"}
+          icon={Droplet}
+          rotulo="Média por dia (7 dias)"
+          valor={`${media7Dias.toLocaleString("pt-BR", { maximumFractionDigits: 1 })} L`}
         />
         <Kpi
           icon={Droplet}
-          rotulo="Média do último controle"
+          rotulo="Média por vaca (último dia)"
           valor={
-            i
+            i && i.mediaUltimoControle !== null
               ? `${i.mediaUltimoControle.toLocaleString("pt-BR", { maximumFractionDigits: 1 })} L`
               : "—"
           }
         />
+        <Kpi icon={Milk} rotulo="Vacas em lactação" valor={i ? `${i.lactantes}` : "—"} />
         <Kpi
-          icon={Droplet}
-          rotulo="Total do último controle"
-          valor={
-            i
-              ? `${i.totalUltimoControle.toLocaleString("pt-BR", { maximumFractionDigits: 1 })} L`
-              : "—"
-          }
+          icon={Percent}
+          rotulo="Em lactação / vacas"
+          valor={i ? `${i.lactantesVacasPct}%` : "—"}
+        />
+        <Kpi
+          icon={Milk}
+          rotulo="Dias em lactação (média)"
+          valor={i ? (i.delMedio !== null ? `${i.delMedio} dias` : "—") : "—"}
         />
       </div>
 
+      <div className="mb-5 grid gap-4 lg:grid-cols-2">
+        <div className="rounded-xl border border-border bg-card p-4">
+          <div className="flex items-baseline justify-between gap-2">
+            <h2 className="text-base font-semibold">Produção dos últimos 30 dias</h2>
+            <span className="text-xs text-muted-foreground">
+              Total: {total30Dias.toLocaleString("pt-BR", { maximumFractionDigits: 1 })} L
+            </span>
+          </div>
+          {total30Dias > 0 ? (
+            <ChartContainer
+              config={{ litros: { label: "Litros", color: "var(--primary)" } }}
+              className="mt-3 h-48 w-full"
+            >
+              <BarChart data={porDia}>
+                <CartesianGrid vertical={false} strokeDasharray="3 3" />
+                <XAxis
+                  dataKey="data"
+                  tickLine={false}
+                  axisLine={false}
+                  fontSize={10}
+                  interval={4}
+                />
+                <ChartTooltip content={<ChartTooltipContent />} />
+                <Bar dataKey="litros" fill="var(--primary)" radius={[3, 3, 0, 0]} />
+              </BarChart>
+            </ChartContainer>
+          ) : (
+            <p className="mt-3 text-sm text-muted-foreground">
+              O gráfico aparece assim que houver produção registrada.
+            </p>
+          )}
+        </div>
+
+        <div className="rounded-xl border border-border bg-card">
+          <div className="border-b border-border px-4 py-3 text-sm font-semibold">
+            Últimos registros
+          </div>
+          {(registros.data?.length ?? 0) === 0 ? (
+            <div className="p-4">
+              <EmptyState
+                icon={Milk}
+                titulo="Nenhuma produção registrada"
+                descricao="Registre a primeira ordenha no formulário acima."
+              />
+            </div>
+          ) : (
+            <ul className="max-h-80 divide-y divide-border overflow-y-auto">
+              {registros.data?.map((r) => {
+                const nomeVaca = (r as { animais?: { nome?: string } | null }).animais?.nome;
+                const origem = r.lote ? `Lote ${r.lote}` : nomeVaca ? nomeVaca : "Rebanho";
+                return (
+                  <li
+                    key={r.id}
+                    className="flex items-center justify-between gap-3 px-4 py-2.5 text-sm"
+                  >
+                    <span className="min-w-0">
+                      <span className="block truncate font-medium">{origem}</span>
+                      <span className="block text-xs text-muted-foreground">
+                        {dataCurta(r.data)} · {rotuloTurno(r.turno)}
+                        {r.produto !== "leite" ? ` · ${rotuloProduto(r.produto)}` : ""}
+                      </span>
+                    </span>
+                    <span className="flex shrink-0 items-center gap-1">
+                      <span className="font-semibold">
+                        {Number(r.litros).toLocaleString("pt-BR")} {unidadeProduto(r.produto)}
+                      </span>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="size-7 text-muted-foreground hover:text-destructive"
+                        aria-label="Excluir registro"
+                        onClick={() =>
+                          setExcluindoRegistro({
+                            id: r.id,
+                            texto: `${origem} · ${dataCurta(r.data)} · ${Number(r.litros).toLocaleString("pt-BR")} ${unidadeProduto(r.produto)}`,
+                          })
+                        }
+                      >
+                        <Trash2 className="size-3.5" aria-hidden="true" />
+                      </Button>
+                    </span>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </div>
+      </div>
+
+      <AlertDialog
+        open={!!excluindoRegistro}
+        onOpenChange={(v) => !v && setExcluindoRegistro(null)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Excluir este registro de produção?</AlertDialogTitle>
+            <AlertDialogDescription>{excluindoRegistro?.texto}</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Voltar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => excluindoRegistro && excluirRegistro.mutate(excluindoRegistro.id)}
+            >
+              Excluir
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <h2 className="mb-3 text-base font-semibold">Preço, venda e destino do leite</h2>
       <div className="mb-5 grid gap-4 lg:grid-cols-2">
         <CartaoConfig
           id="preco-leite"
@@ -1311,240 +1689,6 @@ function Leite() {
           </div>
         </CartaoConfig>
       </div>
-
-      <div className="mb-5 rounded-xl border border-border bg-card p-4">
-        <h2 className="text-base font-semibold">Registrar produção de leite</h2>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Informe a produção do dia por animal ou por lote.
-        </p>
-
-        <div className="mt-4 flex gap-2">
-          <Button
-            type="button"
-            size="sm"
-            variant={modoRegistro === "vaca" ? "default" : "outline"}
-            onClick={() => setModoRegistro("vaca")}
-          >
-            Por vaca
-          </Button>
-          <Button
-            type="button"
-            size="sm"
-            variant={modoRegistro === "lote" ? "default" : "outline"}
-            onClick={() => setModoRegistro("lote")}
-          >
-            Por lote
-          </Button>
-        </div>
-
-        {misturaIndividualELote ? (
-          <p className="mt-3 rounded-lg bg-warning/10 px-3 py-2 text-xs text-warning">
-            Hoje já tem produção registrada por vaca e por lote — confira se não é a mesma produção
-            contada duas vezes.
-          </p>
-        ) : null}
-
-        {modoRegistro === "vaca" ? (
-          <form
-            className="mt-4 grid gap-3 sm:grid-cols-5"
-            onSubmit={(e) => {
-              e.preventDefault();
-              salvar.mutate();
-            }}
-          >
-            <div className="space-y-1.5">
-              <Label htmlFor="animal">Vaca</Label>
-              <select
-                id="animal"
-                value={animalId}
-                onChange={(e) => setAnimalId(e.target.value)}
-                className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
-                required
-              >
-                <option value="" disabled>
-                  Selecione
-                </option>
-                {(animaisLactantes.data ?? []).map((a) => (
-                  <option key={a.id} value={a.id}>
-                    {a.nome || a.brinco || "Sem nome"}
-                    {a.nome && a.brinco ? ` (${a.brinco})` : ""}
-                  </option>
-                ))}
-              </select>
-              {(animaisLactantes.data ?? []).length === 0 ? (
-                <p className="text-xs text-muted-foreground">
-                  Nenhuma vaca com status "lactação" cadastrada.
-                </p>
-              ) : null}
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="data">Data</Label>
-              <Input
-                id="data"
-                type="date"
-                value={data}
-                onChange={(e) => setData(e.target.value)}
-                required
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="produto">Produto</Label>
-              <select
-                id="produto"
-                value={produto}
-                onChange={(e) => setProduto(e.target.value)}
-                className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
-              >
-                {opcoesProduto.map((p) => (
-                  <option key={p.valor} value={p.valor}>
-                    {p.rotulo}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="litros">Quantidade ({unidadeProduto(produto)})</Label>
-              <Input
-                id="litros"
-                type="number"
-                step="0.1"
-                min="0"
-                value={litros}
-                onChange={(e) => setLitros(e.target.value)}
-                required
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="turno">Turno</Label>
-              <select
-                id="turno"
-                value={turno}
-                onChange={(e) => setTurno(e.target.value)}
-                className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
-              >
-                <option value="manha">Manhã</option>
-                <option value="tarde">Tarde</option>
-                <option value="noite">Noite</option>
-              </select>
-            </div>
-            <div className="flex items-end sm:col-span-5">
-              <Button type="submit" disabled={salvar.isPending}>
-                <Plus className="size-4" aria-hidden="true" />
-                Registrar
-              </Button>
-            </div>
-            <p className="text-xs text-muted-foreground sm:col-span-5">
-              Total registrado hoje: {totalHoje.toLocaleString("pt-BR")} L
-            </p>
-          </form>
-        ) : (
-          <form
-            className="mt-4 grid gap-3 sm:grid-cols-4"
-            onSubmit={(e) => {
-              e.preventDefault();
-              salvar.mutate();
-            }}
-          >
-            <div className="space-y-1.5">
-              <Label htmlFor="lote">Lote</Label>
-              <select
-                id="lote"
-                value={loteSelecionado}
-                onChange={(e) => setLoteSelecionado(e.target.value)}
-                className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
-                required
-              >
-                <option value="" disabled>
-                  Selecione
-                </option>
-                {lotesDisponiveis.map((l) => (
-                  <option key={l} value={l}>
-                    {l}
-                  </option>
-                ))}
-              </select>
-              {lotesDisponiveis.length === 0 ? (
-                <p className="text-xs text-muted-foreground">
-                  Nenhum lote com vaca em lactação ou seca — defina o lote e a situação no cadastro
-                  dos animais.
-                </p>
-              ) : null}
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="lote-litros">Quantidade total (L)</Label>
-              <Input
-                id="lote-litros"
-                type="number"
-                step="0.1"
-                min="0"
-                value={loteLitros}
-                onChange={(e) => setLoteLitros(e.target.value)}
-                required
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="lote-data">Data</Label>
-              <Input
-                id="lote-data"
-                type="date"
-                value={loteData}
-                onChange={(e) => setLoteData(e.target.value)}
-                required
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="lote-observacao">Observação</Label>
-              <Input
-                id="lote-observacao"
-                value={loteObservacao}
-                onChange={(e) => setLoteObservacao(e.target.value)}
-                placeholder="Opcional"
-              />
-            </div>
-            <div className="flex items-end sm:col-span-4">
-              <Button type="submit" disabled={salvar.isPending || lotesDisponiveis.length === 0}>
-                <Plus className="size-4" aria-hidden="true" />
-                Registrar
-              </Button>
-            </div>
-            <p className="text-xs text-muted-foreground sm:col-span-4">
-              Total registrado hoje: {totalHoje.toLocaleString("pt-BR")} L
-            </p>
-          </form>
-        )}
-      </div>
-
-      {(registros.data?.length ?? 0) === 0 ? (
-        <EmptyState
-          icon={Milk}
-          titulo="Nenhuma produção registrada"
-          descricao="Registre a primeira ordenha para começar a acompanhar a produção da fazenda."
-        />
-      ) : (
-        <div className="rounded-xl border border-border bg-card">
-          <div className="border-b border-border px-4 py-3 text-sm font-semibold">
-            Total de leite dos últimos registros: {totalLeite.toLocaleString("pt-BR")} L
-          </div>
-          <ul className="divide-y divide-border">
-            {registros.data?.map((r) => (
-              <li key={r.id} className="flex items-center justify-between px-4 py-3 text-sm">
-                <span>
-                  {dataCurta(r.data)} · <span className="text-muted-foreground">{r.turno}</span> ·{" "}
-                  <span className="text-muted-foreground">{rotuloProduto(r.produto)}</span>
-                  {r.lote ? (
-                    <span className="text-muted-foreground"> · Lote: {r.lote}</span>
-                  ) : r.animal_id ? (
-                    <span className="text-muted-foreground"> · Individual</span>
-                  ) : null}
-                </span>
-                <span className="font-semibold">
-                  {Number(r.litros).toLocaleString("pt-BR")} {unidadeProduto(r.produto)}
-                </span>
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
     </AppShell>
   );
 }

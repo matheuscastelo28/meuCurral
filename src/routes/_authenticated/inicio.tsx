@@ -7,6 +7,7 @@ import {
   Milk,
   Plus,
   Receipt,
+  Syringe,
   TrendingDown,
   TrendingUp,
   Weight,
@@ -18,7 +19,9 @@ import { AppShell } from "@/components/AppShell";
 import { EmptyState } from "@/components/EmptyState";
 import { Button } from "@/components/ui/button";
 import { useFazenda } from "@/hooks/use-fazenda";
-import { dataCurta, dataISO, hojeISO, moeda as formatarMoeda } from "@/lib/formato";
+import { dataCurta, diasAtrasISO, hojeISO, moeda as formatarMoeda } from "@/lib/formato";
+import { rotuloCategoria } from "@/lib/rotulos";
+import { especieDaCategoria } from "@/lib/especies";
 import { usePreferencias } from "@/hooks/use-preferencias";
 import { useResumoFinanceiro } from "@/hooks/use-resumo-financeiro";
 
@@ -49,28 +52,30 @@ function Inicio() {
     enabled: !!fazendaId,
     queryFn: async () => {
       const hoje = hojeISO();
-      const [animais, eventos, leite] = await Promise.all([
-        db.from("animais").select("id, categoria, status").eq("fazenda_id", fazendaId!),
+      const pendentes = () =>
         db
           .from("eventos_agenda")
           .select("id, titulo, data, tipo, concluido")
           .eq("fazenda_id", fazendaId!)
           .eq("concluido", false)
-          .eq("cancelado", false)
-          .order("data")
-          .limit(30),
-        db.from("producao_leite").select("litros").eq("fazenda_id", fazendaId!).eq("data", hoje),
+          .eq("cancelado", false);
+      // Duas consultas separadas: com uma só (limitada), muita coisa
+      // atrasada empurrava os próximos compromissos pra fora da lista.
+      const [animais, atrasados, proximos, leite] = await Promise.all([
+        db.from("animais").select("id, categoria, status").eq("fazenda_id", fazendaId!),
+        pendentes().lte("data", diasAtrasISO(1)).order("data").limit(8),
+        pendentes().gte("data", hoje).order("data").limit(5),
+        db
+          .from("producao_leite")
+          .select("litros")
+          .eq("fazenda_id", fazendaId!)
+          .eq("data", hoje)
+          .eq("produto", "leite"),
       ]);
-      // Ordenado por data crescente: o que já venceu vem primeiro (o mais
-      // atrasado primeiro), depois o que ainda vai vencer (o mais próximo
-      // primeiro) — mesma classificação "atrasado" usada na Agenda.
-      const todosEventos = eventos.data ?? [];
-      const atrasados = todosEventos.filter((e) => dataISO(e.data) < hoje).slice(0, 8);
-      const proximos = todosEventos.filter((e) => dataISO(e.data) >= hoje).slice(0, 5);
       return {
         animais: animais.data ?? [],
-        atrasados,
-        proximos,
+        atrasados: atrasados.data ?? [],
+        proximos: proximos.data ?? [],
         leiteHoje: (leite.data ?? []).reduce((s, l) => s + Number(l.litros), 0),
       };
     },
@@ -102,6 +107,12 @@ function Inicio() {
   // use-fazenda.ts e use-indices-rebanho.ts, só que este resumo ainda não
   // seguia essa regra.
   const animaisAtivos = animais.filter((a) => a.status !== "vendido" && a.status !== "morto");
+  const ambasAtividades =
+    !!fazenda?.atividades?.includes("ovino") && !!fazenda.atividades.includes("bovino");
+  const qtdBovinos = animaisAtivos.filter(
+    (a) => especieDaCategoria(a.categoria) === "bovino",
+  ).length;
+  const qtdOvinos = animaisAtivos.filter((a) => especieDaCategoria(a.categoria) === "ovino").length;
   const porCategoria = animaisAtivos.reduce<Record<string, number>>((acc, a) => {
     acc[a.categoria] = (acc[a.categoria] ?? 0) + 1;
     return acc;
@@ -134,11 +145,16 @@ function Inicio() {
       ) : (
         <div className="space-y-5">
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
-            <Cartao icon={Beef} rotulo="Cabeças no rebanho" valor={String(animaisAtivos.length)} />
+            <Cartao
+              icon={Beef}
+              rotulo="Cabeças no rebanho"
+              valor={String(animaisAtivos.length)}
+              detalhe={ambasAtividades ? `${qtdBovinos} bovinos · ${qtdOvinos} ovinos` : undefined}
+            />
             <Link to="/engorda" className="block">
               <Cartao
                 icon={Weight}
-                rotulo={soOvino ? "Em confinamento" : "Animais em engorda"}
+                rotulo="Em confinamento"
                 valor={String(animais.filter((a) => a.status === "engorda").length)}
               />
             </Link>
@@ -155,6 +171,7 @@ function Inicio() {
                 rotulo="Recebido"
                 valor={moeda(financeiroResumo.data?.recebido)}
                 tom="ok"
+                detalhe="total já recebido"
               />
             </Link>
             <Link to="/financeiro" className="block">
@@ -163,6 +180,7 @@ function Inicio() {
                 rotulo="Despesas"
                 valor={moeda(financeiroResumo.data?.despesas)}
                 tom="alerta"
+                detalhe="total já pago"
               />
             </Link>
           </div>
@@ -188,6 +206,12 @@ function Inicio() {
                 Registrar pesagem
               </Link>
             </Button>
+            <Button variant="outline" size="sm" asChild>
+              <Link to="/rebanho" search={{ sanidade: true }}>
+                <Syringe className="size-4" aria-hidden="true" />
+                Vacina / manejo
+              </Link>
+            </Button>
           </div>
 
           <div className="grid gap-4 lg:grid-cols-2">
@@ -197,7 +221,7 @@ function Inicio() {
                 {Object.entries(porCategoria).map(([cat, qtd]) => (
                   <li key={cat}>
                     <div className="flex justify-between text-sm">
-                      <span className="capitalize">{cat}</span>
+                      <span>{rotuloCategoria(cat)}</span>
                       <span className="font-semibold">{qtd}</span>
                     </div>
                     <div className="mt-1 h-2 overflow-hidden rounded-full bg-muted">
@@ -224,7 +248,7 @@ function Inicio() {
               {(resumo.data?.atrasados.length ?? 0) === 0 &&
               (resumo.data?.proximos.length ?? 0) === 0 ? (
                 <p className="mt-4 text-sm text-muted-foreground">
-                  Nada agendado por enquanto. Registre uma vacinação ou pesagem e ela aparece aqui.
+                  Nada agendado. Ao registrar uma vacina com próxima dose, ela aparece aqui.
                 </p>
               ) : (
                 <ul className="mt-4 space-y-3">
@@ -310,11 +334,13 @@ function Cartao({
   rotulo,
   valor,
   tom,
+  detalhe,
 }: {
   icon: LucideIcon;
   rotulo: string;
   valor: string;
   tom?: "ok" | "alerta";
+  detalhe?: string | undefined;
 }) {
   return (
     <div className="rounded-xl border border-border bg-card p-4">
@@ -333,6 +359,7 @@ function Cartao({
       >
         {valor}
       </p>
+      {detalhe ? <p className="text-[11px] text-muted-foreground">{detalhe}</p> : null}
     </div>
   );
 }

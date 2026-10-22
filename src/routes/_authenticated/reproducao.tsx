@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Plus, Stethoscope, Users } from "lucide-react";
+import { Plus, Stethoscope, Trash2, Users } from "lucide-react";
 import { toast } from "sonner";
 import { db } from "@/lib/local-db";
 import { AppShell } from "@/components/AppShell";
@@ -9,8 +9,18 @@ import { EmptyState } from "@/components/EmptyState";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { useFazenda } from "@/hooks/use-fazenda";
-import { dataCurta, dataISO, hojeISO, idadeTexto } from "@/lib/formato";
+import { dataCurta, dataISO, diasAtrasISO, hojeISO, idadeTexto } from "@/lib/formato";
 import { especieDaCategoria } from "@/lib/especies";
 import { cn } from "@/lib/utils";
 
@@ -58,6 +68,10 @@ const TIPOS_SEM_TOURO_NO_ANIMAL = new Set([
 ]);
 // Médias por espécie — o sistema não distingue por raça individual. São só
 // estimativas: a UI deixa isso explícito e permite ajustar a data manualmente.
+// Diagnóstico de prenhez costuma ser feito a partir de ~30 dias do serviço;
+// secagem da vaca leiteira, ~60 dias antes do parto.
+const DIAS_PARA_DIAGNOSTICO = 30;
+const DIAS_SECAGEM_ANTES_PARTO = 60;
 const DIAS_GESTACAO_BOVINO = 283;
 const DIAS_GESTACAO_OVINO = 150;
 
@@ -82,6 +96,10 @@ function Reproducao() {
   // "" = nenhum, "outro" = touro não cadastrado (usa touroCustom), senão é o id do animal touro.
   const [touroId, setTouroId] = useState("");
   const [touroCustom, setTouroCustom] = useState("");
+  const [resultadoDiagnostico, setResultadoDiagnostico] = useState<"positivo" | "negativo">(
+    "positivo",
+  );
+  const [excluindo, setExcluindo] = useState<{ id: string; texto: string } | null>(null);
   const [previsaoParto, setPrevisaoParto] = useState(() =>
     previsaoPartoDe(hojeISO(), diasGestacao),
   );
@@ -99,7 +117,7 @@ function Reproducao() {
     queryFn: async () => {
       const { data, error } = await db
         .from("animais")
-        .select("id, nome, brinco, categoria, nascimento, mae, pai")
+        .select("id, nome, brinco, categoria, nascimento, mae, pai, sexo, status")
         .eq("fazenda_id", fazenda!.id)
         .order("nome");
       if (error) throw error;
@@ -109,9 +127,17 @@ function Reproducao() {
 
   const animalSelecionado = animais.data?.find((a) => a.id === animalId) ?? null;
 
+  // Só fêmeas que ainda estão no rebanho — vendido/morto e macho não
+  // entram em cobertura, diagnóstico, parto etc.
   const animaisParaSelecao = (animais.data ?? [])
+    .filter((a) => a.status !== "vendido" && a.status !== "morto")
     .filter((a) => !ambasAtividades || especieDaCategoria(a.categoria) === visaoEspecie)
-    .filter((a) => !TIPOS_SEM_TOURO_NO_ANIMAL.has(tipo) || a.categoria !== categoriaReprodutor);
+    .filter((a) => !TIPOS_SEM_TOURO_NO_ANIMAL.has(tipo) || a.categoria !== categoriaReprodutor)
+    .filter((a) =>
+      tipo === "diagnostico" || TIPOS_SEM_TOURO_NO_ANIMAL.has(tipo)
+        ? a.sexo !== "macho" && a.sexo !== "castrado"
+        : true,
+    );
 
   useEffect(() => {
     if (animalId && !animaisParaSelecao.some((a) => a.id === animalId)) setAnimalId("");
@@ -126,12 +152,12 @@ function Reproducao() {
     queryFn: async () => {
       const { data, error } = await db
         .from("animais")
-        .select("id, nome, brinco")
+        .select("id, nome, brinco, status")
         .eq("fazenda_id", fazenda!.id)
         .eq("categoria", categoriaReprodutor)
         .order("nome");
       if (error) throw error;
-      return data;
+      return (data ?? []).filter((t) => t.status !== "vendido" && t.status !== "morto");
     },
   });
 
@@ -164,6 +190,82 @@ function Reproducao() {
     return especie === null || especie === visaoEspecie;
   });
 
+  // Situação reprodutiva de cada fêmea a partir do histórico: o último
+  // serviço (cobertura/IA) sem parto depois dele é uma gestação em aberto;
+  // diagnóstico negativo encerra, positivo confirma.
+  const situacao = useMemo(() => {
+    const hoje = hojeISO();
+    const porAnimal = new Map<string, typeof registrosFiltrados>();
+    for (const r of registrosFiltrados) {
+      if (!r.animal_id) continue;
+      const lista = porAnimal.get(r.animal_id) ?? [];
+      lista.push(r);
+      porAnimal.set(r.animal_id, lista);
+    }
+    const partos: {
+      animalId: string;
+      nome: string;
+      previsao: string;
+      confirmada: boolean;
+      secarAte: string | null;
+    }[] = [];
+    const aguardandoDiagnostico: { animalId: string; nome: string; servico: string }[] = [];
+    for (const [animalId, lista] of porAnimal) {
+      const ordenados = [...lista].sort((a, b) => dataISO(a.data).localeCompare(dataISO(b.data)));
+      let servico: (typeof lista)[number] | null = null;
+      let diagnostico: string | null = null;
+      for (const r of ordenados) {
+        if (r.tipo === "cobertura" || r.tipo === "inseminacao") {
+          servico = r;
+          diagnostico = null;
+        } else if (r.tipo === "diagnostico" && servico) {
+          diagnostico = r.resultado ?? null;
+        } else if (r.tipo === "parto") {
+          servico = null;
+          diagnostico = null;
+        }
+      }
+      if (!servico || diagnostico === "negativo") continue;
+      const animal = animais.data?.find((a) => a.id === animalId);
+      if (animal && (animal.status === "vendido" || animal.status === "morto")) continue;
+      const nome = animal?.nome || animal?.brinco || "Animal";
+      const dataServico = dataISO(servico.data);
+      if (servico.previsao_parto) {
+        const previsao = dataISO(servico.previsao_parto);
+        const secar = new Date(`${previsao}T00:00:00Z`);
+        secar.setUTCDate(secar.getUTCDate() - DIAS_SECAGEM_ANTES_PARTO);
+        partos.push({
+          animalId,
+          nome,
+          previsao,
+          confirmada: diagnostico === "positivo",
+          secarAte: soOvino ? null : secar.toISOString().slice(0, 10),
+        });
+      }
+      if (diagnostico === null && dataServico <= diasAtrasISO(DIAS_PARA_DIAGNOSTICO)) {
+        aguardandoDiagnostico.push({ animalId, nome, servico: dataServico });
+      }
+    }
+    partos.sort((a, b) => a.previsao.localeCompare(b.previsao));
+    aguardandoDiagnostico.sort((a, b) => a.servico.localeCompare(b.servico));
+    return { partos, aguardandoDiagnostico, hoje };
+  }, [registrosFiltrados, animais.data, soOvino]);
+
+  const excluir = useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await db.from("reproducao").delete().eq("id", id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      toast.success("Registro excluído.");
+      setExcluindo(null);
+      queryClient.invalidateQueries({ queryKey: ["reproducao"] });
+      queryClient.invalidateQueries({ queryKey: ["ficha-reproducao"] });
+      queryClient.invalidateQueries({ queryKey: ["indices-rebanho"] });
+    },
+    onError: () => toast.error("Não conseguimos excluir agora. Tente novamente."),
+  });
+
   const [confirmarLactacao, setConfirmarLactacao] = useState<{
     animalId: string;
     nome: string;
@@ -176,6 +278,7 @@ function Reproducao() {
       data: string;
       touro: string;
       previsaoParto: string | null;
+      resultado: string | null;
     }) => {
       const { error } = await db.from("reproducao").insert({
         fazenda_id: fazenda!.id,
@@ -184,6 +287,7 @@ function Reproducao() {
         data: vars.data,
         touro: vars.touro.trim() || null,
         previsao_parto: vars.previsaoParto,
+        resultado: vars.resultado,
       } as never);
       if (error) throw error;
       return vars;
@@ -269,6 +373,7 @@ function Reproducao() {
             data,
             touro: requerPrevisao ? touroTextoAtual() : "",
             previsaoParto: requerPrevisao ? previsaoParto : null,
+            resultado: tipo === "diagnostico" ? resultadoDiagnostico : null,
           });
         }}
       >
@@ -327,6 +432,20 @@ function Reproducao() {
             required
           />
         </div>
+        {tipo === "diagnostico" ? (
+          <div className="min-w-[150px] flex-1 space-y-1.5">
+            <Label htmlFor="resultado-diagnostico">Resultado</Label>
+            <select
+              id="resultado-diagnostico"
+              value={resultadoDiagnostico}
+              onChange={(e) => setResultadoDiagnostico(e.target.value as "positivo" | "negativo")}
+              className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+            >
+              <option value="positivo">Prenhe (positivo)</option>
+              <option value="negativo">Vazia (negativo)</option>
+            </select>
+          </div>
+        ) : null}
         {requerPrevisao ? (
           <div className="min-w-[150px] flex-1 space-y-1.5">
             <Label htmlFor="touro">{rotuloReprodutor} / sêmen</Label>
@@ -421,6 +540,71 @@ function Reproducao() {
         </div>
       ) : null}
 
+      <div className="mb-5 grid gap-4 lg:grid-cols-2">
+        <section className="rounded-xl border border-border bg-card p-4">
+          <h2 className="text-base font-semibold">Partos previstos</h2>
+          <p className="text-xs text-muted-foreground">
+            Fêmeas cobertas ou inseminadas, sem parto registrado depois.
+            {soOvino ? "" : " A data de secagem é ~60 dias antes do parto."}
+          </p>
+          {situacao.partos.length === 0 ? (
+            <p className="mt-3 text-sm text-muted-foreground">Nenhuma gestação em andamento.</p>
+          ) : (
+            <ul className="mt-3 max-h-64 divide-y divide-border overflow-y-auto">
+              {situacao.partos.map((p) => {
+                const passou = p.previsao < situacao.hoje;
+                return (
+                  <li
+                    key={p.animalId}
+                    className="flex items-center justify-between gap-3 py-2 text-sm"
+                  >
+                    <span className="min-w-0">
+                      <span className="block truncate font-medium">{p.nome}</span>
+                      <span className="block text-xs text-muted-foreground">
+                        {p.confirmada ? "Prenhez confirmada" : "Sem diagnóstico ainda"}
+                        {p.secarAte && !passou ? ` · secar até ${dataCurta(p.secarAte)}` : ""}
+                      </span>
+                    </span>
+                    <span
+                      className={cn(
+                        "shrink-0 rounded-full px-2 py-0.5 text-xs font-semibold",
+                        passou ? "bg-destructive/15 text-destructive" : "bg-accent text-primary",
+                      )}
+                    >
+                      {passou ? `Previsto ${dataCurta(p.previsao)}` : dataCurta(p.previsao)}
+                    </span>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </section>
+
+        <section className="rounded-xl border border-border bg-card p-4">
+          <h2 className="text-base font-semibold">Aguardando diagnóstico</h2>
+          <p className="text-xs text-muted-foreground">
+            Serviço há mais de {DIAS_PARA_DIAGNOSTICO} dias e nenhum diagnóstico registrado.
+          </p>
+          {situacao.aguardandoDiagnostico.length === 0 ? (
+            <p className="mt-3 text-sm text-muted-foreground">Nada pendente.</p>
+          ) : (
+            <ul className="mt-3 max-h-64 divide-y divide-border overflow-y-auto">
+              {situacao.aguardandoDiagnostico.map((a) => (
+                <li
+                  key={a.animalId}
+                  className="flex items-center justify-between gap-3 py-2 text-sm"
+                >
+                  <span className="truncate font-medium">{a.nome}</span>
+                  <span className="shrink-0 text-xs text-muted-foreground">
+                    serviço em {dataCurta(a.servico)}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+      </div>
+
       {registrosFiltrados.length === 0 ? (
         <EmptyState
           icon={Stethoscope}
@@ -448,6 +632,18 @@ function Reproducao() {
                 <span className="min-w-0">
                   <span>
                     <span className="font-medium">{TIPO_LABEL[r.tipo ?? ""] ?? r.tipo}</span>
+                    {r.tipo === "diagnostico" && r.resultado ? (
+                      <span
+                        className={cn(
+                          "ml-1.5 rounded-full px-1.5 py-0.5 text-[11px] font-semibold",
+                          r.resultado === "positivo"
+                            ? "bg-success/15 text-success"
+                            : "bg-muted text-muted-foreground",
+                        )}
+                      >
+                        {r.resultado === "positivo" ? "Prenhe" : "Vazia"}
+                      </span>
+                    ) : null}
                     {" · "}
                     <span className="text-muted-foreground">{animal?.nome ?? "Rebanho"}</span>
                   </span>
@@ -458,15 +654,45 @@ function Reproducao() {
                     </span>
                   ) : null}
                 </span>
-                <span className="text-xs text-muted-foreground">
+                <span className="flex items-center gap-1 text-xs text-muted-foreground">
                   {dataCurta(r.data)}
                   {r.previsao_parto ? ` · previsão de parto ${dataCurta(r.previsao_parto)}` : ""}
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="size-7 hover:text-destructive"
+                    aria-label="Excluir registro"
+                    onClick={() =>
+                      setExcluindo({
+                        id: r.id,
+                        texto: `${TIPO_LABEL[r.tipo ?? ""] ?? r.tipo} · ${animal?.nome ?? "Rebanho"} · ${dataCurta(r.data)}`,
+                      })
+                    }
+                  >
+                    <Trash2 className="size-3.5" aria-hidden="true" />
+                  </Button>
                 </span>
               </li>
             );
           })}
         </ul>
       )}
+
+      <AlertDialog open={!!excluindo} onOpenChange={(v) => !v && setExcluindo(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Excluir este registro?</AlertDialogTitle>
+            <AlertDialogDescription>{excluindo?.texto}</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Voltar</AlertDialogCancel>
+            <AlertDialogAction onClick={() => excluindo && excluir.mutate(excluindo.id)}>
+              Excluir
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </AppShell>
   );
 }

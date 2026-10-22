@@ -1,12 +1,13 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Beef, Plus, Search, Users, X } from "lucide-react";
+import { Beef, Plus, Search, Syringe, Users, X } from "lucide-react";
 import { toast } from "sonner";
 import { db } from "@/lib/local-db";
 import { AppShell } from "@/components/AppShell";
 import { EmptyState } from "@/components/EmptyState";
 import { UpgradeDialog } from "@/components/UpgradeDialog";
+import { DialogManejoSanitario } from "@/components/DialogManejoSanitario";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
@@ -21,8 +22,9 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { useLimitePlano } from "@/hooks/use-fazenda";
-import { dataCurta, dataISO, idadeTexto, pesoTexto } from "@/lib/formato";
+import { dataCurta, dataISO, hojeISO, idadeTexto, pesoTexto } from "@/lib/formato";
 import { usePreferencias } from "@/hooks/use-preferencias";
+import { rotuloCategoria, rotuloSexo, rotuloStatus } from "@/lib/rotulos";
 import {
   CATEGORIAS,
   CATEGORIAS_BOVINO,
@@ -44,9 +46,10 @@ export const Route = createFileRoute("/_authenticated/rebanho")({
       { name: "robots", content: "noindex" },
     ],
   }),
-  validateSearch: (search: Record<string, unknown>): { editar?: string } => {
+  validateSearch: (search: Record<string, unknown>): { editar?: string; sanidade?: boolean } => {
     const editar = typeof search["editar"] === "string" ? search["editar"] : undefined;
-    return editar ? { editar } : {};
+    const sanidade = search["sanidade"] === true || search["sanidade"] === "1" ? true : undefined;
+    return { ...(editar ? { editar } : {}), ...(sanidade ? { sanidade } : {}) };
   },
   component: Rebanho,
 });
@@ -66,13 +69,6 @@ function categoriasDaEspecie(especie: Especie): readonly string[] {
 }
 function categoriaPadraoDaEspecie(especie: Especie): string {
   return especie === "ovino" ? "ovelha" : "vaca";
-}
-
-// `text-transform: capitalize` no <select> não é confiável entre
-// navegadores pra exibir o valor selecionado fechado — texto já
-// capitalizado na própria option evita essa inconsistência.
-function capitalizar(s: string): string {
-  return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
 /**
@@ -186,8 +182,17 @@ function Rebanho() {
       : CATEGORIAS;
   const categoriaPadrao = soOvino ? "ovelha" : "vaca";
   const queryClient = useQueryClient();
-  const { editar: editarId } = Route.useSearch();
+  const { editar: editarId, sanidade: sanidadeNaUrl } = Route.useSearch();
   const navigate = Route.useNavigate();
+  const [sanidadeAberto, setSanidadeAberto] = useState(false);
+
+  // Atalho "Vacina / manejo" do Início abre o registro direto aqui.
+  useEffect(() => {
+    if (!sanidadeNaUrl) return;
+    setSanidadeAberto(true);
+    navigate({ search: {}, replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sanidadeNaUrl]);
   const [busca, setBusca] = useState("");
   const [aberto, setAberto] = useState(false);
   const [upgrade, setUpgrade] = useState(false);
@@ -254,8 +259,8 @@ function Rebanho() {
 
   const porAba = useMemo(
     () => ({
-      ativo: (animais.data ?? []).filter((a) => a.status !== "vendido"),
-      vendido: (animais.data ?? []).filter((a) => a.status === "vendido"),
+      ativo: (animais.data ?? []).filter((a) => a.status !== "vendido" && a.status !== "morto"),
+      vendido: (animais.data ?? []).filter((a) => a.status === "vendido" || a.status === "morto"),
     }),
     [animais.data],
   );
@@ -292,6 +297,27 @@ function Rebanho() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editarId, animais.data]);
 
+  // O peso informado no cadastro vira a primeira pesagem do animal — sem
+  // isso o GMD do Confinamento só aparecia a partir da 3ª pesagem.
+  async function registrarPesagensIniciais(
+    criados: { id: string; fazenda_id: string; peso_kg?: unknown }[],
+  ) {
+    const pesagens = criados
+      .filter((a) => Number(a.peso_kg) > 0)
+      .map((a) => ({
+        fazenda_id: a.fazenda_id,
+        animal_id: a.id,
+        tipo: "pesagem",
+        data: hojeISO(),
+        valor: Number(a.peso_kg),
+        descricao: "Peso no cadastro",
+      }));
+    if (pesagens.length === 0) return;
+    await db.from("manejos").insert(pesagens as never);
+    queryClient.invalidateQueries({ queryKey: ["pesagens-engorda-todas"] });
+    queryClient.invalidateQueries({ queryKey: ["indices-engorda"] });
+  }
+
   const criar = useMutation({
     mutationFn: async (form: FormData) => {
       const racaFinal = raca === OUTRA_RACA ? racaCustom.trim() : raca;
@@ -308,8 +334,9 @@ function Rebanho() {
         peso_kg: form.get("peso_kg") ? Number(form.get("peso_kg")) : null,
         lote: String(form.get("lote") ?? "").trim() || null,
       };
-      const { error } = await db.from("animais").insert(payload as never);
+      const { data: criados, error } = await db.from("animais").insert(payload as never);
       if (error) throw error;
+      await registrarPesagensIniciais(criados ?? []);
     },
     onSuccess: () => {
       toast.success("Animal cadastrado.");
@@ -404,8 +431,9 @@ function Rebanho() {
       const payloads = entradas.map((e) =>
         construirPayloadGrupo(e, camposGrupo, grupoLote, fazenda!.id),
       );
-      const { error } = await db.from("animais").insert(payloads as never);
+      const { data: criados, error } = await db.from("animais").insert(payloads as never);
       if (error) throw error;
+      await registrarPesagensIniciais(criados ?? []);
       return payloads.length;
     },
     onSuccess: (qtd) => {
@@ -538,7 +566,11 @@ function Rebanho() {
       titulo="Rebanho"
       descricao="Todos os animais da fazenda, com brinco, categoria e situação."
       acao={
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
+          <Button variant="outline" onClick={() => setSanidadeAberto(true)}>
+            <Syringe className="size-4" aria-hidden="true" />
+            Vacina / manejo
+          </Button>
           <Button variant="outline" onClick={novoGrupo}>
             <Users className="size-4" aria-hidden="true" />
             Novo grupo
@@ -557,7 +589,7 @@ function Rebanho() {
       >
         <TabsList>
           <TabsTrigger value="ativo">Rebanho ({porAba.ativo.length})</TabsTrigger>
-          <TabsTrigger value="vendido">Vendidos ({porAba.vendido.length})</TabsTrigger>
+          <TabsTrigger value="vendido">Saídas ({porAba.vendido.length})</TabsTrigger>
         </TabsList>
       </Tabs>
 
@@ -597,7 +629,7 @@ function Rebanho() {
           <option value="todas">Todas as categorias</option>
           {categoriasParaFiltro.map((c) => (
             <option key={c} value={c}>
-              {capitalizar(c)}
+              {rotuloCategoria(c)}
             </option>
           ))}
         </select>
@@ -609,9 +641,9 @@ function Rebanho() {
             className="h-9 rounded-md border border-input bg-background px-2.5 text-sm"
           >
             <option value="todas">Todas as situações</option>
-            {STATUS.filter((s) => s !== "vendido").map((s) => (
+            {STATUS.filter((s) => s !== "vendido" && s !== "morto").map((s) => (
               <option key={s} value={s}>
-                {capitalizar(s)}
+                {rotuloStatus(s)}
               </option>
             ))}
           </select>
@@ -625,7 +657,7 @@ function Rebanho() {
           <option value="todos">Todos os sexos</option>
           {SEXOS.map((s) => (
             <option key={s} value={s}>
-              {capitalizar(s)}
+              {rotuloSexo(s)}
             </option>
           ))}
         </select>
@@ -652,14 +684,14 @@ function Rebanho() {
             busca || filtroAtivo
               ? "Nenhum animal encontrado"
               : abaRebanho === "vendido"
-                ? "Nenhum animal vendido ainda"
+                ? "Nenhuma saída registrada"
                 : "Nenhum animal cadastrado"
           }
           descricao={
             busca || filtroAtivo
               ? "Tente outro nome, brinco, lote ou ajuste os filtros."
               : abaRebanho === "vendido"
-                ? "Animais marcados como vendidos aparecem aqui."
+                ? "Animais vendidos ou mortos aparecem aqui, fora da contagem do rebanho."
                 : "Cadastre o primeiro animal para começar a acompanhar manejo, leite e reprodução."
           }
           acao={
@@ -676,11 +708,12 @@ function Rebanho() {
                 <div>
                   <h2 className="text-base font-semibold">{a.nome}</h2>
                   <p className="text-xs text-muted-foreground">
-                    {a.brinco ? `Brinco ${a.brinco}` : "Sem brinco"} · {a.categoria}
+                    {a.brinco ? `Brinco ${a.brinco}` : "Sem brinco"} ·{" "}
+                    {rotuloCategoria(a.categoria)}
                   </p>
                 </div>
-                <span className="rounded-full bg-accent px-2.5 py-1 text-[11px] font-semibold text-primary capitalize">
-                  {a.status}
+                <span className="shrink-0 rounded-full bg-accent px-2.5 py-1 text-[11px] font-semibold text-primary">
+                  {rotuloStatus(a.status)}
                 </span>
               </div>
               <dl className="mt-3 grid grid-cols-3 gap-2 text-xs">
@@ -761,15 +794,16 @@ function Rebanho() {
               </div>
             </div>
             <div className="grid grid-cols-3 gap-3">
-              <Selecao id="sexo" nome="Sexo" opcoes={SEXOS} />
+              <Selecao id="sexo" nome="Sexo" opcoes={SEXOS} rotular={rotuloSexo} />
               <Selecao
                 key={especie}
                 id="categoria"
                 nome="Categoria"
                 opcoes={categoriasDaEspecie(especie)}
                 padrao={categoriaPadraoDaEspecie(especie)}
+                rotular={rotuloCategoria}
               />
-              <Selecao id="status" nome="Situação" opcoes={STATUS} />
+              <Selecao id="status" nome="Situação" opcoes={STATUS} rotular={rotuloStatus} />
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
@@ -870,12 +904,19 @@ function Rebanho() {
                   </div>
                 </div>
                 <div className="grid grid-cols-3 gap-3">
-                  <Selecao id="sexo" nome="Sexo" opcoes={SEXOS} padrao={editando.sexo} />
+                  <Selecao
+                    id="sexo"
+                    nome="Sexo"
+                    opcoes={SEXOS}
+                    padrao={editando.sexo}
+                    rotular={rotuloSexo}
+                  />
                   <Selecao
                     key={especie}
                     id="categoria"
                     nome="Categoria"
                     opcoes={categoriasDaEspecie(especie)}
+                    rotular={rotuloCategoria}
                     padrao={
                       categoriasDaEspecie(especie).includes(editando.categoria)
                         ? editando.categoria
@@ -887,6 +928,7 @@ function Rebanho() {
                     nome="Situação"
                     opcoes={STATUS}
                     padrao={editando.status ?? "ativo"}
+                    rotular={rotuloStatus}
                   />
                 </div>
                 <div className="grid grid-cols-2 gap-3">
@@ -1155,11 +1197,11 @@ function Rebanho() {
                           onChange={(e) =>
                             setEntradaAtual((prev) => ({ ...prev, sexo: e.target.value }))
                           }
-                          className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm capitalize"
+                          className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
                         >
                           {SEXOS.map((s) => (
-                            <option key={s} value={s} className="capitalize">
-                              {s}
+                            <option key={s} value={s}>
+                              {rotuloSexo(s)}
                             </option>
                           ))}
                         </select>
@@ -1174,11 +1216,11 @@ function Rebanho() {
                           onChange={(e) =>
                             setEntradaAtual((prev) => ({ ...prev, categoria: e.target.value }))
                           }
-                          className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm capitalize"
+                          className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
                         >
                           {categoriasDaEspecie(entradaAtual.especie).map((c) => (
-                            <option key={c} value={c} className="capitalize">
-                              {c}
+                            <option key={c} value={c}>
+                              {rotuloCategoria(c)}
                             </option>
                           ))}
                         </select>
@@ -1193,11 +1235,11 @@ function Rebanho() {
                           onChange={(e) =>
                             setEntradaAtual((prev) => ({ ...prev, status: e.target.value }))
                           }
-                          className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm capitalize"
+                          className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
                         >
                           {STATUS.map((s) => (
-                            <option key={s} value={s} className="capitalize">
-                              {s}
+                            <option key={s} value={s}>
+                              {rotuloStatus(s)}
                             </option>
                           ))}
                         </select>
@@ -1310,6 +1352,8 @@ function Rebanho() {
         </DialogContent>
       </Dialog>
 
+      <DialogManejoSanitario aberto={sanidadeAberto} onFechar={() => setSanidadeAberto(false)} />
+
       <UpgradeDialog
         aberto={upgrade}
         onFechar={() => setUpgrade(false)}
@@ -1325,11 +1369,13 @@ function Selecao({
   nome,
   opcoes,
   padrao,
+  rotular = (v) => v,
 }: {
   id: string;
   nome: string;
   opcoes: readonly string[];
   padrao?: string;
+  rotular?: (valor: string) => string;
 }) {
   return (
     <div className="space-y-1.5">
@@ -1338,11 +1384,11 @@ function Selecao({
         id={id}
         name={id}
         defaultValue={padrao ?? opcoes[0]}
-        className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm capitalize"
+        className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
       >
         {opcoes.map((o) => (
-          <option key={o} value={o} className="capitalize">
-            {o}
+          <option key={o} value={o}>
+            {rotular(o)}
           </option>
         ))}
       </select>

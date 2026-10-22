@@ -1146,13 +1146,21 @@ export const registrarPesagemLote = createServerFn({ method: "POST" })
       const total = await sql.begin(async (tx) => {
         let registrados = 0;
         for (const p of validas) {
-          const atualizados: { id: string }[] = await tx`
-            update animais set peso_kg = ${p.peso}
-            where id = ${p.animalId} and fazenda_id = ${data.fazendaId}
-            returning id`;
-          if (atualizados.length === 0) {
+          const encontrados: { id: string }[] = await tx`
+            select id from animais
+            where id = ${p.animalId} and fazenda_id = ${data.fazendaId}`;
+          if (encontrados.length === 0) {
             throw new Error("Um dos animais do lote não foi encontrado — pesagem não registrada.");
           }
+          // Pesagem lançada com data antiga não pode sobrescrever o peso
+          // atual de quem já tem uma pesagem mais nova.
+          await tx`
+            update animais set peso_kg = ${p.peso}
+            where id = ${p.animalId} and fazenda_id = ${data.fazendaId}
+              and not exists (
+                select 1 from manejos m
+                where m.animal_id = ${p.animalId} and m.tipo = 'pesagem' and m.data > ${data.data}
+              )`;
           await tx`
             insert into manejos (fazenda_id, animal_id, tipo, data, valor)
             values (${data.fazendaId}, ${p.animalId}, 'pesagem', ${data.data}, ${p.peso})`;
@@ -1231,11 +1239,12 @@ export const registrarVendaLote = createServerFn({ method: "POST" })
         const valorTotal = Math.round(arrobas * data.precoUnitario * 100) / 100;
         const status = data.pago ? "recebido" : "a_receber";
         const formaPagamento = data.pago ? (data.formaPagamento ?? "dinheiro") : "dinheiro";
-        const descricao = `Venda do lote ${data.lote}${data.comprador ? ` — ${data.comprador}` : ""} (${animaisLote.length} cab)`;
+        const nomeLote = /^lote\b/i.test(data.lote.trim()) ? data.lote.trim() : `lote ${data.lote}`;
+        const descricao = `Venda do ${nomeLote}${data.comprador ? ` — ${data.comprador}` : ""} (${animaisLote.length} cab)`;
 
         const financeiros: { id: string }[] = await tx`
           insert into financeiro_lancamentos (fazenda_id, tipo, descricao, valor, data, categoria, status, forma_pagamento, lote)
-          values (${data.fazendaId}, 'receita', ${descricao}, ${valorTotal}, ${data.data}, 'venda_boi', ${status}, ${formaPagamento}, ${data.lote})
+          values (${data.fazendaId}, 'receita', ${descricao}, ${valorTotal}, ${data.data}, ${`venda_${produto}`}, ${status}, ${formaPagamento}, ${data.lote})
           returning id`;
         const financeiroId = financeiros[0]!.id;
 

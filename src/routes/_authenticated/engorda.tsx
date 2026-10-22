@@ -2,14 +2,11 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
-  Baby,
-  Beef,
   Coins,
   Layers,
   Pencil,
   Plus,
   Scale,
-  Skull,
   Tag,
   Trash2,
   TrendingUp,
@@ -47,7 +44,6 @@ import {
 } from "@/components/ui/alert-dialog";
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart";
 import { useFazenda } from "@/hooks/use-fazenda";
-import { useIndicesRebanho } from "@/hooks/use-indices-rebanho";
 import { useIndicesEngorda } from "@/hooks/use-indices-engorda";
 import {
   dataCurta,
@@ -60,6 +56,7 @@ import {
 import { usePreferencias } from "@/hooks/use-preferencias";
 import { encontrarPrecoVigente } from "@/lib/precos-produto";
 import { CATEGORIAS_BOVINO, CATEGORIAS_OVINO, especieDaCategoria } from "@/lib/especies";
+import { textoLote } from "@/lib/rotulos";
 import { cn } from "@/lib/utils";
 
 const KG_POR_ARROBA = 15;
@@ -118,10 +115,6 @@ function Engorda() {
   function paraUnidade(pesoKg: number) {
     return soOvino ? pesoKg : pesoKg / KG_POR_ARROBA;
   }
-  const indices = useIndicesRebanho(
-    fazenda?.id,
-    ambasAtividades ? (soOvino ? CATEGORIAS_OVINO : CATEGORIAS_BOVINO) : undefined,
-  );
   const indicesEngorda = useIndicesEngorda(
     fazenda?.id,
     kgPorUnidade,
@@ -223,6 +216,24 @@ function Engorda() {
     },
   });
 
+  // Lote vendido some da lista de cima (os animais viram "vendido"), mas
+  // é aí que o produtor quer ver o resultado real: o que entrou na venda
+  // menos tudo que foi gasto naquele lote.
+  const vendasLotes = useQuery({
+    queryKey: ["vendas", fazenda?.id, "lotes-encerrados"],
+    enabled: !!fazenda?.id,
+    queryFn: async () => {
+      const { data, error } = await db
+        .from("vendas")
+        .select("id, lote, produto, data, valor_total, quantidade, unidade, comprador")
+        .eq("fazenda_id", fazenda!.id)
+        .order("data", { ascending: false })
+        .limit(200);
+      if (error) throw error;
+      return data;
+    },
+  });
+
   function invalidarEngordaGeral() {
     queryClient.invalidateQueries({ queryKey: ["animais-engorda"] });
     queryClient.invalidateQueries({ queryKey: ["pesagens-engorda"] });
@@ -248,11 +259,17 @@ function Engorda() {
         valor: pesoNum,
       } as never);
       if (erroManejo) throw erroManejo;
-      const { error: erroAnimal } = await db
-        .from("animais")
-        .update({ peso_kg: pesoNum } as never)
-        .eq("id", vars.animalId);
-      if (erroAnimal) throw erroAnimal;
+      const ultimaData = (pesagensPorAnimal.get(vars.animalId) ?? []).reduce<string | null>(
+        (max, r) => (!max || r.data > max ? r.data : max),
+        null,
+      );
+      if (!ultimaData || vars.data >= ultimaData) {
+        const { error: erroAnimal } = await db
+          .from("animais")
+          .update({ peso_kg: pesoNum } as never)
+          .eq("id", vars.animalId);
+        if (erroAnimal) throw erroAnimal;
+      }
     },
     onSuccess: () => {
       toast.success("Pesagem registrada.");
@@ -546,6 +563,18 @@ function Engorda() {
     setPesoMetaAbate("");
   }, [loteSelecionado]);
 
+  const lotesEncerrados = useMemo(() => {
+    return (vendasLotes.data ?? [])
+      .filter((v) => v.lote && v.produto === produtoPreco)
+      .map((v) => {
+        const custo = (despesasLote.data ?? [])
+          .filter((d) => (d.lote?.trim() || "") === v.lote)
+          .reduce((soma, d) => soma + Number(d.valor), 0);
+        const receita = Number(v.valor_total);
+        return { ...v, receita, custo, resultado: receita - custo };
+      });
+  }, [vendasLotes.data, despesasLote.data, produtoPreco]);
+
   const projecao = useMemo(() => {
     if (!loteAtual || !pesoMetaAbate) return null;
     const meta = Number(pesoMetaAbate);
@@ -569,7 +598,6 @@ function Engorda() {
     };
   }, [loteAtual, pesoMetaAbate, hoje]);
 
-  const i = indices.data;
   const e = indicesEngorda.data;
 
   return (
@@ -605,15 +633,30 @@ function Engorda() {
           </button>
         </div>
       ) : null}
-      <div className="mb-5 grid gap-3 sm:grid-cols-3 lg:grid-cols-4">
-        <Kpi icon={Beef} rotulo="Total do rebanho" valor={i ? `${i.totalRebanho} cab` : "—"} />
-        <Kpi icon={Baby} rotulo="Partos (últimos 30 dias)" valor={i ? `${i.partos30d} cab` : "—"} />
-        <Kpi
-          icon={Skull}
-          rotulo="Mortes (últimos 30 dias)"
-          valor={i ? `${i.mortes30d} cab` : "—"}
-        />
-        <Kpi icon={Weight} rotulo="Animais em engorda" valor={e ? `${e.totalEngorda} cab` : "—"} />
+      <ol className="mb-5 grid gap-2 rounded-xl border border-border bg-card p-3 text-xs sm:grid-cols-2 lg:grid-cols-4">
+        {[
+          ["Animais", "No Rebanho, coloque a situação 'Confinamento' e um lote."],
+          ["Pesagem", "A 1ª é a entrada; da 2ª em diante sai o ganho por dia (GMD)."],
+          ["Custos", "Lance compra, alimentação e sanidade no lote."],
+          [
+            "Resultado",
+            `Com o preço da ${soOvino ? "carne (kg)" : "arroba"}, veja a margem e o lucro na venda.`,
+          ],
+        ].map(([titulo, texto], idx) => (
+          <li key={titulo} className="flex gap-2">
+            <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-primary text-[10px] font-bold text-primary-foreground">
+              {idx + 1}
+            </span>
+            <span>
+              <span className="font-semibold">{titulo}: </span>
+              <span className="text-muted-foreground">{texto}</span>
+            </span>
+          </li>
+        ))}
+      </ol>
+
+      <div className="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+        <Kpi icon={Weight} rotulo="Em confinamento" valor={e ? `${e.totalEngorda} cab` : "—"} />
         <Kpi
           icon={Scale}
           rotulo="Peso médio"
@@ -650,7 +693,11 @@ function Engorda() {
         <CartaoConfig
           id="preco-boi"
           titulo={soOvino ? "Preço do ovino" : "Preço do boi"}
-          descricao={`Vale para os ${simboloUnidade === "kg" ? "quilos" : "arrobas"} vendidos a partir da data de vigência — o histórico anterior continua usando o preço antigo.`}
+          descricao={
+            soOvino
+              ? "Preço por kg de peso vivo. Vale a partir da data de vigência — o histórico continua com o preço antigo."
+              : "Preço por arroba de peso vivo (1 @ = 15 kg vivos). Se o comprador paga por @ de carcaça, informe o valor equivalente por @ viva. Vale a partir da data de vigência."
+          }
         >
           {precoVigente ? (
             <div className="flex items-center gap-3">
@@ -738,19 +785,36 @@ function Engorda() {
         </CartaoConfig>
 
         <CartaoConfig
-          id="alimentacao"
-          titulo="Alimentação"
-          descricao="Registre a rotina de alimentação pro rebanho todo ou só pra lotes específicos — independente de qual lote está selecionado abaixo."
+          id="lotes-vendidos"
+          titulo="Resultado dos lotes vendidos"
+          descricao="Lucro real de cada lote já vendido: o valor da venda menos tudo o que foi lançado como custo daquele lote (compra, alimentação, sanidade)."
         >
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={() => setAlimentacaoLoteAberto(true)}
-          >
-            <Wheat className="size-4" aria-hidden="true" />
-            Rotina de alimentação
-          </Button>
+          {lotesEncerrados.length === 0 ? (
+            <p className="text-sm text-muted-foreground">
+              Quando você vender um lote pelo botão "Vender lote", o resultado aparece aqui.
+            </p>
+          ) : (
+            <ul className="divide-y divide-border">
+              {lotesEncerrados.slice(0, 6).map((v) => (
+                <li key={v.id} className="flex items-center justify-between gap-3 py-2 text-sm">
+                  <span className="min-w-0">
+                    <span className="block truncate font-medium">{v.lote}</span>
+                    <span className="block text-xs text-muted-foreground">
+                      {dataCurta(v.data)} · venda {moeda(v.receita)} · custo {moeda(v.custo)}
+                    </span>
+                  </span>
+                  <span
+                    className={cn(
+                      "shrink-0 font-semibold",
+                      v.resultado < 0 ? "text-destructive" : "text-success",
+                    )}
+                  >
+                    {moeda(v.resultado)}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
         </CartaoConfig>
       </div>
 
@@ -760,7 +824,7 @@ function Engorda() {
           setAlimentacaoLoteAberto(false);
           setAlimentacaoEditando(null);
         }}
-        loteInicial={null}
+        loteInicial={loteSelecionado && loteSelecionado !== SEM_LOTE ? loteSelecionado : null}
         lotesDisponiveis={lotes.map((l) => l.nome)}
         registroEditar={alimentacaoEditando}
         fazendaId={fazenda?.id}
@@ -800,8 +864,8 @@ function Engorda() {
       {animaisFiltrados.length === 0 ? (
         <EmptyState
           icon={Weight}
-          titulo="Nenhum animal em engorda"
-          descricao="Marque um animal com a situação 'engorda' no Rebanho para acompanhar peso e GMD aqui."
+          titulo="Nenhum animal em confinamento"
+          descricao="No Rebanho, mude a situação do animal para 'Confinamento' (ou cadastre já com essa situação) e defina o lote. Ele aparece aqui para pesagem, custos e venda."
         />
       ) : (
         <Tabs value={modo} onValueChange={(v) => setModo(v as "lote" | "animal")}>
@@ -878,7 +942,7 @@ function Engorda() {
                   <div>
                     <h3 className="text-base font-semibold">{loteAtual.nome}</h3>
                     <p className="text-xs text-muted-foreground">
-                      {loteAtual.qtd} animais em engorda
+                      {loteAtual.qtd} animais em confinamento
                     </p>
                   </div>
                   {loteAtual.gmdMedio !== null ? (
@@ -1006,7 +1070,7 @@ function Engorda() {
                     </div>
                     <p className="mt-2 text-[11px] text-muted-foreground">
                       Peso/data de entrada vêm da primeira pesagem de cada animal do lote; o custo
-                      da compra entra por "Registrar custo" com a categoria "Compra do lote".
+                      da compra entra por "Lançar custo" com a categoria "Compra do lote".
                     </p>
                   </div>
 
@@ -1169,12 +1233,22 @@ function Engorda() {
 
                 <div className="mt-4 flex flex-wrap gap-2">
                   <Button variant="outline" size="sm" onClick={() => setPesagemLoteAberto(true)}>
-                    Registrar pesagem do lote
+                    <Scale className="size-4" aria-hidden="true" />
+                    Pesar lote
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setAlimentacaoLoteAberto(true)}
+                  >
+                    <Wheat className="size-4" aria-hidden="true" />
+                    Alimentação
                   </Button>
                   {loteAtual.nome !== SEM_LOTE ? (
                     <>
                       <Button variant="outline" size="sm" onClick={() => setCustoLoteAberto(true)}>
-                        Registrar custo (ração/sanidade)
+                        <Coins className="size-4" aria-hidden="true" />
+                        Lançar custo
                       </Button>
                       <Button size="sm" onClick={() => setVenderLoteAberto(true)}>
                         <Coins className="size-4" aria-hidden="true" />
@@ -1445,7 +1519,7 @@ function Engorda() {
             <div className="grid gap-4 lg:grid-cols-2">
               <div className="rounded-xl border border-border bg-card">
                 <div className="border-b border-border px-4 py-3 text-sm font-semibold">
-                  Lote em engorda
+                  Animais em confinamento
                 </div>
                 <ul className="divide-y divide-border">
                   {animaisFiltrados.map((a) => (
@@ -1562,11 +1636,12 @@ function DialogPesagemLote({
   const [pesos, setPesos] = useState<Record<string, string>>({});
   const [data, setData] = useState(hojeISO());
 
+  // Começa vazio de propósito: pré-preencher com o peso atual fazia quem
+  // não era pesado de novo ganhar uma pesagem falsa (ganho zero), puxando
+  // o GMD do lote pra baixo. O peso anterior aparece só como dica.
   useEffect(() => {
     if (aberto && lote) {
-      const iniciais: Record<string, string> = {};
-      for (const a of lote.animais) iniciais[a.id] = a.peso_kg ? String(a.peso_kg) : "";
-      setPesos(iniciais);
+      setPesos({});
       setData(hojeISO());
     }
   }, [aberto, lote]);
@@ -1600,7 +1675,7 @@ function DialogPesagemLote({
           <DialogTitle>Registrar pesagem do lote</DialogTitle>
           <DialogDescription>
             {lote
-              ? `${lote.nome} — ${lote.qtd} animais. Ajuste o peso de cada um antes de salvar.`
+              ? `${lote.nome} — ${lote.qtd} animais. Preencha só quem foi pesado; quem ficar em branco não ganha pesagem.`
               : ""}
           </DialogDescription>
         </DialogHeader>
@@ -1626,8 +1701,9 @@ function DialogPesagemLote({
                     type="number"
                     step="0.1"
                     min="0"
-                    className="w-28"
+                    className="w-32"
                     value={pesos[a.id] ?? ""}
+                    placeholder={a.peso_kg ? `antes: ${Number(a.peso_kg)}` : "kg"}
                     onChange={(e) => setPesos((prev) => ({ ...prev, [a.id]: e.target.value }))}
                     aria-label={`Peso de ${a.nome}`}
                   />
@@ -1670,7 +1746,7 @@ function DialogCustoLote({
         fazenda_id: fazendaId,
         tipo: "despesa",
         descricao:
-          String(form.get("descricao") ?? "").trim() || `Custo do lote ${lote} (${categoria})`,
+          String(form.get("descricao") ?? "").trim() || `Custo — ${textoLote(lote)} (${categoria})`,
         valor: Number(form.get("valor")),
         data: String(form.get("data")),
         categoria,
@@ -2111,7 +2187,7 @@ function DialogAlimentacaoLote({
         for (const dataOcorrencia of datasOcorrencias) {
           let despesaId: string | null = null;
           if (custo > 0) {
-            const descricaoAlvo = loteAlvo ? `lote ${loteAlvo}` : "todo o rebanho";
+            const descricaoAlvo = loteAlvo ? textoLote(loteAlvo) : "todo o rebanho";
             const { data: criadas, error: erroDespesa } = await db
               .from("financeiro_lancamentos")
               .insert({
@@ -2190,7 +2266,7 @@ function DialogAlimentacaoLote({
       // A despesa vinculada acompanha a edição: atualiza se já existia,
       // cria se passou a ter custo, ou remove se o custo foi zerado —
       // nunca deixa o custo acumulado do lote dessincronizado do registro.
-      const descricaoAlvo = registroEditar.lote ? `lote ${registroEditar.lote}` : "todo o rebanho";
+      const descricaoAlvo = registroEditar.lote ? textoLote(registroEditar.lote) : "todo o rebanho";
       if (registroEditar.despesa_id && custo > 0) {
         const { error: erroDespesa } = await db
           .from("financeiro_lancamentos")
@@ -2466,6 +2542,16 @@ function DialogAlimentacaoLote({
               value={custoDia}
               onChange={(ev) => setCustoDia(ev.target.value)}
             />
+            <p className="text-xs text-muted-foreground">
+              Quanto custa por dia o que foi oferecido (ração, silagem...). Entra como despesa e no
+              custo do lote.
+            </p>
+            {escopo === "rebanho" && Number(custoDia) > 0 ? (
+              <p className="rounded-md bg-warning/10 px-2 py-1.5 text-xs text-warning">
+                Custo para &quot;todo o rebanho&quot; vai pro Financeiro, mas não entra na margem de
+                nenhum lote. Para entrar no resultado do lote, marque os lotes.
+              </p>
+            ) : null}
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="alim-observacoes">Observações (opcional)</Label>

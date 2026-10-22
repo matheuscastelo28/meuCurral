@@ -3,15 +3,12 @@ import {
   ArrowRight,
   Baby,
   Beef,
-  CalendarDays,
   Check,
   ClipboardList,
   Lock,
-  Milk,
   Smartphone,
   Syringe,
   ShieldCheck,
-  Wallet,
   Weight,
 } from "lucide-react";
 import { PLANOS } from "@/lib/planos";
@@ -54,13 +51,6 @@ const ETAPAS = [
     titulo: "Acompanhe o resultado",
     texto: "Agenda avisa o que vence, financeiro mostra o que entrou e o que saiu.",
   },
-];
-
-const MODULOS_HERO = [
-  { icon: Beef, rotulo: "Rebanho" },
-  { icon: Milk, rotulo: "Leite" },
-  { icon: Wallet, rotulo: "Financeiro" },
-  { icon: CalendarDays, rotulo: "Agenda" },
 ];
 
 const DIFERENCIAIS = [
@@ -106,63 +96,33 @@ function Landing() {
         </div>
       </header>
 
-      {/* Hero — fundo claro com um blob de cor e um recorte em verde no
-          título, mais o print real do painel ao lado em vez de espaço
-          vazio, pra não cair de volta num herói branco e sem vida. */}
       <section className="relative overflow-hidden px-5 pt-10 pb-14 sm:pt-16 sm:pb-20">
         <div
           aria-hidden="true"
           className="pointer-events-none absolute -top-24 -left-24 size-80 rounded-full bg-primary/15 blur-3xl"
         />
         <div className="relative mx-auto max-w-6xl">
-          <div className="grid gap-10 lg:grid-cols-[1.05fr_1fr] lg:items-center">
-            <div>
-              <span className="inline-flex items-center rounded-full bg-accent px-3 py-1 text-xs font-semibold tracking-[0.1em] text-primary uppercase">
-                Gestão de rebanho
-              </span>
-              <h1 className="mt-4 max-w-xl text-4xl leading-[1.05] sm:text-6xl">
-                O controle do seu rebanho{" "}
-                <span className="text-primary">fora da planilha, dentro do bolso.</span>
-              </h1>
-              <p className="mt-5 max-w-xl text-base text-muted-foreground">
-                Cadastre animais, acompanhe manejo, vacinação, pesagem, leite e financeiro. Comece
-                grátis com até 10 cabeças e cresça quando o rebanho crescer.
-              </p>
-              <div className="mt-8 flex flex-wrap gap-3">
-                <Button size="lg" asChild>
-                  <Link to="/cadastro">
-                    Criar conta grátis
-                    <ArrowRight className="size-4" aria-hidden="true" />
-                  </Link>
-                </Button>
-                <Button size="lg" variant="outline" asChild>
-                  <Link to="/auth">Já tenho conta</Link>
-                </Button>
-              </div>
-            </div>
-
-            {/* Ilustração com os módulos reais do produto — não um print,
-                não um espaço vazio — pra dar peso visual ao hero sem
-                inventar uma "demo" que não existe. */}
-            <div className="relative">
-              <div
-                aria-hidden="true"
-                className="absolute -inset-6 -z-10 rounded-[2rem] bg-warning/10 blur-2xl"
-              />
-              <div className="grid grid-cols-2 gap-4 rounded-[2rem] border border-border bg-card p-6 shadow-sm sm:p-8">
-                {MODULOS_HERO.map((modulo) => (
-                  <div
-                    key={modulo.rotulo}
-                    className="flex flex-col items-start gap-3 rounded-xl bg-background p-4"
-                  >
-                    <span className="flex size-11 items-center justify-center rounded-lg bg-primary text-primary-foreground">
-                      <modulo.icon className="size-5" aria-hidden="true" />
-                    </span>
-                    <span className="text-sm font-semibold">{modulo.rotulo}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
+          <span className="inline-flex items-center rounded-full bg-accent px-3 py-1 text-xs font-semibold tracking-[0.1em] text-primary uppercase">
+            Gestão de rebanho
+          </span>
+          <h1 className="mt-4 max-w-3xl text-4xl leading-[1.05] sm:text-6xl">
+            O controle do seu rebanho{" "}
+            <span className="text-primary">fora da planilha, dentro do bolso.</span>
+          </h1>
+          <p className="mt-5 max-w-xl text-base text-muted-foreground">
+            Cadastre animais, acompanhe manejo, vacinação, pesagem, leite e financeiro. Comece
+            grátis com até 10 cabeças e cresça quando o rebanho crescer.
+          </p>
+          <div className="mt-8 flex flex-wrap gap-3">
+            <Button size="lg" asChild>
+              <Link to="/cadastro">
+                Criar conta grátis
+                <ArrowRight className="size-4" aria-hidden="true" />
+              </Link>
+            </Button>
+            <Button size="lg" variant="outline" asChild>
+              <Link to="/auth">Já tenho conta</Link>
+            </Button>
           </div>
         </div>
       </section>

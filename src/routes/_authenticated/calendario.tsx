@@ -510,7 +510,7 @@ function Calendario() {
   return (
     <AppShell
       titulo="Agenda"
-      descricao="Adicione vacinas, pesagens e outros compromissos manualmente pra acompanhar a agenda da fazenda."
+      descricao="Compromissos da fazenda. Próximas doses de vacina (registradas em Vacina / manejo) e vencimentos do Financeiro entram aqui sozinhos."
       acao={
         <Button onClick={novoEvento}>
           <Plus className="size-4" aria-hidden="true" />
