@@ -3,12 +3,16 @@ import {
   ArrowRight,
   Baby,
   Beef,
+  CalendarDays,
   Check,
   ClipboardList,
   Lock,
+  Milk,
   Smartphone,
+  Stethoscope,
   Syringe,
   ShieldCheck,
+  Wallet,
   Weight,
 } from "lucide-react";
 import { PLANOS } from "@/lib/planos";
@@ -37,20 +41,29 @@ export const Route = createFileRoute("/")({
 
 const ETAPAS = [
   {
-    numero: "01",
+    numero: "1",
     titulo: "Cadastre o rebanho",
     texto: "Cada animal com brinco, categoria, raça, peso e lote — bovino ou ovino.",
   },
   {
-    numero: "02",
+    numero: "2",
     titulo: "Registre o dia a dia",
     texto: "Vacina, pesagem, leite ou confinamento, cobertura e parto — do curral, no celular.",
   },
   {
-    numero: "03",
+    numero: "3",
     titulo: "Acompanhe o resultado",
     texto: "Agenda avisa o que vence, financeiro mostra o que entrou e o que saiu.",
   },
+];
+
+const MODULOS = [
+  { icon: Beef, rotulo: "Rebanho" },
+  { icon: Milk, rotulo: "Leite" },
+  { icon: Weight, rotulo: "Confinamento" },
+  { icon: Stethoscope, rotulo: "Reprodução" },
+  { icon: Wallet, rotulo: "Financeiro" },
+  { icon: CalendarDays, rotulo: "Agenda" },
 ];
 
 const DIFERENCIAIS = [
@@ -96,31 +109,79 @@ function Landing() {
         </div>
       </header>
 
-      {/* Hero — fundo escuro/verde-campo pra abrir com presença, em vez de
-          mais um herói branco com título centralizado. */}
-      <section className="mx-auto max-w-6xl px-5 pt-10 pb-16 sm:pt-16 sm:pb-24">
-        <p className="text-xs font-semibold tracking-[0.18em] text-primary uppercase">
-          Gestão de rebanho
-        </p>
-        <h1 className="mt-4 max-w-3xl text-4xl leading-[1.05] sm:text-6xl">
-          O controle do seu rebanho fora da planilha, dentro do bolso.
-        </h1>
-        <p className="mt-5 max-w-xl text-base text-muted-foreground">
-          Cadastre animais, acompanhe manejo, vacinação, pesagem, leite e financeiro. Comece grátis
-          com até 10 cabeças e cresça quando o rebanho crescer.
-        </p>
-        <div className="mt-8 flex flex-wrap gap-3">
-          <Button size="lg" asChild>
-            <Link to="/cadastro">
-              Criar conta grátis
-              <ArrowRight className="size-4" aria-hidden="true" />
-            </Link>
-          </Button>
-          <Button size="lg" variant="outline" asChild>
-            <Link to="/auth">Já tenho conta</Link>
-          </Button>
+      {/* Hero — fundo claro, mas com blobs de cor e um recorte em verde no
+          título, pra não cair de volta num herói branco e sem vida. */}
+      <section className="relative overflow-hidden px-5 pt-10 pb-14 sm:pt-16 sm:pb-20">
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute -top-24 -left-24 size-80 rounded-full bg-primary/15 blur-3xl"
+        />
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute top-10 right-0 size-72 rounded-full bg-warning/10 blur-3xl"
+        />
+        <div className="relative mx-auto max-w-6xl">
+          <span className="inline-flex items-center rounded-full bg-accent px-3 py-1 text-xs font-semibold tracking-[0.1em] text-primary uppercase">
+            Gestão de rebanho
+          </span>
+          <h1 className="mt-4 max-w-3xl text-4xl leading-[1.05] sm:text-6xl">
+            O controle do seu rebanho{" "}
+            <span className="text-primary">fora da planilha, dentro do bolso.</span>
+          </h1>
+          <p className="mt-5 max-w-xl text-base text-muted-foreground">
+            Cadastre animais, acompanhe manejo, vacinação, pesagem, leite e financeiro. Comece
+            grátis com até 10 cabeças e cresça quando o rebanho crescer.
+          </p>
+          <div className="mt-8 flex flex-wrap gap-3">
+            <Button size="lg" asChild>
+              <Link to="/cadastro">
+                Criar conta grátis
+                <ArrowRight className="size-4" aria-hidden="true" />
+              </Link>
+            </Button>
+            <Button size="lg" variant="outline" asChild>
+              <Link to="/auth">Já tenho conta</Link>
+            </Button>
+          </div>
+          <div className="mt-10 flex flex-wrap gap-2">
+            {MODULOS.map((modulo) => (
+              <span
+                key={modulo.rotulo}
+                className="inline-flex items-center gap-1.5 rounded-full bg-secondary px-3 py-1.5 text-xs font-semibold text-secondary-foreground"
+              >
+                <modulo.icon className="size-3.5 text-primary" aria-hidden="true" />
+                {modulo.rotulo}
+              </span>
+            ))}
+          </div>
         </div>
       </section>
+
+      {/* Faixa com marquise dos módulos — repete o vocabulário real do
+          produto em movimento, pra dar vida entre o hero e o conteúdo. */}
+      <div className="overflow-hidden border-y border-primary-dark/20 bg-primary-dark py-3">
+        <div className="marquee-track flex w-max items-center gap-10 text-xs font-bold tracking-[0.14em] text-primary-foreground/80 uppercase">
+          {[0, 1].map((rep) => (
+            <div key={rep} className="flex items-center gap-10" aria-hidden={rep === 1}>
+              {[
+                "Manejo",
+                "Vacinação",
+                "Pesagem",
+                "Leite",
+                "Confinamento",
+                "Reprodução",
+                "Financeiro",
+                "Agenda",
+              ].map((item) => (
+                <span key={item} className="flex items-center gap-10">
+                  {item}
+                  <span className="text-primary-foreground/30">•</span>
+                </span>
+              ))}
+            </div>
+          ))}
+        </div>
+      </div>
 
       {/* Como funciona — passos numerados em vez de outra grade de cards
           genérica, pra deixar o fluxo real do produto mais concreto. */}
@@ -130,18 +191,12 @@ function Landing() {
         </p>
         <h2 className="mt-3 max-w-xl text-2xl sm:text-3xl">Três passos, do curral até o papel.</h2>
         <div className="mt-10 grid gap-8 sm:grid-cols-3 sm:gap-6">
-          {ETAPAS.map((etapa, i) => (
-            <div
-              key={etapa.numero}
-              className={cn(
-                "relative pl-0 sm:border-l sm:border-border sm:pl-6",
-                i === 0 && "sm:border-l-0 sm:pl-0",
-              )}
-            >
-              <span className="font-display text-4xl font-extrabold text-border sm:text-5xl">
+          {ETAPAS.map((etapa) => (
+            <div key={etapa.numero} className="relative">
+              <span className="flex size-11 items-center justify-center rounded-full bg-primary font-display text-sm font-extrabold text-primary-foreground">
                 {etapa.numero}
               </span>
-              <h3 className="mt-3 text-lg font-semibold">{etapa.titulo}</h3>
+              <h3 className="mt-4 text-lg font-semibold">{etapa.titulo}</h3>
               <p className="mt-1.5 text-sm text-muted-foreground">{etapa.texto}</p>
             </div>
           ))}
@@ -166,19 +221,20 @@ function Landing() {
                 Ovinos
               </span>
 
-              <ul className="mt-8 space-y-6">
+              <div className="mt-8 grid gap-3 sm:grid-cols-2">
                 {DIFERENCIAIS.map((item) => (
-                  <li key={item.titulo} className="flex gap-4">
-                    <span className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-accent text-primary">
-                      <item.icon className="size-5" aria-hidden="true" />
+                  <div
+                    key={item.titulo}
+                    className="rounded-xl border border-border bg-background p-4"
+                  >
+                    <span className="flex size-9 items-center justify-center rounded-lg bg-primary text-primary-foreground">
+                      <item.icon className="size-4" aria-hidden="true" />
                     </span>
-                    <div>
-                      <h3 className="text-base font-semibold">{item.titulo}</h3>
-                      <p className="mt-1 text-sm text-muted-foreground">{item.texto}</p>
-                    </div>
-                  </li>
+                    <h3 className="mt-3 text-sm font-semibold">{item.titulo}</h3>
+                    <p className="mt-1 text-xs text-muted-foreground">{item.texto}</p>
+                  </div>
                 ))}
-              </ul>
+              </div>
             </div>
 
             {/* Mockup com um print real do painel — não uma ilustração
