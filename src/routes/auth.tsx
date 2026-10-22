@@ -11,10 +11,10 @@ import { PasswordField } from "@/components/PasswordField";
 export const Route = createFileRoute("/auth")({
   head: () => ({
     meta: [
-      { title: "Entrar — Easy Agro" },
-      { name: "description", content: "Acesse sua fazenda no Easy Agro." },
-      { property: "og:title", content: "Entrar — Easy Agro" },
-      { property: "og:description", content: "Acesse sua fazenda no Easy Agro." },
+      { title: "Entrar — Curral Online" },
+      { name: "description", content: "Acesse sua fazenda no Curral Online." },
+      { property: "og:title", content: "Entrar — Curral Online" },
+      { property: "og:description", content: "Acesse sua fazenda no Curral Online." },
       { name: "robots", content: "noindex" },
     ],
   }),
@@ -109,7 +109,7 @@ function Login() {
           <span className="flex size-8 items-center justify-center rounded-lg bg-card">
             <img src="/logo-icon.png" alt="" className="size-6" />
           </span>
-          <span className="font-display text-sm font-extrabold">Easy Agro</span>
+          <span className="font-display text-sm font-extrabold">Curral Online</span>
         </Link>
       </header>
 

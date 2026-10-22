@@ -162,7 +162,7 @@ export function AppShell({
             {!colapsada ? (
               <span className="min-w-0 leading-tight">
                 <span className="block truncate font-display text-sm font-extrabold">
-                  Easy Agro
+                  Curral Online
                 </span>
                 <span className="block truncate text-xs text-muted-foreground">
                   {fazenda?.nome ?? "Carregando fazenda..."}
@@ -321,7 +321,7 @@ export function AppShell({
                 <img src="/logo-icon.png" alt="" className="size-6" />
               </span>
               <span className="leading-tight">
-                <span className="block font-display text-sm font-extrabold">Easy Agro</span>
+                <span className="block font-display text-sm font-extrabold">Curral Online</span>
                 <span className="block text-xs text-muted-foreground">
                   {fazenda?.nome ?? "Carregando fazenda..."}
                 </span>

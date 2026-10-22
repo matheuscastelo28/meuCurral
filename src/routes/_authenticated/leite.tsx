@@ -44,9 +44,9 @@ const FORMAS_PAGAMENTO = [
 export const Route = createFileRoute("/_authenticated/leite")({
   head: () => ({
     meta: [
-      { title: "Leite — Easy Agro" },
+      { title: "Leite — Curral Online" },
       { name: "description", content: "Registro diário da produção de leite da fazenda." },
-      { property: "og:title", content: "Leite — Easy Agro" },
+      { property: "og:title", content: "Leite — Curral Online" },
       { property: "og:description", content: "Registro diário da produção de leite." },
       { name: "robots", content: "noindex" },
     ],

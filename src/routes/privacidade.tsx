@@ -3,12 +3,12 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 export const Route = createFileRoute("/privacidade")({
   head: () => ({
     meta: [
-      { title: "Política de privacidade — Easy Agro" },
+      { title: "Política de privacidade — Curral Online" },
       {
         name: "description",
-        content: "Como o Easy Agro trata os dados do produtor rural, conforme a LGPD.",
+        content: "Como o Curral Online trata os dados do produtor rural, conforme a LGPD.",
       },
-      { property: "og:title", content: "Política de privacidade — Easy Agro" },
+      { property: "og:title", content: "Política de privacidade — Curral Online" },
       {
         property: "og:description",
         content: "Como tratamos e protegemos os dados da sua fazenda.",

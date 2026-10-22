@@ -18,13 +18,13 @@ import { cn } from "@/lib/utils";
 export const Route = createFileRoute("/")({
   head: () => ({
     meta: [
-      { title: "Easy Agro — controle do rebanho sem planilha" },
+      { title: "Curral Online — controle do rebanho sem planilha" },
       {
         name: "description",
         content:
           "Cadastre animais, acompanhe manejo, vacinação, leite e financeiro da fazenda. Comece grátis com até 10 cabeças.",
       },
-      { property: "og:title", content: "Easy Agro — controle do rebanho sem planilha" },
+      { property: "og:title", content: "Curral Online — controle do rebanho sem planilha" },
       {
         property: "og:description",
         content:
@@ -84,7 +84,7 @@ function Landing() {
           <span className="flex size-8 items-center justify-center rounded-lg bg-card">
             <img src="/logo-icon.png" alt="" className="size-6" />
           </span>
-          <span className="font-display text-sm font-extrabold">Easy Agro</span>
+          <span className="font-display text-sm font-extrabold">Curral Online</span>
         </div>
         <div className="flex items-center gap-2">
           <Button variant="ghost" size="sm" asChild>
@@ -197,7 +197,7 @@ function Landing() {
                 </div>
                 <img
                   src="/screenshot-inicio.png"
-                  alt="Painel inicial do Easy Agro, com o resumo do rebanho e os próximos compromissos"
+                  alt="Painel inicial do Curral Online, com o resumo do rebanho e os próximos compromissos"
                   className="w-full"
                   loading="lazy"
                 />
@@ -283,7 +283,7 @@ function Landing() {
               Política de privacidade
             </Link>
           </div>
-          <span className="text-xs">© 2026 Easy Agro</span>
+          <span className="text-xs">© 2026 Curral Online</span>
         </div>
       </footer>
     </div>

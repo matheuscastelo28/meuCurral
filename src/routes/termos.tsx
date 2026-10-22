@@ -3,10 +3,10 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 export const Route = createFileRoute("/termos")({
   head: () => ({
     meta: [
-      { title: "Termos de uso — Easy Agro" },
-      { name: "description", content: "Condições de uso da plataforma Easy Agro." },
-      { property: "og:title", content: "Termos de uso — Easy Agro" },
-      { property: "og:description", content: "Condições de uso da plataforma Easy Agro." },
+      { title: "Termos de uso — Curral Online" },
+      { name: "description", content: "Condições de uso da plataforma Curral Online." },
+      { property: "og:title", content: "Termos de uso — Curral Online" },
+      { property: "og:description", content: "Condições de uso da plataforma Curral Online." },
     ],
   }),
   component: Termos,
@@ -21,7 +21,7 @@ function Termos() {
       <h1 className="mt-6 text-3xl">Termos de uso</h1>
       <div className="mt-6 space-y-4 text-sm text-muted-foreground">
         <p>
-          O Easy Agro é um sistema de gestão de rebanho. Ao criar uma conta, você concorda
+          O Curral Online é um sistema de gestão de rebanho. Ao criar uma conta, você concorda
           em usar a plataforma apenas para registrar informações da sua atividade rural.
         </p>
         <h2 className="text-base font-semibold text-foreground">Conta e responsabilidade</h2>

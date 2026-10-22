@@ -42,7 +42,7 @@ import { usePreferencias } from "@/hooks/use-preferencias";
 export const Route = createFileRoute("/_authenticated/rebanho_/$animalId")({
   head: () => ({
     meta: [
-      { title: "Ficha do animal — Easy Agro" },
+      { title: "Ficha do animal — Curral Online" },
       {
         name: "description",
         content: "Histórico completo de um animal: leite, peso, reprodução e vendas.",

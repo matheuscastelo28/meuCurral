@@ -43,9 +43,9 @@ import { cn } from "@/lib/utils";
 export const Route = createFileRoute("/_authenticated/financeiro")({
   head: () => ({
     meta: [
-      { title: "Financeiro — Easy Agro" },
+      { title: "Financeiro — Curral Online" },
       { name: "description", content: "Receitas e despesas da fazenda em um só lugar." },
-      { property: "og:title", content: "Financeiro — Easy Agro" },
+      { property: "og:title", content: "Financeiro — Curral Online" },
       { property: "og:description", content: "Receitas e despesas da fazenda." },
       { name: "robots", content: "noindex" },
     ],

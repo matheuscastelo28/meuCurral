@@ -35,9 +35,9 @@ import {
 export const Route = createFileRoute("/_authenticated/rebanho")({
   head: () => ({
     meta: [
-      { title: "Rebanho — Easy Agro" },
+      { title: "Rebanho — Curral Online" },
       { name: "description", content: "Cadastro e ficha dos animais da fazenda." },
-      { property: "og:title", content: "Rebanho — Easy Agro" },
+      { property: "og:title", content: "Rebanho — Curral Online" },
       { property: "og:description", content: "Cadastro e ficha dos animais da fazenda." },
       { name: "robots", content: "noindex" },
     ],
