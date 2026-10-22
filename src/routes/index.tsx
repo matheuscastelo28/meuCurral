@@ -3,12 +3,15 @@ import {
   ArrowRight,
   Baby,
   Beef,
+  CalendarDays,
   Check,
   ClipboardList,
   Lock,
+  Milk,
   Smartphone,
   Syringe,
   ShieldCheck,
+  Wallet,
   Weight,
 } from "lucide-react";
 import { PLANOS } from "@/lib/planos";
@@ -51,6 +54,13 @@ const ETAPAS = [
     titulo: "Acompanhe o resultado",
     texto: "Agenda avisa o que vence, financeiro mostra o que entrou e o que saiu.",
   },
+];
+
+const MODULOS_HERO = [
+  { icon: Beef, rotulo: "Rebanho" },
+  { icon: Milk, rotulo: "Leite" },
+  { icon: Wallet, rotulo: "Financeiro" },
+  { icon: CalendarDays, rotulo: "Agenda" },
 ];
 
 const DIFERENCIAIS = [
@@ -131,26 +141,26 @@ function Landing() {
               </div>
             </div>
 
-            {/* Mockup com um print real do painel — não uma ilustração
-                genérica — dentro de uma moldura de navegador, pra dar peso
-                visual sem inventar uma "demo" que não existe. */}
+            {/* Ilustração com os módulos reais do produto — não um print,
+                não um espaço vazio — pra dar peso visual ao hero sem
+                inventar uma "demo" que não existe. */}
             <div className="relative">
               <div
                 aria-hidden="true"
                 className="absolute -inset-6 -z-10 rounded-[2rem] bg-warning/10 blur-2xl"
               />
-              <div className="overflow-hidden rounded-xl border border-border bg-background shadow-lg">
-                <div className="flex items-center gap-1.5 border-b border-border bg-card px-3 py-2.5">
-                  <span className="size-2.5 rounded-full bg-destructive/40" />
-                  <span className="size-2.5 rounded-full bg-warning/40" />
-                  <span className="size-2.5 rounded-full bg-success/40" />
-                </div>
-                <img
-                  src="/screenshot-inicio.png"
-                  alt="Painel inicial do Curral Online, com o resumo do rebanho e os próximos compromissos"
-                  className="w-full"
-                  loading="lazy"
-                />
+              <div className="grid grid-cols-2 gap-4 rounded-[2rem] border border-border bg-card p-6 shadow-sm sm:p-8">
+                {MODULOS_HERO.map((modulo) => (
+                  <div
+                    key={modulo.rotulo}
+                    className="flex flex-col items-start gap-3 rounded-xl bg-background p-4"
+                  >
+                    <span className="flex size-11 items-center justify-center rounded-lg bg-primary text-primary-foreground">
+                      <modulo.icon className="size-5" aria-hidden="true" />
+                    </span>
+                    <span className="text-sm font-semibold">{modulo.rotulo}</span>
+                  </div>
+                ))}
               </div>
             </div>
           </div>
@@ -205,30 +215,60 @@ function Landing() {
 
       <section className="border-y border-border bg-card">
         <div className="mx-auto max-w-6xl px-5 py-16 sm:py-20">
-          <p className="text-xs font-semibold tracking-[0.18em] text-primary uppercase">
-            Por dentro do sistema
-          </p>
-          <h2 className="mt-3 max-w-md text-2xl sm:text-3xl">
-            Simples de usar, sério no que importa
-          </h2>
-          <span className="mt-2 flex items-center gap-2 text-sm text-muted-foreground">
-            <Beef className="size-4 text-primary" aria-hidden="true" />
-            Bovinos
-            <span className="text-border">·</span>
-            <Weight className="size-4 text-primary" aria-hidden="true" />
-            Ovinos
-          </span>
+          <div className="grid gap-12 lg:grid-cols-[1fr_1.1fr] lg:items-center">
+            <div>
+              <p className="text-xs font-semibold tracking-[0.18em] text-primary uppercase">
+                Por dentro do sistema
+              </p>
+              <h2 className="mt-3 max-w-md text-2xl sm:text-3xl">
+                Simples de usar, sério no que importa
+              </h2>
+              <span className="mt-2 flex items-center gap-2 text-sm text-muted-foreground">
+                <Beef className="size-4 text-primary" aria-hidden="true" />
+                Bovinos
+                <span className="text-border">·</span>
+                <Weight className="size-4 text-primary" aria-hidden="true" />
+                Ovinos
+              </span>
 
-          <div className="mt-8 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            {DIFERENCIAIS.map((item) => (
-              <div key={item.titulo} className="rounded-xl border border-border bg-background p-4">
-                <span className="flex size-9 items-center justify-center rounded-lg bg-primary text-primary-foreground">
-                  <item.icon className="size-4" aria-hidden="true" />
-                </span>
-                <h3 className="mt-3 text-sm font-semibold">{item.titulo}</h3>
-                <p className="mt-1 text-xs text-muted-foreground">{item.texto}</p>
+              <div className="mt-8 grid gap-3 sm:grid-cols-2">
+                {DIFERENCIAIS.map((item) => (
+                  <div
+                    key={item.titulo}
+                    className="rounded-xl border border-border bg-background p-4"
+                  >
+                    <span className="flex size-9 items-center justify-center rounded-lg bg-primary text-primary-foreground">
+                      <item.icon className="size-4" aria-hidden="true" />
+                    </span>
+                    <h3 className="mt-3 text-sm font-semibold">{item.titulo}</h3>
+                    <p className="mt-1 text-xs text-muted-foreground">{item.texto}</p>
+                  </div>
+                ))}
               </div>
-            ))}
+            </div>
+
+            {/* Mockup com um print real do painel — não uma ilustração
+                genérica — dentro de uma moldura de navegador, pra dar peso
+                visual sem inventar uma "demo" que não existe. */}
+            <div className="relative">
+              <div
+                aria-hidden="true"
+                className="absolute -inset-6 -z-10 rounded-[2rem] bg-primary/10 blur-2xl"
+              />
+              <div className="overflow-hidden rounded-xl border border-border bg-background shadow-lg">
+                <div className="flex items-center gap-1.5 border-b border-border bg-card px-3 py-2.5">
+                  <span className="size-2.5 rounded-full bg-destructive/40" />
+                  <span className="size-2.5 rounded-full bg-warning/40" />
+                  <span className="size-2.5 rounded-full bg-success/40" />
+                </div>
+                <img
+                  src="/screenshot-inicio.png"
+                  alt="Painel inicial do Curral Online, com o resumo do rebanho e os próximos compromissos"
+                  className="w-full"
+                  loading="lazy"
+                />
+              </div>
+            </div>
           </div>
         </div>
       </section>
