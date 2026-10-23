@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Coins, Droplet, Milk, Percent, Plus, Tag, Trash2 } from "lucide-react";
+import { Baby, Beef, Coins, Droplet, Milk, Percent, Plus, Skull, Tag, Trash2 } from "lucide-react";
 import { Bar, BarChart, CartesianGrid, XAxis } from "recharts";
 import { toast } from "sonner";
 import { db } from "@/lib/local-db";
@@ -818,7 +818,7 @@ function Leite() {
         )}
       </div>
 
-      <div className="mb-5 grid gap-3 grid-cols-2 sm:grid-cols-3 lg:grid-cols-6">
+      <div className="mb-5 grid gap-3 grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 xl:grid-cols-7">
         <Kpi icon={Milk} rotulo="Leite hoje" valor={`${totalHoje.toLocaleString("pt-BR")} L`} />
         <Kpi
           icon={Droplet}
@@ -844,6 +844,33 @@ function Leite() {
           icon={Milk}
           rotulo="Dias em lactação (média)"
           valor={i ? (i.delMedio !== null ? `${i.delMedio} dias` : "—") : "—"}
+        />
+        <Kpi icon={Beef} rotulo="Total do rebanho" valor={i ? `${i.totalRebanho} cab` : "—"} />
+        <Kpi icon={Baby} rotulo="Total de prenhes" valor={i ? `${i.totalPrenhes} cab` : "—"} />
+        <Kpi
+          icon={Percent}
+          rotulo="Taxa de prenhes / vacas"
+          valor={i ? (i.vacas > 0 ? `${Math.round((i.totalPrenhes / i.vacas) * 100)}%` : "—") : "—"}
+        />
+        <Kpi icon={Baby} rotulo="Partos (últimos 30 dias)" valor={i ? `${i.partos30d} cab` : "—"} />
+        <Kpi
+          icon={Skull}
+          rotulo="Mortes (últimos 30 dias)"
+          valor={i ? `${i.mortes30d} cab` : "—"}
+        />
+        <Kpi
+          icon={Percent}
+          rotulo="Lactantes / rebanho"
+          valor={i ? `${i.lactantesRebanhoPct}%` : "—"}
+        />
+        <Kpi
+          icon={Droplet}
+          rotulo="Total do último controle"
+          valor={
+            i
+              ? `${i.totalUltimoControle.toLocaleString("pt-BR", { maximumFractionDigits: 1 })} L`
+              : "—"
+          }
         />
       </div>
 
