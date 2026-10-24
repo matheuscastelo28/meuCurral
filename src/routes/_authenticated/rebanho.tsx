@@ -169,6 +169,24 @@ function Rebanho() {
   const temOvino = atividades.includes("ovino");
   const soOvino = temOvino && !temBovino;
   const soBovino = temBovino && !temOvino;
+  // Só as espécies marcadas em Configurações aparecem como opção. Na edição,
+  // a espécie atual do animal continua na lista mesmo que tenha sido
+  // desmarcada depois, pra não trocar a espécie de ninguém sem querer.
+  const especiesPermitidas: Especie[] = soOvino
+    ? ["ovino"]
+    : soBovino
+      ? ["bovino"]
+      : ["bovino", "ovino"];
+  function opcoesEspecie(atual: Especie) {
+    const lista = especiesPermitidas.includes(atual)
+      ? especiesPermitidas
+      : [...especiesPermitidas, atual];
+    return lista.map((e) => (
+      <option key={e} value={e}>
+        {e === "bovino" ? "Bovino" : "Ovino"}
+      </option>
+    ));
+  }
   const racasAtual = soOvino
     ? RACAS_OVINO
     : soBovino
@@ -623,19 +641,21 @@ function Rebanho() {
             aria-label="Buscar animal"
           />
         </div>
-        <select
-          aria-label="Filtrar por espécie"
-          value={filtroEspecie}
-          onChange={(e) => {
-            setFiltroEspecie(e.target.value as typeof filtroEspecie);
-            setFiltroCategoria("todas");
-          }}
-          className="h-9 rounded-md border border-input bg-background px-2.5 text-sm"
-        >
-          <option value="todas">Todas as espécies</option>
-          <option value="bovino">Bovino</option>
-          <option value="ovino">Ovino</option>
-        </select>
+        {especiesPermitidas.length > 1 ? (
+          <select
+            aria-label="Filtrar por espécie"
+            value={filtroEspecie}
+            onChange={(e) => {
+              setFiltroEspecie(e.target.value as typeof filtroEspecie);
+              setFiltroCategoria("todas");
+            }}
+            className="h-9 rounded-md border border-input bg-background px-2.5 text-sm"
+          >
+            <option value="todas">Todas as espécies</option>
+            <option value="bovino">Bovino</option>
+            <option value="ovino">Ovino</option>
+          </select>
+        ) : null}
         <select
           aria-label="Filtrar por categoria"
           value={filtroCategoria}
@@ -814,8 +834,7 @@ function Rebanho() {
                   onChange={(e) => selecionarEspecie(e.target.value as Especie)}
                   className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
                 >
-                  <option value="bovino">Bovino</option>
-                  <option value="ovino">Ovino</option>
+                  {opcoesEspecie(especie)}
                 </select>
               </div>
               <div className="space-y-1.5">
@@ -924,8 +943,7 @@ function Rebanho() {
                       onChange={(e) => selecionarEspecie(e.target.value as Especie)}
                       className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
                     >
-                      <option value="bovino">Bovino</option>
-                      <option value="ovino">Ovino</option>
+                      {opcoesEspecie(especie)}
                     </select>
                   </div>
                   <div className="space-y-1.5">
@@ -1181,8 +1199,7 @@ function Rebanho() {
                       }}
                       className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
                     >
-                      <option value="bovino">Bovino</option>
-                      <option value="ovino">Ovino</option>
+                      {opcoesEspecie(entradaAtual.especie)}
                     </select>
                   </div>
                 </div>
