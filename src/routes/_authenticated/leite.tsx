@@ -1408,11 +1408,10 @@ function Leite() {
             ) : (
               <Button
                 type="button"
-                variant="outline"
-                size="sm"
-                className="mt-3"
+                className="mt-3 w-full sm:w-auto"
                 onClick={() => setMostrarFormVenda(true)}
               >
+                <Coins className="size-4" aria-hidden="true" />
                 Registrar venda
               </Button>
             )}

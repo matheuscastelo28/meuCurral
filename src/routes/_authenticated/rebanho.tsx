@@ -243,6 +243,7 @@ function Rebanho() {
   );
   const [filtroSituacao, setFiltroSituacao] = useState<"todas" | (typeof STATUS)[number]>("todas");
   const [filtroSexo, setFiltroSexo] = useState<"todos" | (typeof SEXOS)[number]>("todos");
+  const [filtroSaida, setFiltroSaida] = useState<"todas" | "vendido" | "morto">("todas");
 
   // Categoria é o sinal mais confiável de espécie pra animal cadastrado
   // antes do campo Espécie existir no formulário — mesma lógica de
@@ -269,14 +270,20 @@ function Rebanho() {
     filtroEspecie !== "todas" ||
     filtroCategoria !== "todas" ||
     filtroSituacao !== "todas" ||
-    filtroSexo !== "todos";
+    filtroSexo !== "todos" ||
+    (abaRebanho === "vendido" && filtroSaida !== "todas");
 
   const lista = useMemo(() => {
     const termo = busca.trim().toLowerCase();
     return porAba[abaRebanho].filter((a) => {
       if (filtroEspecie !== "todas" && especieDoAnimal(a) !== filtroEspecie) return false;
       if (filtroCategoria !== "todas" && a.categoria !== filtroCategoria) return false;
-      if (filtroSituacao !== "todas" && a.status !== filtroSituacao) return false;
+      if (abaRebanho === "ativo" && filtroSituacao !== "todas" && a.status !== filtroSituacao) {
+        return false;
+      }
+      if (abaRebanho === "vendido" && filtroSaida !== "todas" && a.status !== filtroSaida) {
+        return false;
+      }
       if (filtroSexo !== "todos" && a.sexo !== filtroSexo) return false;
       if (!termo) return true;
       return (
@@ -285,7 +292,16 @@ function Rebanho() {
         (a.lote ?? "").toLowerCase().includes(termo)
       );
     });
-  }, [porAba, abaRebanho, busca, filtroEspecie, filtroCategoria, filtroSituacao, filtroSexo]);
+  }, [
+    porAba,
+    abaRebanho,
+    busca,
+    filtroEspecie,
+    filtroCategoria,
+    filtroSituacao,
+    filtroSexo,
+    filtroSaida,
+  ]);
 
   // Permite abrir a edição direto de outra tela (ex: "Editar dados do
   // animal" na ficha) navegando para /rebanho?editar=<id>.
@@ -647,7 +663,18 @@ function Rebanho() {
               </option>
             ))}
           </select>
-        ) : null}
+        ) : (
+          <select
+            aria-label="Filtrar saídas"
+            value={filtroSaida}
+            onChange={(e) => setFiltroSaida(e.target.value as typeof filtroSaida)}
+            className="h-9 rounded-md border border-input bg-background px-2.5 text-sm"
+          >
+            <option value="todas">Todas as saídas</option>
+            <option value="vendido">Vendidos</option>
+            <option value="morto">Mortos</option>
+          </select>
+        )}
         <select
           aria-label="Filtrar por sexo"
           value={filtroSexo}
@@ -669,6 +696,7 @@ function Rebanho() {
               setFiltroCategoria("todas");
               setFiltroSituacao("todas");
               setFiltroSexo("todos");
+              setFiltroSaida("todas");
             }}
             className="text-xs font-medium text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
           >
@@ -712,7 +740,13 @@ function Rebanho() {
                     {rotuloCategoria(a.categoria)}
                   </p>
                 </div>
-                <span className="shrink-0 rounded-full bg-accent px-2.5 py-1 text-[11px] font-semibold text-primary">
+                <span
+                  className={
+                    a.status === "morto"
+                      ? "shrink-0 rounded-full bg-destructive/15 px-2.5 py-1 text-[11px] font-semibold text-destructive"
+                      : "shrink-0 rounded-full bg-accent px-2.5 py-1 text-[11px] font-semibold text-primary"
+                  }
+                >
                   {rotuloStatus(a.status)}
                 </span>
               </div>
