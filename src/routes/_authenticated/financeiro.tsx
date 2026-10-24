@@ -45,6 +45,8 @@ import {
   type StatusParcela,
 } from "@/lib/parcelamento";
 import { cn } from "@/lib/utils";
+import { Cell, Pie, PieChart } from "recharts";
+import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart";
 
 export const Route = createFileRoute("/_authenticated/financeiro")({
   head: () => ({
@@ -63,6 +65,17 @@ export const Route = createFileRoute("/_authenticated/financeiro")({
   },
   component: Financeiro,
 });
+
+const SLOT_CATEGORIA: Record<string, number> = {
+  racao: 1,
+  sanidade: 2,
+  compra: 3,
+  mao_de_obra: 4,
+  manutencao: 5,
+  energia: 6,
+  impostos: 7,
+  outro: 8,
+};
 
 const FORMAS_PAGAMENTO: Record<string, string> = {
   dinheiro: "Dinheiro",
@@ -330,8 +343,21 @@ function Financeiro() {
       const chave = c.categoria || "";
       mapa.set(chave, (mapa.get(chave) ?? 0) + pago);
     }
-    return Array.from(mapa.entries())
-      .map(([cat, valor]) => ({ cat, valor }))
+    // Cor presa à categoria (não à posição): filtrar ou mudar valores nunca
+    // troca a cor de uma categoria. "Outro", sem categoria e qualquer
+    // categoria antiga caem juntos no último slot.
+    const agrupado = new Map<string, number>();
+    for (const [cat, valor] of mapa) {
+      const chave = SLOT_CATEGORIA[cat] ? cat : "outro";
+      agrupado.set(chave, (agrupado.get(chave) ?? 0) + valor);
+    }
+    return Array.from(agrupado.entries())
+      .map(([cat, valor]) => ({
+        cat,
+        valor,
+        rotulo: cat === "outro" ? "Outros / sem categoria" : rotuloCategoriaFinanceira(cat),
+        cor: `var(--serie-${SLOT_CATEGORIA[cat]})`,
+      }))
       .filter((x) => x.valor > 0)
       .sort((a, b) => b.valor - a.valor);
   }, [lancamentos.data, contasComDados]);
@@ -556,33 +582,101 @@ function Financeiro() {
       </div>
 
       {despesasPorCategoria.length > 0 ? (
-        <section className="mb-5 rounded-xl border border-border bg-card p-4">
-          <h2 className="text-base font-semibold">Para onde foi o dinheiro</h2>
-          <p className="text-xs text-muted-foreground">Despesas já pagas, por categoria.</p>
-          <ul className="mt-3 space-y-2.5">
-            {despesasPorCategoria.map(({ cat, valor }) => (
-              <li key={cat || "sem"}>
-                <div className="flex justify-between gap-3 text-sm">
-                  <span>{rotuloCategoriaFinanceira(cat || null)}</span>
-                  <span className="font-semibold">
-                    {moeda(valor)}
-                    <span className="ml-1.5 text-xs font-normal text-muted-foreground">
-                      {despesasUnificado > 0 ? Math.round((valor / despesasUnificado) * 100) : 0}%
+        <div className="mb-5 grid gap-4 md:grid-cols-2">
+          <section className="rounded-xl border border-border bg-card p-4">
+            <h2 className="text-base font-semibold">Para onde foi o dinheiro</h2>
+            <p className="text-xs text-muted-foreground">Despesas já pagas, por categoria.</p>
+            <ul className="mt-3 space-y-2.5">
+              {despesasPorCategoria.map(({ cat, valor, rotulo, cor }) => (
+                <li key={cat}>
+                  <div className="flex justify-between gap-3 text-sm">
+                    <span className="flex min-w-0 items-center gap-2">
+                      <span
+                        aria-hidden="true"
+                        className="size-2.5 shrink-0 rounded-full"
+                        style={{ background: cor }}
+                      />
+                      <span className="truncate">{rotulo}</span>
                     </span>
-                  </span>
-                </div>
-                <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-muted">
-                  <div
-                    className="h-full bg-destructive/70"
-                    style={{
-                      width: `${despesasUnificado > 0 ? (valor / despesasUnificado) * 100 : 0}%`,
-                    }}
+                    <span className="shrink-0 font-semibold tabular-nums">
+                      {moeda(valor)}
+                      <span className="ml-1.5 text-xs font-normal text-muted-foreground">
+                        {despesasUnificado > 0 ? Math.round((valor / despesasUnificado) * 100) : 0}%
+                      </span>
+                    </span>
+                  </div>
+                  <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-muted">
+                    <div
+                      className="h-full rounded-full"
+                      style={{
+                        background: cor,
+                        width: `${despesasUnificado > 0 ? (valor / despesasUnificado) * 100 : 0}%`,
+                      }}
+                    />
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </section>
+
+          <section className="flex flex-col rounded-xl border border-border bg-card p-4">
+            <h2 className="text-base font-semibold">Despesas por categoria</h2>
+            <p className="text-xs text-muted-foreground">Fatia de cada categoria no total pago.</p>
+            <div className="relative mx-auto mt-2 w-full max-w-[260px] flex-1">
+              <ChartContainer
+                config={Object.fromEntries(
+                  despesasPorCategoria.map((d) => [d.cat, { label: d.rotulo, color: d.cor }]),
+                )}
+                className="aspect-square w-full"
+              >
+                <PieChart>
+                  <ChartTooltip
+                    content={
+                      <ChartTooltipContent
+                        nameKey="cat"
+                        hideLabel
+                        formatter={(valor, _nome, item) => (
+                          <span className="flex w-full items-center justify-between gap-3">
+                            <span className="flex items-center gap-1.5">
+                              <span
+                                className="size-2 rounded-full"
+                                style={{ background: item.payload.cor }}
+                              />
+                              {item.payload.rotulo}
+                            </span>
+                            <span className="font-semibold tabular-nums">
+                              {moeda(Number(valor))}
+                            </span>
+                          </span>
+                        )}
+                      />
+                    }
                   />
-                </div>
-              </li>
-            ))}
-          </ul>
-        </section>
+                  <Pie
+                    data={despesasPorCategoria}
+                    dataKey="valor"
+                    nameKey="cat"
+                    innerRadius="62%"
+                    outerRadius="95%"
+                    stroke="var(--card)"
+                    strokeWidth={2}
+                    isAnimationActive={false}
+                  >
+                    {despesasPorCategoria.map((d) => (
+                      <Cell key={d.cat} fill={d.cor} />
+                    ))}
+                  </Pie>
+                </PieChart>
+              </ChartContainer>
+              <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
+                <span className="text-xs text-muted-foreground">Total pago</span>
+                <span className="font-display text-lg font-extrabold tabular-nums">
+                  {moeda(despesasUnificado)}
+                </span>
+              </div>
+            </div>
+          </section>
+        </div>
       ) : null}
 
       {selecionados.size > 0 ? (

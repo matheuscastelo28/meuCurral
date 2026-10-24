@@ -91,6 +91,15 @@
   --chart-3: oklch(0.68 0.13 92);
   --chart-4: oklch(0.58 0.13 62);
   --chart-5: oklch(0.42 0.08 200);
+  /* Categorias de gráfico (ordem fixa; validadas p/ daltonismo). */
+  --serie-1: #2a78d6;
+  --serie-2: #eb6834;
+  --serie-3: #1baf7a;
+  --serie-4: #eda100;
+  --serie-5: #e87ba4;
+  --serie-6: #008300;
+  --serie-7: #6250d6;
+  --serie-8: #e34948;
   --sidebar: oklch(0.985 0.006 120);
   --sidebar-foreground: oklch(0.24 0.028 160);
   --sidebar-primary: oklch(0.48 0.115 152);
@@ -131,6 +140,14 @@
   --chart-3: oklch(0.78 0.13 92);
   --chart-4: oklch(0.7 0.13 62);
   --chart-5: oklch(0.6 0.08 200);
+  --serie-1: #3987e5;
+  --serie-2: #d95926;
+  --serie-3: #199e70;
+  --serie-4: #c98500;
+  --serie-5: #d55181;
+  --serie-6: #008300;
+  --serie-7: #9085e9;
+  --serie-8: #e66767;
   --sidebar: oklch(0.24 0.035 165);
   --sidebar-foreground: oklch(0.97 0.008 150);
   --sidebar-primary: oklch(0.68 0.14 152);
