@@ -276,13 +276,20 @@ function Rebanho() {
   const categoriasParaFiltro =
     filtroEspecie === "todas" ? categoriasAtual : categoriasDaEspecie(filtroEspecie);
 
-  const porAba = useMemo(
-    () => ({
-      ativo: (animais.data ?? []).filter((a) => a.status !== "vendido" && a.status !== "morto"),
-      vendido: (animais.data ?? []).filter((a) => a.status === "vendido" || a.status === "morto"),
-    }),
-    [animais.data],
-  );
+  // Espécie desmarcada em Configurações some da lista (os dados continuam
+  // guardados e voltam a aparecer se a atividade for marcada de novo).
+  const porAba = useMemo(() => {
+    const visiveis = (animais.data ?? []).filter((a) =>
+      especiesPermitidas.includes(especieDoAnimal(a)),
+    );
+    return {
+      ativo: visiveis.filter((a) => a.status !== "vendido" && a.status !== "morto"),
+      vendido: visiveis.filter((a) => a.status === "vendido" || a.status === "morto"),
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [animais.data, especiesPermitidas.join(",")]);
+  const ocultosPorEspecie =
+    (animais.data ?? []).length - porAba.ativo.length - porAba.vendido.length;
 
   const filtroAtivo =
     filtroEspecie !== "todas" ||
@@ -626,6 +633,14 @@ function Rebanho() {
           <TabsTrigger value="vendido">Saídas ({porAba.vendido.length})</TabsTrigger>
         </TabsList>
       </Tabs>
+
+      {ocultosPorEspecie > 0 ? (
+        <p className="mb-4 rounded-lg bg-muted px-3 py-2 text-xs text-muted-foreground">
+          {ocultosPorEspecie} {especiesPermitidas.includes("ovino") ? "bovino" : "ovino"}
+          {ocultosPorEspecie === 1 ? " não aparece" : "s não aparecem"} aqui porque essa atividade
+          está desmarcada em Configurações. Os dados continuam guardados.
+        </p>
+      ) : null}
 
       <div className="mb-4 flex flex-wrap items-center gap-2">
         <div className="relative max-w-sm flex-1">
