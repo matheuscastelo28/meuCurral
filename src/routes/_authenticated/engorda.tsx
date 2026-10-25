@@ -1,4 +1,4 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -606,6 +606,14 @@ function Engorda() {
     <AppShell
       titulo="Confinamento"
       descricao="Peso, ganho médio diário, custo e venda do lote em confinamento."
+      acao={
+        <Button asChild>
+          <Link to="/pesagem">
+            <Scale className="size-4" aria-hidden="true" />
+            Pesagem rápida
+          </Link>
+        </Button>
+      }
     >
       {ambasAtividades ? (
         <div className="mb-4 inline-flex rounded-lg bg-muted p-1">

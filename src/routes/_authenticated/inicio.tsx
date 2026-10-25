@@ -203,7 +203,7 @@ function Inicio() {
               </Button>
             )}
             <Button variant="outline" size="sm" asChild>
-              <Link to="/engorda">
+              <Link to="/pesagem">
                 <Weight className="size-4" aria-hidden="true" />
                 Registrar pesagem
               </Link>
