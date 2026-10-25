@@ -15,7 +15,7 @@ import {
 } from "@/components/ui/dialog";
 import { useFazenda } from "@/hooks/use-fazenda";
 import { dataCurta, hojeISO } from "@/lib/formato";
-import { especieDaCategoria } from "@/lib/especies";
+import { especieDaCategoria, especieDoAnimal, especiesDasAtividades } from "@/lib/especies";
 import { textoLote } from "@/lib/rotulos";
 
 const TIPOS = [
@@ -74,16 +74,20 @@ export function DialogManejoSanitario({
   }, [aberto, animalIdInicial]);
 
   const animais = useQuery({
-    queryKey: ["animais-sanidade", fazenda?.id],
+    queryKey: ["animais-sanidade", fazenda?.id, fazenda?.atividades?.join(",")],
     enabled: !!fazenda?.id && aberto,
     queryFn: async () => {
       const { data: linhas, error } = await db
         .from("animais")
-        .select("id, nome, brinco, lote, categoria, status")
+        .select("id, nome, brinco, lote, categoria, especie, status")
         .eq("fazenda_id", fazenda!.id)
         .order("nome");
       if (error) throw error;
-      return (linhas ?? []).filter((a) => a.status !== "vendido" && a.status !== "morto");
+      const permitidas = especiesDasAtividades(fazenda?.atividades);
+      return (linhas ?? []).filter(
+        (a) =>
+          a.status !== "vendido" && a.status !== "morto" && permitidas.includes(especieDoAnimal(a)),
+      );
     },
   });
 

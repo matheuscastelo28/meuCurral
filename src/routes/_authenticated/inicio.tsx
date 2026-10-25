@@ -21,7 +21,7 @@ import { Button } from "@/components/ui/button";
 import { useFazenda } from "@/hooks/use-fazenda";
 import { dataCurta, diasAtrasISO, hojeISO, moeda as formatarMoeda } from "@/lib/formato";
 import { rotuloCategoria } from "@/lib/rotulos";
-import { especieDaCategoria } from "@/lib/especies";
+import { especieDoAnimal, especiesDasAtividades } from "@/lib/especies";
 import { usePreferencias } from "@/hooks/use-preferencias";
 import { useResumoFinanceiro } from "@/hooks/use-resumo-financeiro";
 
@@ -62,7 +62,7 @@ function Inicio() {
       // Duas consultas separadas: com uma só (limitada), muita coisa
       // atrasada empurrava os próximos compromissos pra fora da lista.
       const [animais, atrasados, proximos, leite] = await Promise.all([
-        db.from("animais").select("id, categoria, status").eq("fazenda_id", fazendaId!),
+        db.from("animais").select("id, categoria, especie, status").eq("fazenda_id", fazendaId!),
         pendentes().lte("data", diasAtrasISO(1)).order("data").limit(8),
         pendentes().gte("data", hoje).order("data").limit(5),
         db
@@ -102,17 +102,19 @@ function Inicio() {
     onError: () => toast.error("Não conseguimos atualizar agora."),
   });
 
-  const animais = resumo.data?.animais ?? [];
+  // Só as espécies marcadas em Configurações entram nos números daqui.
+  const especiesPermitidas = especiesDasAtividades(fazenda?.atividades);
+  const animais = (resumo.data?.animais ?? []).filter((a) =>
+    especiesPermitidas.includes(especieDoAnimal(a)),
+  );
   // Vendido/morto não contam no rebanho ativo — mesmo critério de
   // use-fazenda.ts e use-indices-rebanho.ts, só que este resumo ainda não
   // seguia essa regra.
   const animaisAtivos = animais.filter((a) => a.status !== "vendido" && a.status !== "morto");
   const ambasAtividades =
     !!fazenda?.atividades?.includes("ovino") && !!fazenda.atividades.includes("bovino");
-  const qtdBovinos = animaisAtivos.filter(
-    (a) => especieDaCategoria(a.categoria) === "bovino",
-  ).length;
-  const qtdOvinos = animaisAtivos.filter((a) => especieDaCategoria(a.categoria) === "ovino").length;
+  const qtdBovinos = animaisAtivos.filter((a) => especieDoAnimal(a) === "bovino").length;
+  const qtdOvinos = animaisAtivos.filter((a) => especieDoAnimal(a) === "ovino").length;
   const porCategoria = animaisAtivos.reduce<Record<string, number>>((acc, a) => {
     acc[a.categoria] = (acc[a.categoria] ?? 0) + 1;
     return acc;

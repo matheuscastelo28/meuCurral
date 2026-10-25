@@ -46,3 +46,23 @@ export function especieDaCategoria(categoria: string | null | undefined): Especi
   if ((CATEGORIAS_OVINO as readonly string[]).includes(categoria)) return "ovino";
   return null;
 }
+
+/**
+ * Espécie de um animal já cadastrado: a categoria é o sinal mais confiável
+ * (animais antigos não tinham o campo espécie preenchido); "outro" cai no
+ * campo espécie gravado.
+ */
+export function especieDoAnimal(a: {
+  categoria?: string | null;
+  especie?: string | null;
+}): Especie {
+  return especieDaCategoria(a.categoria) ?? (a.especie === "ovino" ? "ovino" : "bovino");
+}
+
+/** Espécies marcadas em Configurações (sem nenhuma marcada, vale bovino). */
+export function especiesDasAtividades(atividades: readonly string[] | null | undefined): Especie[] {
+  const lista: Especie[] = [];
+  if (atividades?.includes("bovino")) lista.push("bovino");
+  if (atividades?.includes("ovino")) lista.push("ovino");
+  return lista.length > 0 ? lista : ["bovino"];
+}

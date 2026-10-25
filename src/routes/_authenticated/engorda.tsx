@@ -55,7 +55,7 @@ import {
 } from "@/lib/formato";
 import { usePreferencias } from "@/hooks/use-preferencias";
 import { encontrarPrecoVigente } from "@/lib/precos-produto";
-import { CATEGORIAS_BOVINO, CATEGORIAS_OVINO, especieDaCategoria } from "@/lib/especies";
+import { CATEGORIAS_BOVINO, CATEGORIAS_OVINO, especieDoAnimal } from "@/lib/especies";
 import { textoLote } from "@/lib/rotulos";
 import { cn } from "@/lib/utils";
 
@@ -118,7 +118,7 @@ function Engorda() {
   const indicesEngorda = useIndicesEngorda(
     fazenda?.id,
     kgPorUnidade,
-    ambasAtividades ? (soOvino ? CATEGORIAS_OVINO : CATEGORIAS_BOVINO) : undefined,
+    soOvino ? CATEGORIAS_OVINO : CATEGORIAS_BOVINO,
   );
   const moeda = (v: number | null | undefined) => formatarMoeda(v, prefs.moeda);
   const hoje = hojeISO();
@@ -135,7 +135,7 @@ function Engorda() {
     queryFn: async () => {
       const { data, error } = await db
         .from("animais")
-        .select("id, nome, brinco, peso_kg, lote, categoria")
+        .select("id, nome, brinco, peso_kg, lote, categoria, especie")
         .eq("fazenda_id", fazenda!.id)
         .eq("status", "engorda")
         .order("nome");
@@ -146,11 +146,13 @@ function Engorda() {
 
   // Só filtra por espécie quando as duas atividades estão ativas — fazenda
   // de uma atividade só continua vendo tudo, sem filtro extra nenhum.
-  const animaisFiltrados = useMemo(() => {
-    const lista = animais.data ?? [];
-    if (!ambasAtividades) return lista;
-    return lista.filter((a) => especieDaCategoria(a.categoria) === visaoEspecie);
-  }, [animais.data, ambasAtividades, visaoEspecie]);
+  // Sempre só a espécie em vista: com as duas atividades é a escolhida no
+  // alternador; com uma só, é a marcada em Configurações (a outra some).
+  const especieVisivel = soOvino ? "ovino" : "bovino";
+  const animaisFiltrados = useMemo(
+    () => (animais.data ?? []).filter((a) => especieDoAnimal(a) === especieVisivel),
+    [animais.data, especieVisivel],
+  );
 
   const pesagens = useQuery({
     queryKey: ["pesagens-engorda", fazenda?.id],

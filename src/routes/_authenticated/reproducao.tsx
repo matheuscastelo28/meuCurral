@@ -21,7 +21,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { useFazenda } from "@/hooks/use-fazenda";
 import { dataCurta, dataISO, diasAtrasISO, hojeISO, idadeTexto } from "@/lib/formato";
-import { especieDaCategoria } from "@/lib/especies";
+import { especieDaCategoria, especieDoAnimal } from "@/lib/especies";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/_authenticated/reproducao")({
@@ -86,6 +86,8 @@ function Reproducao() {
   const ambasAtividades = temBovino && temOvino;
   const [visaoEspecie, setVisaoEspecie] = useState<"bovino" | "ovino">("bovino");
   const soOvino = ambasAtividades ? visaoEspecie === "ovino" : temOvino && !temBovino;
+  // Com uma atividade só, a outra espécie some daqui também.
+  const especieVisivel = soOvino ? "ovino" : "bovino";
   const categoriaReprodutor = soOvino ? "carneiro" : "touro";
   const rotuloReprodutor = soOvino ? "Carneiro" : "Touro";
   const diasGestacao = soOvino ? DIAS_GESTACAO_OVINO : DIAS_GESTACAO_BOVINO;
@@ -117,7 +119,7 @@ function Reproducao() {
     queryFn: async () => {
       const { data, error } = await db
         .from("animais")
-        .select("id, nome, brinco, categoria, nascimento, mae, pai, sexo, status")
+        .select("id, nome, brinco, categoria, especie, nascimento, mae, pai, sexo, status")
         .eq("fazenda_id", fazenda!.id)
         .order("nome");
       if (error) throw error;
@@ -131,7 +133,7 @@ function Reproducao() {
   // entram em cobertura, diagnóstico, parto etc.
   const animaisParaSelecao = (animais.data ?? [])
     .filter((a) => a.status !== "vendido" && a.status !== "morto")
-    .filter((a) => !ambasAtividades || especieDaCategoria(a.categoria) === visaoEspecie)
+    .filter((a) => especieDoAnimal(a) === especieVisivel)
     .filter((a) => !TIPOS_SEM_TOURO_NO_ANIMAL.has(tipo) || a.categoria !== categoriaReprodutor)
     .filter((a) =>
       tipo === "diagnostico" || TIPOS_SEM_TOURO_NO_ANIMAL.has(tipo)
@@ -184,10 +186,9 @@ function Reproducao() {
   // Registro sem animal vinculado (ex: diagnóstico avulso) não some — só
   // filtra quem tem como saber a espécie e ela não bate com a visão atual.
   const registrosFiltrados = (registros.data ?? []).filter((r) => {
-    if (!ambasAtividades) return true;
     const categoria = (r as { animais?: { categoria?: string } | null }).animais?.categoria;
     const especie = especieDaCategoria(categoria);
-    return especie === null || especie === visaoEspecie;
+    return especie === null || especie === especieVisivel;
   });
 
   // Situação reprodutiva de cada fêmea a partir do histórico: o último
