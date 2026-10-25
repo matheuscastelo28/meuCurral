@@ -6,14 +6,6 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
 import { useFazenda } from "@/hooks/use-fazenda";
 import { dataCurta, dataISO, hojeISO } from "@/lib/formato";
 import { especieDoAnimal, especiesDasAtividades, type Especie } from "@/lib/especies";
@@ -106,7 +98,12 @@ interface Compromisso {
   tipo: string;
 }
 
-export function DialogCalendarioSanitario({
+/**
+ * Aba "Planejar" do diálogo de vacinas: o produtor marca os modelos e o
+ * sistema cria os lembretes na Agenda. Ao concluir um lembrete, o mesmo
+ * diálogo abre na aba "Registrar aplicação" já preenchido.
+ */
+export function PlanejamentoSanitario({
   aberto,
   onFechar,
 }: {
@@ -285,98 +282,92 @@ export function DialogCalendarioSanitario({
   const porModelo = (id: ModeloId) => compromissos.filter((c) => c.modelo === id);
 
   return (
-    <Dialog open={aberto} onOpenChange={(v) => !v && onFechar()}>
-      <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-xl">
-        <DialogHeader>
-          <DialogTitle>Calendário sanitário</DialogTitle>
-          <DialogDescription>
-            Marque as vacinas da sua fazenda e o sistema coloca as datas na Agenda. Exigências mudam
-            de estado para estado — confirme com seu veterinário.
-          </DialogDescription>
-        </DialogHeader>
-
-        <ul className="space-y-3">
-          {modelosDaFazenda.map((m) => {
-            const itens = porModelo(m.id);
-            return (
-              <li key={m.id} className="rounded-lg border border-border p-3">
-                <label className="flex items-start gap-3">
-                  <Checkbox
-                    className="mt-0.5"
-                    checked={marcados[m.id]}
-                    onCheckedChange={(v) => setMarcados((s) => ({ ...s, [m.id]: v === true }))}
-                    aria-label={m.titulo}
+    <div className="space-y-4">
+      <p className="text-sm text-muted-foreground">
+        Marque as vacinas da fazenda e o sistema coloca as datas na Agenda. Exigências mudam de
+        estado para estado — confirme com seu veterinário.
+      </p>
+      <ul className="space-y-3">
+        {modelosDaFazenda.map((m) => {
+          const itens = porModelo(m.id);
+          return (
+            <li key={m.id} className="rounded-lg border border-border p-3">
+              <label className="flex items-start gap-3">
+                <Checkbox
+                  className="mt-0.5"
+                  checked={marcados[m.id]}
+                  onCheckedChange={(v) => setMarcados((s) => ({ ...s, [m.id]: v === true }))}
+                  aria-label={m.titulo}
+                />
+                <span className="min-w-0">
+                  <span className="block text-sm font-semibold">{m.titulo}</span>
+                  <span className="block text-xs text-muted-foreground">{m.resumo}</span>
+                </span>
+              </label>
+              {m.aviso ? (
+                <p className="mt-2 rounded-md bg-warning/10 px-2 py-1.5 text-xs text-warning">
+                  {m.aviso}
+                </p>
+              ) : null}
+              {marcados[m.id] && (m.id === "raiva" || m.id === "clostridioses") ? (
+                <div className="mt-2 flex items-center gap-2 pl-7">
+                  <Label htmlFor={`cs-${m.id}`} className="text-xs">
+                    Próxima aplicação
+                  </Label>
+                  <Input
+                    id={`cs-${m.id}`}
+                    type="date"
+                    min={hoje}
+                    className="h-8 w-auto text-xs"
+                    value={m.id === "raiva" ? dataRaiva : dataClostridioses}
+                    onChange={(e) =>
+                      m.id === "raiva"
+                        ? setDataRaiva(e.target.value)
+                        : setDataClostridioses(e.target.value)
+                    }
                   />
-                  <span className="min-w-0">
-                    <span className="block text-sm font-semibold">{m.titulo}</span>
-                    <span className="block text-xs text-muted-foreground">{m.resumo}</span>
-                  </span>
-                </label>
-                {m.aviso ? (
-                  <p className="mt-2 rounded-md bg-warning/10 px-2 py-1.5 text-xs text-warning">
-                    {m.aviso}
-                  </p>
-                ) : null}
-                {marcados[m.id] && (m.id === "raiva" || m.id === "clostridioses") ? (
-                  <div className="mt-2 flex items-center gap-2 pl-7">
-                    <Label htmlFor={`cs-${m.id}`} className="text-xs">
-                      Próxima aplicação
-                    </Label>
-                    <Input
-                      id={`cs-${m.id}`}
-                      type="date"
-                      min={hoje}
-                      className="h-8 w-auto text-xs"
-                      value={m.id === "raiva" ? dataRaiva : dataClostridioses}
-                      onChange={(e) =>
-                        m.id === "raiva"
-                          ? setDataRaiva(e.target.value)
-                          : setDataClostridioses(e.target.value)
-                      }
-                    />
-                  </div>
-                ) : null}
-                {marcados[m.id] ? (
-                  <p className="mt-2 pl-7 text-xs text-muted-foreground">
-                    {itens.length === 0
-                      ? m.id === "brucelose"
-                        ? "Nenhuma bezerra para vacinar agora."
-                        : "Já está na Agenda."
-                      : m.id === "brucelose"
-                        ? `${itens.length} ${itens.length === 1 ? "bezerra" : "bezerras"}: ${itens
-                            .slice(0, 3)
-                            .map((c) => `${c.titulo.split("— ")[1]} em ${dataCurta(c.data)}`)
-                            .join("; ")}${itens.length > 3 ? "…" : ""}`
-                        : `Em ${itens.map((c) => dataCurta(c.data)).join(", ")}`}
-                    {m.id === "brucelose" && semNascimento > 0
-                      ? ` · ${semNascimento} ${semNascimento === 1 ? "fêmea jovem sem data de nascimento ficou" : "fêmeas jovens sem data de nascimento ficaram"} de fora.`
-                      : ""}
-                  </p>
-                ) : null}
-              </li>
-            );
-          })}
-        </ul>
+                </div>
+              ) : null}
+              {marcados[m.id] ? (
+                <p className="mt-2 pl-7 text-xs text-muted-foreground">
+                  {itens.length === 0
+                    ? m.id === "brucelose"
+                      ? "Nenhuma bezerra para vacinar agora."
+                      : "Já está na Agenda."
+                    : m.id === "brucelose"
+                      ? `${itens.length} ${itens.length === 1 ? "bezerra" : "bezerras"}: ${itens
+                          .slice(0, 3)
+                          .map((c) => `${c.titulo.split("— ")[1]} em ${dataCurta(c.data)}`)
+                          .join("; ")}${itens.length > 3 ? "…" : ""}`
+                      : `Em ${itens.map((c) => dataCurta(c.data)).join(", ")}`}
+                  {m.id === "brucelose" && semNascimento > 0
+                    ? ` · ${semNascimento} ${semNascimento === 1 ? "fêmea jovem sem data de nascimento ficou" : "fêmeas jovens sem data de nascimento ficaram"} de fora.`
+                    : ""}
+                </p>
+              ) : null}
+            </li>
+          );
+        })}
+      </ul>
 
-        <DialogFooter className="items-center gap-2 sm:justify-between">
-          <span className="text-xs text-muted-foreground">
-            {compromissos.length}{" "}
-            {compromissos.length === 1 ? "compromisso novo" : "compromissos novos"}
-          </span>
-          <div className="flex gap-2">
-            <Button variant="outline" type="button" onClick={onFechar}>
-              Cancelar
-            </Button>
-            <Button
-              type="button"
-              onClick={() => criar.mutate()}
-              disabled={criar.isPending || compromissos.length === 0 || dados.isLoading}
-            >
-              {criar.isPending ? "Criando..." : "Criar na Agenda"}
-            </Button>
-          </div>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+      <div className="flex flex-col-reverse items-center gap-2 sm:flex-row sm:justify-between">
+        <span className="text-xs text-muted-foreground">
+          {compromissos.length}{" "}
+          {compromissos.length === 1 ? "compromisso novo" : "compromissos novos"}
+        </span>
+        <div className="flex gap-2">
+          <Button variant="outline" type="button" onClick={onFechar}>
+            Cancelar
+          </Button>
+          <Button
+            type="button"
+            onClick={() => criar.mutate()}
+            disabled={criar.isPending || compromissos.length === 0 || dados.isLoading}
+          >
+            {criar.isPending ? "Criando..." : "Criar na Agenda"}
+          </Button>
+        </div>
+      </div>
+    </div>
   );
 }

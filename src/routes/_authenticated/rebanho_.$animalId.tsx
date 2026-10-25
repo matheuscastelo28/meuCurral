@@ -336,7 +336,7 @@ function Ficha() {
           {a.status !== "vendido" && a.status !== "morto" ? (
             <Button variant="outline" onClick={() => setSanidadeAberto(true)}>
               <Syringe className="size-4" aria-hidden="true" />
-              Vacina / manejo
+              Vacinas e manejo
             </Button>
           ) : null}
           <Button variant="outline" asChild>

@@ -204,7 +204,7 @@ function Rebanho() {
   const navigate = Route.useNavigate();
   const [sanidadeAberto, setSanidadeAberto] = useState(false);
 
-  // Atalho "Vacina / manejo" do Início abre o registro direto aqui.
+  // Atalho "Vacinas e manejo" do Início abre o registro direto aqui.
   useEffect(() => {
     if (!sanidadeNaUrl) return;
     setSanidadeAberto(true);
@@ -610,7 +610,7 @@ function Rebanho() {
         <div className="flex flex-wrap gap-2">
           <Button variant="outline" onClick={() => setSanidadeAberto(true)}>
             <Syringe className="size-4" aria-hidden="true" />
-            Vacina / manejo
+            Vacinas e manejo
           </Button>
           <Button variant="outline" onClick={novoGrupo}>
             <Users className="size-4" aria-hidden="true" />

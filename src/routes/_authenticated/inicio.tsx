@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -23,6 +24,7 @@ import { dataCurta, diasAtrasISO, hojeISO, moeda as formatarMoeda } from "@/lib/
 import { rotuloCategoria } from "@/lib/rotulos";
 import { especieDoAnimal, especiesDasAtividades } from "@/lib/especies";
 import { usePreferencias } from "@/hooks/use-preferencias";
+import { DialogManejoSanitario, type EventoSanitario } from "@/components/DialogManejoSanitario";
 import { useResumoFinanceiro } from "@/hooks/use-resumo-financeiro";
 
 export const Route = createFileRoute("/_authenticated/inicio")({
@@ -46,6 +48,7 @@ function Inicio() {
   const prefs = usePreferencias();
   const moeda = (v: number | null | undefined) => formatarMoeda(v, prefs.moeda);
   const queryClient = useQueryClient();
+  const [cumprindo, setCumprindo] = useState<EventoSanitario | null>(null);
 
   const resumo = useQuery({
     queryKey: ["inicio-resumo", fazendaId],
@@ -55,7 +58,7 @@ function Inicio() {
       const pendentes = () =>
         db
           .from("eventos_agenda")
-          .select("id, titulo, data, tipo, concluido")
+          .select("id, titulo, data, tipo, concluido, animal_id")
           .eq("fazenda_id", fazendaId!)
           .eq("concluido", false)
           .eq("cancelado", false);
@@ -102,6 +105,25 @@ function Inicio() {
     onError: () => toast.error("Não conseguimos atualizar agora."),
   });
 
+  // Vacina/tratamento: concluir abre o registro da aplicação já preenchido.
+  function concluirOuRegistrar(ev: {
+    id: string;
+    titulo: string | null;
+    tipo: string | null;
+    animal_id?: string | null;
+  }) {
+    if (ev.tipo === "vacina" || ev.tipo === "tratamento") {
+      setCumprindo({
+        id: ev.id,
+        titulo: ev.titulo,
+        tipo: ev.tipo,
+        animal_id: ev.animal_id ?? null,
+      });
+      return;
+    }
+    concluirEvento.mutate(ev.id);
+  }
+
   // Só as espécies marcadas em Configurações entram nos números daqui.
   const especiesPermitidas = especiesDasAtividades(fazenda?.atividades);
   const animais = (resumo.data?.animais ?? []).filter((a) =>
@@ -133,6 +155,11 @@ function Inicio() {
         </Button>
       }
     >
+      <DialogManejoSanitario
+        aberto={!!cumprindo}
+        evento={cumprindo}
+        onFechar={() => setCumprindo(null)}
+      />
       {animais.length === 0 && !resumo.isLoading ? (
         <EmptyState
           icon={Beef}
@@ -211,7 +238,7 @@ function Inicio() {
             <Button variant="outline" size="sm" asChild>
               <Link to="/rebanho" search={{ sanidade: true }}>
                 <Syringe className="size-4" aria-hidden="true" />
-                Vacina / manejo
+                Vacinas e manejo
               </Link>
             </Button>
           </div>
@@ -259,7 +286,7 @@ function Inicio() {
                       key={ev.id}
                       ev={ev}
                       atrasado
-                      onConcluir={() => concluirEvento.mutate(ev.id)}
+                      onConcluir={() => concluirOuRegistrar(ev)}
                       concluindo={concluirEvento.isPending}
                     />
                   ))}
@@ -268,7 +295,7 @@ function Inicio() {
                       key={ev.id}
                       ev={ev}
                       atrasado={false}
-                      onConcluir={() => concluirEvento.mutate(ev.id)}
+                      onConcluir={() => concluirOuRegistrar(ev)}
                       concluindo={concluirEvento.isPending}
                     />
                   ))}

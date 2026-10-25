@@ -18,7 +18,7 @@ import {
 import { toast } from "sonner";
 import { db } from "@/lib/local-db";
 import { AppShell } from "@/components/AppShell";
-import { DialogCalendarioSanitario } from "@/components/DialogCalendarioSanitario";
+import { DialogManejoSanitario, type EventoSanitario } from "@/components/DialogManejoSanitario";
 import { EmptyState } from "@/components/EmptyState";
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
@@ -112,6 +112,7 @@ type EventoRow = {
   data: string | Date;
   concluido: boolean | null;
   cancelado: boolean | null;
+  animal_id?: string | null;
 };
 
 type StatusEvento = "feito" | "atrasado" | "cancelado" | "a_fazer";
@@ -242,6 +243,9 @@ function Calendario() {
 
   const [cancelando, setCancelando] = useState<EventoRow | null>(null);
   const [sanitarioAberto, setSanitarioAberto] = useState(false);
+  // Lembrete de vacina/tratamento sendo concluído: abre o registro da
+  // aplicação já preenchido em vez de só riscar o evento.
+  const [cumprindo, setCumprindo] = useState<EventoSanitario | null>(null);
 
   const [filtroMesNum, setFiltroMesNum] = useState(Number(hoje.slice(5, 7)));
   const [filtroAno, setFiltroAno] = useState(Number(hoje.slice(0, 4)));
@@ -503,7 +507,19 @@ function Calendario() {
   });
 
   const acoesEvento = {
-    onConcluir: (id: string) => concluir.mutate({ id, concluido: true }),
+    onConcluir: (id: string) => {
+      const ev = eventos.data?.find((e) => e.id === id);
+      if (ev && (ev.tipo === "vacina" || ev.tipo === "tratamento")) {
+        setCumprindo({
+          id: ev.id,
+          titulo: ev.titulo,
+          tipo: ev.tipo,
+          animal_id: ev.animal_id ?? null,
+        });
+        return;
+      }
+      concluir.mutate({ id, concluido: true });
+    },
     onDesfazerConcluido: (id: string) => concluir.mutate({ id, concluido: false }),
     onRemarcar: remarcarEvento,
     onPedirCancelamento: (e: EventoRow) => setCancelando(e),
@@ -513,12 +529,12 @@ function Calendario() {
   return (
     <AppShell
       titulo="Agenda"
-      descricao="Compromissos da fazenda. Próximas doses de vacina (registradas em Vacina / manejo) e vencimentos do Financeiro entram aqui sozinhos."
+      descricao="Compromissos da fazenda. Vacinas planejadas, próximas doses e vencimentos do Financeiro entram aqui sozinhos. Ao concluir uma vacina, a aplicação já vem preenchida."
       acao={
         <div className="flex flex-wrap gap-2">
           <Button variant="outline" onClick={() => setSanitarioAberto(true)}>
             <Syringe className="size-4" aria-hidden="true" />
-            Calendário sanitário
+            Vacinas e manejo
           </Button>
           <Button onClick={novoEvento}>
             <Plus className="size-4" aria-hidden="true" />
@@ -527,9 +543,14 @@ function Calendario() {
         </div>
       }
     >
-      <DialogCalendarioSanitario
-        aberto={sanitarioAberto}
-        onFechar={() => setSanitarioAberto(false)}
+      <DialogManejoSanitario
+        aberto={sanitarioAberto || !!cumprindo}
+        modoInicial="planejar"
+        evento={cumprindo}
+        onFechar={() => {
+          setSanitarioAberto(false);
+          setCumprindo(null);
+        }}
       />
       <div className="grid gap-4 lg:grid-cols-[22rem_1fr]">
         <div className="rounded-xl border border-border bg-card p-4">
