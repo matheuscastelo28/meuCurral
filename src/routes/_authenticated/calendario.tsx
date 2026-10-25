@@ -11,12 +11,14 @@ import {
   Plus,
   Receipt,
   RotateCcw,
+  Syringe,
   Undo2,
   X,
 } from "lucide-react";
 import { toast } from "sonner";
 import { db } from "@/lib/local-db";
 import { AppShell } from "@/components/AppShell";
+import { DialogCalendarioSanitario } from "@/components/DialogCalendarioSanitario";
 import { EmptyState } from "@/components/EmptyState";
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
@@ -239,6 +241,7 @@ function Calendario() {
   const [descricaoEvento, setDescricaoEvento] = useState("");
 
   const [cancelando, setCancelando] = useState<EventoRow | null>(null);
+  const [sanitarioAberto, setSanitarioAberto] = useState(false);
 
   const [filtroMesNum, setFiltroMesNum] = useState(Number(hoje.slice(5, 7)));
   const [filtroAno, setFiltroAno] = useState(Number(hoje.slice(0, 4)));
@@ -512,12 +515,22 @@ function Calendario() {
       titulo="Agenda"
       descricao="Compromissos da fazenda. Próximas doses de vacina (registradas em Vacina / manejo) e vencimentos do Financeiro entram aqui sozinhos."
       acao={
-        <Button onClick={novoEvento}>
-          <Plus className="size-4" aria-hidden="true" />
-          Novo evento
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          <Button variant="outline" onClick={() => setSanitarioAberto(true)}>
+            <Syringe className="size-4" aria-hidden="true" />
+            Calendário sanitário
+          </Button>
+          <Button onClick={novoEvento}>
+            <Plus className="size-4" aria-hidden="true" />
+            Novo evento
+          </Button>
+        </div>
       }
     >
+      <DialogCalendarioSanitario
+        aberto={sanitarioAberto}
+        onFechar={() => setSanitarioAberto(false)}
+      />
       <div className="grid gap-4 lg:grid-cols-[22rem_1fr]">
         <div className="rounded-xl border border-border bg-card p-4">
           <Calendar
