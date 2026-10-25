@@ -38,11 +38,28 @@ interface AnimalPesagem {
 
 interface Pesado {
   animalId: string;
+  manejoId: string | null;
   nome: string;
   brinco: string | null;
   peso: number;
-  anterior: number | null;
+  data: string;
+  /** Última pesagem antes desta sessão — base do ganho por dia. */
+  anterior: { data: string; valor: number } | null;
   gmd: number | null;
+  corrigido: boolean;
+}
+
+function ganhoPorDia(
+  peso: number,
+  data: string,
+  anterior: { data: string; valor: number } | null,
+): number | null {
+  if (!anterior) return null;
+  const dias = Math.round(
+    (new Date(`${data}T00:00:00Z`).getTime() - new Date(`${anterior.data}T00:00:00Z`).getTime()) /
+      86400000,
+  );
+  return dias > 0 ? (peso - anterior.valor) / dias : null;
 }
 
 /** "0231", " 231 " e "231" são o mesmo brinco. */
@@ -134,8 +151,11 @@ function PesagemRapida() {
   function escolher(a: AnimalPesagem) {
     setAnimal(a);
     setBusca(a.brinco ?? a.nome);
+    const jaPesado = pesados.find((p) => p.animalId === a.id);
     setAviso(
-      pesados.some((p) => p.animalId === a.id) ? "Esse animal já foi pesado nesta sessão." : null,
+      jaPesado
+        ? `Já pesado nesta sessão (${jaPesado.peso.toLocaleString("pt-BR")} kg). Salvar corrige essa pesagem, sem criar outra.`
+        : null,
     );
     setTimeout(() => campoPeso.current?.focus(), 0);
   }
@@ -167,35 +187,65 @@ function PesagemRapida() {
   }
 
   const salvar = useMutation({
-    mutationFn: async () => {
+    mutationFn: async (): Promise<Pesado> => {
       const valor = Number(peso.replace(",", "."));
       if (!animal || !fazenda) throw new Error("Escolha o animal.");
       if (!(valor > 0)) throw new Error("Informe um peso maior que zero.");
+      const daSessao = pesados.find((p) => p.animalId === animal.id);
+
+      // Mesmo animal de novo na sessão: corrige a pesagem já feita em vez
+      // de criar outra (senão o histórico e o GMD ganham um registro falso).
+      if (daSessao?.manejoId) {
+        const { error } = await db
+          .from("manejos")
+          .update({ valor, data } as never)
+          .eq("id", daSessao.manejoId);
+        if (error) throw new Error(error.message);
+        if (!daSessao.anterior || data >= daSessao.anterior.data) {
+          const { error: erroAnimal } = await db
+            .from("animais")
+            .update({ peso_kg: valor } as never)
+            .eq("id", animal.id);
+          if (erroAnimal) throw new Error(erroAnimal.message);
+        }
+        return {
+          ...daSessao,
+          peso: valor,
+          data,
+          gmd: ganhoPorDia(valor, data, daSessao.anterior),
+          corrigido: true,
+        };
+      }
+
       const { error } = await db.engorda.registrarPesagemLote({
         fazendaId: fazenda.id,
         data,
         pesagens: [{ animalId: animal.id, peso: valor }],
       });
       if (error) throw new Error(error.message);
+      const { data: criadas } = await db
+        .from("manejos")
+        .select("id")
+        .eq("animal_id", animal.id)
+        .eq("tipo", "pesagem")
+        .eq("data", data)
+        .order("created_at", { ascending: false })
+        .limit(1);
       const anterior = ultimaPesagem.get(animal.id) ?? null;
-      const dias = anterior
-        ? Math.round(
-            (new Date(`${data}T00:00:00Z`).getTime() -
-              new Date(`${anterior.data}T00:00:00Z`).getTime()) /
-              86400000,
-          )
-        : 0;
       return {
         animalId: animal.id,
+        manejoId: (criadas?.[0]?.id as string | undefined) ?? null,
         nome: animal.nome,
         brinco: animal.brinco,
         peso: valor,
-        anterior: anterior?.valor ?? null,
-        gmd: anterior && dias > 0 ? (valor - anterior.valor) / dias : null,
-      } satisfies Pesado;
+        data,
+        anterior,
+        gmd: ganhoPorDia(valor, data, anterior),
+        corrigido: false,
+      };
     },
     onSuccess: (registro) => {
-      setPesados((lista) => [registro, ...lista]);
+      setPesados((lista) => [registro, ...lista.filter((p) => p.animalId !== registro.animalId)]);
       for (const chave of [
         "pesagens-engorda",
         "pesagens-engorda-todas",
@@ -212,7 +262,12 @@ function PesagemRapida() {
     onError: (erro: Error) => setAviso(erro.message || "Não conseguimos salvar agora."),
   });
 
-  const anteriorDoAtual = animal ? (ultimaPesagem.get(animal.id) ?? null) : null;
+  const pesadoNaSessao = animal ? pesados.find((p) => p.animalId === animal.id) : undefined;
+  const anteriorDoAtual = animal
+    ? pesadoNaSessao
+      ? pesadoNaSessao.anterior
+      : (ultimaPesagem.get(animal.id) ?? null)
+    : null;
   const totalPesado = pesados.reduce((s, p) => s + p.peso, 0);
 
   return (
@@ -336,7 +391,7 @@ function PesagemRapida() {
                   />
                   <Button type="submit" className="h-14 px-6" disabled={salvar.isPending}>
                     <Check className="size-5" aria-hidden="true" />
-                    Salvar
+                    {pesadoNaSessao ? "Corrigir" : "Salvar"}
                   </Button>
                 </div>
               </div>
@@ -374,9 +429,9 @@ function PesagemRapida() {
             </p>
           ) : (
             <ul className="max-h-[60vh] divide-y divide-border overflow-y-auto">
-              {pesados.map((p, i) => (
+              {pesados.map((p) => (
                 <li
-                  key={`${p.animalId}-${i}`}
+                  key={p.animalId}
                   className="flex items-center justify-between gap-3 px-4 py-2.5 text-sm"
                 >
                   <span className="min-w-0">
@@ -386,8 +441,9 @@ function PesagemRapida() {
                     </span>
                     <span className="block text-xs text-muted-foreground">
                       {p.anterior !== null
-                        ? `antes ${pesoTexto(p.anterior, prefs.unidade_peso)}`
+                        ? `antes ${pesoTexto(p.anterior.valor, prefs.unidade_peso)}`
                         : "primeira pesagem"}
+                      {p.corrigido ? " · corrigido" : ""}
                     </span>
                   </span>
                   <span className="shrink-0 text-right">
