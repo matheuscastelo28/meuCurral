@@ -368,6 +368,10 @@ function Reproducao() {
         className="mb-5 flex flex-wrap items-start justify-between gap-3 rounded-xl border border-border bg-card p-4"
         onSubmit={(e) => {
           e.preventDefault();
+          if (requerPrevisao && !touroTextoAtual()) {
+            toast.error(`Informe o ${rotuloReprodutor.toLowerCase()} ou o sêmen usado.`);
+            return;
+          }
           salvar.mutate({
             tipo,
             animalId,
@@ -449,14 +453,19 @@ function Reproducao() {
         ) : null}
         {requerPrevisao ? (
           <div className="min-w-[150px] flex-1 space-y-1.5">
-            <Label htmlFor="touro">{rotuloReprodutor} / sêmen</Label>
+            <Label htmlFor="touro">
+              {rotuloReprodutor} / sêmen <span className="text-destructive">*</span>
+            </Label>
             <select
               id="touro"
               value={touroId}
               onChange={(e) => setTouroId(e.target.value)}
               className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+              required
             >
-              <option value="">Nenhum</option>
+              <option value="" disabled>
+                Selecione
+              </option>
               {touros.data?.map((t) => (
                 <option key={t.id} value={t.id}>
                   {t.nome}
@@ -469,11 +478,15 @@ function Reproducao() {
         ) : null}
         {requerPrevisao && touroId === "outro" ? (
           <div className="min-w-[150px] flex-1 space-y-1.5">
-            <Label htmlFor="touro-custom">Nome do {rotuloReprodutor.toLowerCase()}/sêmen</Label>
+            <Label htmlFor="touro-custom">
+              Nome do {rotuloReprodutor.toLowerCase()}/sêmen{" "}
+              <span className="text-destructive">*</span>
+            </Label>
             <Input
               id="touro-custom"
               value={touroCustom}
               onChange={(e) => setTouroCustom(e.target.value)}
+              required
               placeholder={`Ex: ${rotuloReprodutor} emprestado — Fazenda X`}
             />
           </div>
