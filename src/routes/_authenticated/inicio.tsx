@@ -5,6 +5,7 @@ import {
   Beef,
   CalendarDays,
   Check,
+  FileText,
   Milk,
   Plus,
   Receipt,
@@ -239,6 +240,12 @@ function Inicio() {
               <Link to="/rebanho" search={{ sanidade: true }}>
                 <Syringe className="size-4" aria-hidden="true" />
                 Vacinas e manejo
+              </Link>
+            </Button>
+            <Button variant="outline" size="sm" asChild>
+              <Link to="/relatorios">
+                <FileText className="size-4" aria-hidden="true" />
+                Relatório PDF
               </Link>
             </Button>
           </div>

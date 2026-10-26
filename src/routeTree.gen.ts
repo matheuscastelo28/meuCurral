@@ -25,6 +25,7 @@ import { Route as AuthenticatedLeiteRouteImport } from './routes/_authenticated/
 import { Route as AuthenticatedPesagemRouteImport } from './routes/_authenticated/pesagem'
 import { Route as AuthenticatedPlanosRouteImport } from './routes/_authenticated/planos'
 import { Route as AuthenticatedRebanhoRouteImport } from './routes/_authenticated/rebanho'
+import { Route as AuthenticatedRelatoriosRouteImport } from './routes/_authenticated/relatorios'
 import { Route as AuthenticatedReproducaoRouteImport } from './routes/_authenticated/reproducao'
 import { Route as AuthenticatedRebanhoAnimalIdRouteImport } from './routes/_authenticated/rebanho_.$animalId'
 
@@ -107,6 +108,11 @@ const AuthenticatedRebanhoRoute = AuthenticatedRebanhoRouteImport.update({
   path: '/rebanho',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
+const AuthenticatedRelatoriosRoute = AuthenticatedRelatoriosRouteImport.update({
+  id: '/relatorios',
+  path: '/relatorios',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
 const AuthenticatedReproducaoRoute = AuthenticatedReproducaoRouteImport.update({
   id: '/reproducao',
   path: '/reproducao',
@@ -135,6 +141,7 @@ export interface FileRoutesByFullPath {
   '/pesagem': typeof AuthenticatedPesagemRoute
   '/planos': typeof AuthenticatedPlanosRoute
   '/rebanho': typeof AuthenticatedRebanhoRoute
+  '/relatorios': typeof AuthenticatedRelatoriosRoute
   '/reproducao': typeof AuthenticatedReproducaoRoute
   '/rebanho/$animalId': typeof AuthenticatedRebanhoAnimalIdRoute
 }
@@ -154,6 +161,7 @@ export interface FileRoutesByTo {
   '/pesagem': typeof AuthenticatedPesagemRoute
   '/planos': typeof AuthenticatedPlanosRoute
   '/rebanho': typeof AuthenticatedRebanhoRoute
+  '/relatorios': typeof AuthenticatedRelatoriosRoute
   '/reproducao': typeof AuthenticatedReproducaoRoute
   '/rebanho/$animalId': typeof AuthenticatedRebanhoAnimalIdRoute
 }
@@ -175,6 +183,7 @@ export interface FileRoutesById {
   '/_authenticated/pesagem': typeof AuthenticatedPesagemRoute
   '/_authenticated/planos': typeof AuthenticatedPlanosRoute
   '/_authenticated/rebanho': typeof AuthenticatedRebanhoRoute
+  '/_authenticated/relatorios': typeof AuthenticatedRelatoriosRoute
   '/_authenticated/reproducao': typeof AuthenticatedReproducaoRoute
   '/_authenticated/rebanho_/$animalId': typeof AuthenticatedRebanhoAnimalIdRoute
 }
@@ -196,6 +205,7 @@ export interface FileRouteTypes {
     | '/pesagem'
     | '/planos'
     | '/rebanho'
+    | '/relatorios'
     | '/reproducao'
     | '/rebanho/$animalId'
   fileRoutesByTo: FileRoutesByTo
@@ -215,6 +225,7 @@ export interface FileRouteTypes {
     | '/pesagem'
     | '/planos'
     | '/rebanho'
+    | '/relatorios'
     | '/reproducao'
     | '/rebanho/$animalId'
   id:
@@ -235,6 +246,7 @@ export interface FileRouteTypes {
     | '/_authenticated/pesagem'
     | '/_authenticated/planos'
     | '/_authenticated/rebanho'
+    | '/_authenticated/relatorios'
     | '/_authenticated/reproducao'
     | '/_authenticated/rebanho_/$animalId'
   fileRoutesById: FileRoutesById
@@ -363,6 +375,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedRebanhoRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/relatorios': {
+      id: '/_authenticated/relatorios'
+      path: '/relatorios'
+      fullPath: '/relatorios'
+      preLoaderRoute: typeof AuthenticatedRelatoriosRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/reproducao': {
       id: '/_authenticated/reproducao'
       path: '/reproducao'
@@ -390,6 +409,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedPesagemRoute: typeof AuthenticatedPesagemRoute
   AuthenticatedPlanosRoute: typeof AuthenticatedPlanosRoute
   AuthenticatedRebanhoRoute: typeof AuthenticatedRebanhoRoute
+  AuthenticatedRelatoriosRoute: typeof AuthenticatedRelatoriosRoute
   AuthenticatedReproducaoRoute: typeof AuthenticatedReproducaoRoute
   AuthenticatedRebanhoAnimalIdRoute: typeof AuthenticatedRebanhoAnimalIdRoute
 }
@@ -404,6 +424,7 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedPesagemRoute: AuthenticatedPesagemRoute,
   AuthenticatedPlanosRoute: AuthenticatedPlanosRoute,
   AuthenticatedRebanhoRoute: AuthenticatedRebanhoRoute,
+  AuthenticatedRelatoriosRoute: AuthenticatedRelatoriosRoute,
   AuthenticatedReproducaoRoute: AuthenticatedReproducaoRoute,
   AuthenticatedRebanhoAnimalIdRoute: AuthenticatedRebanhoAnimalIdRoute,
 }

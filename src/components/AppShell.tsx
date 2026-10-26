@@ -3,6 +3,7 @@ import {
   Beef,
   CalendarDays,
   ChevronDown,
+  FileText,
   Home,
   LogOut,
   Milk,
@@ -23,7 +24,9 @@ import { limiteTexto } from "@/lib/planos";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
-type NavLink = { to: string; label: string; icon: LucideIcon };
+// soDesktop: fica só na barra lateral — a barra de baixo do celular tem
+// espaço pra 6 itens; no celular o acesso vem por atalhos nas telas.
+type NavLink = { to: string; label: string; icon: LucideIcon; soDesktop?: boolean };
 type NavGroup = { label: string; icon: LucideIcon; items: NavLink[] };
 
 /**
@@ -49,6 +52,7 @@ function montarNav(atividades: string[] | null | undefined): (NavLink | NavGroup
     { label: "Produção", icon: Sprout, items: producao },
     { to: "/financeiro", label: "Financeiro", icon: Wallet },
     { to: "/calendario", label: "Agenda", icon: CalendarDays },
+    { to: "/relatorios", label: "Relatórios", icon: FileText, soDesktop: true },
     { to: "/config", label: "Config", icon: Settings },
   ];
 }
@@ -375,68 +379,72 @@ export function AppShell({
           aria-label="Seções"
           className="fixed inset-x-0 bottom-0 z-30 grid grid-cols-6 border-t border-border bg-card md:hidden"
         >
-          {nav.map((entry) => {
-            if (isGroup(entry)) {
-              const grupoAtivo = entry.items.some((item) => location.pathname.startsWith(item.to));
-              return (
-                <div key={entry.label} className="relative">
-                  <button
-                    ref={grupoMobileBtnRef}
-                    type="button"
-                    onClick={() => {
-                      const rect = grupoMobileBtnRef.current?.getBoundingClientRect();
-                      if (rect) setFlyoutMobilePos({ left: rect.left + rect.width / 2 });
-                      setFlyoutMobileAberto((v) => !v);
-                    }}
-                    aria-expanded={flyoutMobileAberto}
-                    aria-haspopup="true"
-                    className={cn(
-                      "flex w-full flex-col items-center gap-1 py-2 text-[10px] font-medium transicao-suave",
-                      grupoAtivo ? "text-primary" : "text-muted-foreground",
-                    )}
-                  >
-                    <entry.icon className="size-5" aria-hidden="true" />
-                    {entry.label}
-                  </button>
-                  {flyoutMobileAberto ? (
-                    <div
-                      ref={grupoMobileRef}
-                      style={{ left: flyoutMobilePos.left }}
-                      className="fixed bottom-20 z-40 w-44 -translate-x-1/2 rounded-xl border border-border bg-card p-1.5 shadow-md"
+          {nav
+            .filter((entry) => isGroup(entry) || !entry.soDesktop)
+            .map((entry) => {
+              if (isGroup(entry)) {
+                const grupoAtivo = entry.items.some((item) =>
+                  location.pathname.startsWith(item.to),
+                );
+                return (
+                  <div key={entry.label} className="relative">
+                    <button
+                      ref={grupoMobileBtnRef}
+                      type="button"
+                      onClick={() => {
+                        const rect = grupoMobileBtnRef.current?.getBoundingClientRect();
+                        if (rect) setFlyoutMobilePos({ left: rect.left + rect.width / 2 });
+                        setFlyoutMobileAberto((v) => !v);
+                      }}
+                      aria-expanded={flyoutMobileAberto}
+                      aria-haspopup="true"
+                      className={cn(
+                        "flex w-full flex-col items-center gap-1 py-2 text-[10px] font-medium transicao-suave",
+                        grupoAtivo ? "text-primary" : "text-muted-foreground",
+                      )}
                     >
-                      <p className="truncate px-2 py-1 text-xs font-semibold text-muted-foreground">
-                        {entry.label}
-                      </p>
-                      {entry.items.map((item) => (
-                        <Link
-                          key={item.to}
-                          to={item.to}
-                          activeOptions={{ exact: true }}
-                          onClick={() => setFlyoutMobileAberto(false)}
-                          className="flex items-center gap-2 rounded-lg px-2 py-2 text-sm font-medium text-muted-foreground transicao-suave hover:bg-accent hover:text-foreground"
-                          activeProps={{ className: "bg-accent text-primary" }}
-                        >
-                          <item.icon className="size-4 shrink-0" aria-hidden="true" />
-                          {item.label}
-                        </Link>
-                      ))}
-                    </div>
-                  ) : null}
-                </div>
+                      <entry.icon className="size-5" aria-hidden="true" />
+                      {entry.label}
+                    </button>
+                    {flyoutMobileAberto ? (
+                      <div
+                        ref={grupoMobileRef}
+                        style={{ left: flyoutMobilePos.left }}
+                        className="fixed bottom-20 z-40 w-44 -translate-x-1/2 rounded-xl border border-border bg-card p-1.5 shadow-md"
+                      >
+                        <p className="truncate px-2 py-1 text-xs font-semibold text-muted-foreground">
+                          {entry.label}
+                        </p>
+                        {entry.items.map((item) => (
+                          <Link
+                            key={item.to}
+                            to={item.to}
+                            activeOptions={{ exact: true }}
+                            onClick={() => setFlyoutMobileAberto(false)}
+                            className="flex items-center gap-2 rounded-lg px-2 py-2 text-sm font-medium text-muted-foreground transicao-suave hover:bg-accent hover:text-foreground"
+                            activeProps={{ className: "bg-accent text-primary" }}
+                          >
+                            <item.icon className="size-4 shrink-0" aria-hidden="true" />
+                            {item.label}
+                          </Link>
+                        ))}
+                      </div>
+                    ) : null}
+                  </div>
+                );
+              }
+              return (
+                <Link
+                  key={entry.to}
+                  to={entry.to}
+                  className="flex flex-col items-center gap-1 py-2 text-[10px] font-medium text-muted-foreground transicao-suave"
+                  activeProps={{ className: "text-primary" }}
+                >
+                  <entry.icon className="size-5" aria-hidden="true" />
+                  {entry.label}
+                </Link>
               );
-            }
-            return (
-              <Link
-                key={entry.to}
-                to={entry.to}
-                className="flex flex-col items-center gap-1 py-2 text-[10px] font-medium text-muted-foreground transicao-suave"
-                activeProps={{ className: "text-primary" }}
-              >
-                <entry.icon className="size-5" aria-hidden="true" />
-                {entry.label}
-              </Link>
-            );
-          })}
+            })}
         </nav>
       </div>
     </div>

@@ -1,7 +1,7 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Ban, CircleCheck, Plus, Wallet } from "lucide-react";
+import { Ban, CircleCheck, FileText, Plus, Wallet } from "lucide-react";
 import { toast } from "sonner";
 import { db } from "@/lib/local-db";
 import { AppShell } from "@/components/AppShell";
@@ -566,10 +566,18 @@ function Financeiro() {
       titulo="Financeiro"
       descricao="Entradas e saídas da fazenda, sem planilha."
       acao={
-        <Button onClick={() => setFormAberto(true)}>
-          <Plus className="size-4" aria-hidden="true" />
-          Novo lançamento
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          <Button variant="outline" asChild>
+            <Link to="/relatorios">
+              <FileText className="size-4" aria-hidden="true" />
+              Relatório PDF
+            </Link>
+          </Button>
+          <Button onClick={() => setFormAberto(true)}>
+            <Plus className="size-4" aria-hidden="true" />
+            Novo lançamento
+          </Button>
+        </div>
       }
     >
       <div className="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-3">
