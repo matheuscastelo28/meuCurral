@@ -665,7 +665,7 @@ function Engorda() {
         ))}
       </ol>
 
-      <div className="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+      <div className="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5 [&>*:last-child:nth-child(odd)]:col-span-2 sm:[&>*:last-child:nth-child(odd)]:col-span-1">
         <Kpi icon={Weight} rotulo="Em confinamento" valor={e ? `${e.totalEngorda} cab` : "—"} />
         <Kpi
           icon={Scale}

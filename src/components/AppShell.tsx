@@ -352,7 +352,11 @@ export function AppShell({
               <h1 className="text-2xl">{titulo}</h1>
               {descricao ? <p className="mt-1 text-sm text-muted-foreground">{descricao}</p> : null}
             </div>
-            {acao}
+            {acao ? (
+              <div className="flex w-full flex-wrap gap-2 sm:w-auto [&>*]:flex-1 sm:[&>*]:flex-none [&>div]:contents [&>div>*]:flex-1 sm:[&>div>*]:flex-none">
+                {acao}
+              </div>
+            ) : null}
           </div>
           {Number.isFinite(limite) && pct >= 70 ? (
             <div className="mb-5 rounded-xl border border-border bg-card p-3">

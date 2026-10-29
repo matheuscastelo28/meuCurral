@@ -642,8 +642,8 @@ function Rebanho() {
         </p>
       ) : null}
 
-      <div className="mb-4 flex flex-wrap items-center gap-2">
-        <div className="relative max-w-sm flex-1">
+      <div className="mb-4 grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:items-center [&>*:last-child:nth-child(even)]:col-span-2">
+        <div className="relative col-span-2 sm:max-w-sm sm:flex-1">
           <Search
             className="pointer-events-none absolute top-2.5 left-3 size-4 text-muted-foreground"
             aria-hidden="true"
@@ -664,7 +664,7 @@ function Rebanho() {
               setFiltroEspecie(e.target.value as typeof filtroEspecie);
               setFiltroCategoria("todas");
             }}
-            className="h-9 rounded-md border border-input bg-background px-2.5 text-sm"
+            className="h-10 w-full min-w-0 rounded-md border border-input bg-background px-2.5 text-sm sm:w-auto"
           >
             <option value="todas">Todas as espécies</option>
             <option value="bovino">Bovino</option>
@@ -675,7 +675,7 @@ function Rebanho() {
           aria-label="Filtrar por categoria"
           value={filtroCategoria}
           onChange={(e) => setFiltroCategoria(e.target.value as typeof filtroCategoria)}
-          className="h-9 rounded-md border border-input bg-background px-2.5 text-sm"
+          className="h-10 w-full min-w-0 rounded-md border border-input bg-background px-2.5 text-sm sm:w-auto"
         >
           <option value="todas">Todas as categorias</option>
           {categoriasParaFiltro.map((c) => (
@@ -689,7 +689,7 @@ function Rebanho() {
             aria-label="Filtrar por situação"
             value={filtroSituacao}
             onChange={(e) => setFiltroSituacao(e.target.value as typeof filtroSituacao)}
-            className="h-9 rounded-md border border-input bg-background px-2.5 text-sm"
+            className="h-10 w-full min-w-0 rounded-md border border-input bg-background px-2.5 text-sm sm:w-auto"
           >
             <option value="todas">Todas as situações</option>
             {STATUS.filter((s) => s !== "vendido" && s !== "morto").map((s) => (
@@ -703,7 +703,7 @@ function Rebanho() {
             aria-label="Filtrar saídas"
             value={filtroSaida}
             onChange={(e) => setFiltroSaida(e.target.value as typeof filtroSaida)}
-            className="h-9 rounded-md border border-input bg-background px-2.5 text-sm"
+            className="h-10 w-full min-w-0 rounded-md border border-input bg-background px-2.5 text-sm sm:w-auto"
           >
             <option value="todas">Todas as saídas</option>
             <option value="vendido">Vendidos</option>
@@ -714,7 +714,7 @@ function Rebanho() {
           aria-label="Filtrar por sexo"
           value={filtroSexo}
           onChange={(e) => setFiltroSexo(e.target.value as typeof filtroSexo)}
-          className="h-9 rounded-md border border-input bg-background px-2.5 text-sm"
+          className="h-10 w-full min-w-0 rounded-md border border-input bg-background px-2.5 text-sm sm:w-auto"
         >
           <option value="todos">Todos os sexos</option>
           {SEXOS.map((s) => (

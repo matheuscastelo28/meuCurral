@@ -243,14 +243,22 @@ function Inicio() {
       ) : (
         <div className="space-y-5">
           {temAtrasados ? compromissos : null}
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+          {/* Celular: "Cabeças" ocupa a linha toda e o resto vai 2 por linha,
+              sempre com a mesma altura. Desktop: tudo numa linha só. */}
+          <div
+            className={cn(
+              "grid auto-rows-fr grid-cols-2 gap-3",
+              soOvino ? "lg:grid-cols-4" : "lg:grid-cols-5",
+            )}
+          >
             <Cartao
+              className={soOvino ? undefined : "col-span-2 lg:col-span-1"}
               icon={Beef}
               rotulo="Cabeças no rebanho"
               valor={String(animaisAtivos.length)}
               detalhe={ambasAtividades ? `${qtdBovinos} bovinos · ${qtdOvinos} ovinos` : undefined}
             />
-            <Link to="/engorda" className="block">
+            <Link to="/engorda" className="block h-full">
               <Cartao
                 icon={Weight}
                 rotulo="Em confinamento"
@@ -264,7 +272,7 @@ function Inicio() {
                 valor={`${(resumo.data?.leiteHoje ?? 0).toLocaleString("pt-BR")} L`}
               />
             )}
-            <Link to="/financeiro" className="block">
+            <Link to="/financeiro" className="block h-full">
               <Cartao
                 icon={TrendingUp}
                 rotulo="Recebido"
@@ -273,7 +281,7 @@ function Inicio() {
                 detalhe="total já recebido"
               />
             </Link>
-            <Link to="/financeiro" className="block">
+            <Link to="/financeiro" className="block h-full">
               <Cartao
                 icon={TrendingDown}
                 rotulo="Despesas"
@@ -357,15 +365,15 @@ function EventoItem({
         <CalendarDays className="size-4" aria-hidden="true" />
       </span>
       <span className="min-w-0 flex-1">
-        <span className="flex items-center gap-1.5">
-          <span className="block truncate text-sm font-medium">{ev.titulo}</span>
+        <span className="line-clamp-2 text-sm leading-snug font-medium break-words">
+          {ev.titulo}
+        </span>
+        <span className="mt-0.5 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-xs text-muted-foreground">
           {atrasado ? (
-            <span className="shrink-0 rounded-full bg-destructive/15 px-2 py-0.5 text-[11px] font-semibold text-destructive">
+            <span className="rounded-full bg-destructive/15 px-2 py-0.5 text-[11px] font-semibold text-destructive">
               Atrasado
             </span>
           ) : null}
-        </span>
-        <span className="block text-xs text-muted-foreground">
           {dataCurta(ev.data)} · {ev.tipo}
         </span>
       </span>
@@ -389,31 +397,40 @@ function Cartao({
   valor,
   tom,
   detalhe,
+  className,
 }: {
   icon: LucideIcon;
   rotulo: string;
   valor: string;
   tom?: "ok" | "alerta";
   detalhe?: string | undefined;
+  className?: string | undefined;
 }) {
   return (
-    <div className="rounded-xl border border-border bg-card p-4">
-      <span className="flex size-9 items-center justify-center rounded-lg bg-accent text-primary">
-        <Icon className="size-4" aria-hidden="true" />
-      </span>
-      <p className="mt-3 text-xs text-muted-foreground">{rotulo}</p>
+    <div
+      className={cn(
+        "flex h-full min-w-0 flex-col rounded-xl border border-border bg-card p-3 sm:p-4",
+        className,
+      )}
+    >
+      <div className="flex items-center gap-2">
+        <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-accent text-primary">
+          <Icon className="size-4" aria-hidden="true" />
+        </span>
+        <p className="min-w-0 text-xs leading-tight text-muted-foreground">{rotulo}</p>
+      </div>
       <p
-        className={
-          tom === "ok"
-            ? "font-display text-2xl font-extrabold text-success"
-            : tom === "alerta"
-              ? "font-display text-2xl font-extrabold text-destructive"
-              : "font-display text-2xl font-extrabold"
-        }
+        className={cn(
+          "mt-2 font-display text-lg leading-tight font-extrabold tabular-nums break-words sm:text-2xl",
+          tom === "ok" && "text-success",
+          tom === "alerta" && "text-destructive",
+        )}
       >
         {valor}
       </p>
-      {detalhe ? <p className="text-[11px] text-muted-foreground">{detalhe}</p> : null}
+      {detalhe ? (
+        <p className="mt-auto pt-1 text-[11px] leading-tight text-muted-foreground">{detalhe}</p>
+      ) : null}
     </div>
   );
 }

@@ -818,7 +818,7 @@ function Leite() {
         )}
       </div>
 
-      <div className="mb-5 grid gap-3 grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 xl:grid-cols-7">
+      <div className="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5 xl:grid-cols-7 [&>*:last-child:nth-child(odd)]:col-span-2 sm:[&>*:last-child:nth-child(odd)]:col-span-1">
         <Kpi icon={Milk} rotulo="Leite hoje" valor={`${totalHoje.toLocaleString("pt-BR")} L`} />
         <Kpi
           icon={Droplet}
@@ -1483,7 +1483,7 @@ function Leite() {
                   Somado das vendas já registradas hoje — registre em "Venda", no card de preço.
                 </p>
               </div>
-              <span className="font-display text-sm font-extrabold">
+              <span className="font-display text-sm font-extrabold whitespace-nowrap">
                 {vendaLitrosHoje.toLocaleString("pt-BR")} L
               </span>
             </div>
@@ -1497,7 +1497,7 @@ function Leite() {
                   </p>
                 </div>
                 <div className="flex items-center gap-2">
-                  <span className="font-display text-sm font-extrabold">
+                  <span className="font-display text-sm font-extrabold whitespace-nowrap">
                     {totalConsumo.toLocaleString("pt-BR")} L
                   </span>
                   <Button
@@ -1519,7 +1519,7 @@ function Leite() {
                     <li key={e.id} className="flex items-center justify-between text-xs">
                       <span>{rotuloConsumoEntry(e)}</span>
                       <span className="flex items-center gap-2">
-                        <span className="font-medium">
+                        <span className="font-medium whitespace-nowrap">
                           {Number(e.quantidade).toLocaleString("pt-BR")} L
                         </span>
                         <button
@@ -1622,7 +1622,7 @@ function Leite() {
                   </p>
                 </div>
                 <div className="flex items-center gap-2">
-                  <span className="font-display text-sm font-extrabold">
+                  <span className="font-display text-sm font-extrabold whitespace-nowrap">
                     {totalDescarte.toLocaleString("pt-BR")} L
                   </span>
                   <Button
@@ -1644,7 +1644,7 @@ function Leite() {
                     <li key={e.id} className="flex items-center justify-between text-xs">
                       <span>{e.observacao || "Descarte"}</span>
                       <span className="flex items-center gap-2">
-                        <span className="font-medium">
+                        <span className="font-medium whitespace-nowrap">
                           {Number(e.quantidade).toLocaleString("pt-BR")} L
                         </span>
                         <button

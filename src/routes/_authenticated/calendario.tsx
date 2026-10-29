@@ -734,12 +734,12 @@ function Calendario() {
             </div>
           ) : null}
 
-          <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-border pt-4">
+          <div className="mt-4 grid grid-cols-2 gap-2 border-t border-border pt-4 sm:flex sm:flex-wrap sm:items-center">
             <select
               aria-label="Filtrar por origem"
               value={filtroOrigem}
               onChange={(e) => setFiltroOrigem(e.target.value as typeof filtroOrigem)}
-              className="h-9 rounded-md border border-input bg-background px-2.5 text-sm"
+              className="h-10 w-full min-w-0 rounded-md border border-input bg-background px-2.5 text-sm sm:w-auto"
             >
               <option value="todos">Todas as origens</option>
               <option value="eventos">Só eventos</option>
@@ -749,7 +749,7 @@ function Calendario() {
               aria-label="Filtrar por status"
               value={filtroStatus}
               onChange={(e) => setFiltroStatus(e.target.value as typeof filtroStatus)}
-              className="h-9 rounded-md border border-input bg-background px-2.5 text-sm"
+              className="h-10 w-full min-w-0 rounded-md border border-input bg-background px-2.5 text-sm sm:w-auto"
             >
               <option value="todos">Todos os status</option>
               <option value="a_fazer">A fazer</option>
@@ -757,7 +757,13 @@ function Calendario() {
               <option value="feito">Concluído</option>
             </select>
             {filtroAtivo ? (
-              <Button type="button" variant="ghost" size="sm" onClick={limparFiltros}>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="col-span-2 justify-self-start"
+                onClick={limparFiltros}
+              >
                 <X className="size-4" aria-hidden="true" />
                 Limpar filtros
               </Button>
