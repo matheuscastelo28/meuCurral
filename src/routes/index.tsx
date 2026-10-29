@@ -22,7 +22,7 @@ export const Route = createFileRoute("/")({
       {
         name: "description",
         content:
-          "Cadastre animais, acompanhe manejo, vacinação, leite e financeiro da fazenda. Comece grátis com até 10 cabeças.",
+          "Cadastre animais, acompanhe manejo, vacinação, leite e financeiro da fazenda. Grátis e sem limite de cabeças na fase de testes.",
       },
       { property: "og:title", content: "Curral Online — controle do rebanho sem planilha" },
       {
@@ -111,7 +111,7 @@ function Landing() {
           </h1>
           <p className="mt-5 max-w-xl text-base text-muted-foreground">
             Cadastre animais, acompanhe manejo, vacinação, pesagem, leite e financeiro. Comece
-            grátis com até 10 cabeças e cresça quando o rebanho crescer.
+            grátis, sem limite de cabeças durante a fase de testes.
           </p>
           <div className="mt-8 flex flex-wrap gap-3">
             <Button size="lg" asChild>
@@ -283,7 +283,7 @@ function Landing() {
           <div className="flex items-center gap-3 text-primary-foreground">
             <Baby className="size-6 shrink-0" aria-hidden="true" />
             <p className="max-w-md text-lg font-semibold">
-              Comece com até 10 cabeças, de graça, sem cartão.
+              Grátis e sem limite de cabeças na fase de testes, sem cartão.
             </p>
           </div>
           <Button size="lg" variant="secondary" asChild>

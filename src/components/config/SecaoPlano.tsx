@@ -1,6 +1,6 @@
 import { Check, Minus } from "lucide-react";
 import { useLimitePlano } from "@/hooks/use-fazenda";
-import { limiteTexto } from "@/lib/planos";
+import { usoCabecasTexto } from "@/lib/planos";
 import { CartaoConfig } from "./CartaoConfig";
 
 export function SecaoPlano() {
@@ -23,7 +23,7 @@ export function SecaoPlano() {
     >
       <p className="text-sm font-semibold">Plano {plano.nome}</p>
       <p className="mt-1 text-sm text-muted-foreground">
-        {usados} de {limiteTexto(limite)} cabeças cadastradas.
+        {usoCabecasTexto(usados, limite)} no rebanho.
       </p>
       {Number.isFinite(limite) ? (
         <div className="mt-3 h-2 w-full overflow-hidden rounded-full bg-muted">
