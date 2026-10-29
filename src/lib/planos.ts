@@ -40,7 +40,7 @@ export const PLANOS: Plano[] = [
   {
     id: "essencial",
     nome: "Essencial",
-    preco: "R$ 49,90",
+    preco: "R$ 109,90",
     periodo: "por mês",
     resumo: "Para o produtor que já tem rebanho formado.",
     limiteAnimais: 100,
@@ -59,7 +59,7 @@ export const PLANOS: Plano[] = [
   {
     id: "profissional",
     nome: "Profissional",
-    preco: "R$ 79,90",
+    preco: "R$ 210,90",
     periodo: "por mês",
     resumo: "Para quem divide o manejo com a equipe.",
     limiteAnimais: 250,
