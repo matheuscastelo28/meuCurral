@@ -18,6 +18,7 @@ import {
 import { toast } from "sonner";
 import { db } from "@/lib/local-db";
 import { AppShell } from "@/components/AppShell";
+import { CampoFiltro, CLASSE_SELECT_FILTRO, PainelFiltros } from "@/components/PainelFiltros";
 import { DialogManejoSanitario, type EventoSanitario } from "@/components/DialogManejoSanitario";
 import { EmptyState } from "@/components/EmptyState";
 import { Button } from "@/components/ui/button";
@@ -734,41 +735,35 @@ function Calendario() {
             </div>
           ) : null}
 
-          <div className="mt-4 grid grid-cols-2 gap-2 border-t border-border pt-4 sm:flex sm:flex-wrap sm:items-center">
-            <select
-              aria-label="Filtrar por origem"
-              value={filtroOrigem}
-              onChange={(e) => setFiltroOrigem(e.target.value as typeof filtroOrigem)}
-              className="h-10 w-full min-w-0 rounded-md border border-input bg-background px-2.5 text-sm sm:w-auto"
-            >
-              <option value="todos">Todas as origens</option>
-              <option value="eventos">Só eventos</option>
-              <option value="financeiro">Só financeiro</option>
-            </select>
-            <select
-              aria-label="Filtrar por status"
-              value={filtroStatus}
-              onChange={(e) => setFiltroStatus(e.target.value as typeof filtroStatus)}
-              className="h-10 w-full min-w-0 rounded-md border border-input bg-background px-2.5 text-sm sm:w-auto"
-            >
-              <option value="todos">Todos os status</option>
-              <option value="a_fazer">A fazer</option>
-              <option value="atrasado">Atrasado</option>
-              <option value="feito">Concluído</option>
-            </select>
-            {filtroAtivo ? (
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                className="col-span-2 justify-self-start"
-                onClick={limparFiltros}
+          <PainelFiltros
+            className="mt-4 border-t border-border pt-4"
+            ativos={(filtroOrigem !== "todos" ? 1 : 0) + (filtroStatus !== "todos" ? 1 : 0)}
+            onLimpar={limparFiltros}
+          >
+            <CampoFiltro rotulo="Origem">
+              <select
+                value={filtroOrigem}
+                onChange={(e) => setFiltroOrigem(e.target.value as typeof filtroOrigem)}
+                className={CLASSE_SELECT_FILTRO}
               >
-                <X className="size-4" aria-hidden="true" />
-                Limpar filtros
-              </Button>
-            ) : null}
-          </div>
+                <option value="todos">Todas</option>
+                <option value="eventos">Só eventos</option>
+                <option value="financeiro">Só financeiro</option>
+              </select>
+            </CampoFiltro>
+            <CampoFiltro rotulo="Status">
+              <select
+                value={filtroStatus}
+                onChange={(e) => setFiltroStatus(e.target.value as typeof filtroStatus)}
+                className={CLASSE_SELECT_FILTRO}
+              >
+                <option value="todos">Todos</option>
+                <option value="a_fazer">A fazer</option>
+                <option value="atrasado">Atrasado</option>
+                <option value="feito">Concluído</option>
+              </select>
+            </CampoFiltro>
+          </PainelFiltros>
 
           <h2 className="mt-4 text-sm font-semibold text-muted-foreground">
             {totalItens} {totalItens === 1 ? "compromisso" : "compromissos"} nesse período

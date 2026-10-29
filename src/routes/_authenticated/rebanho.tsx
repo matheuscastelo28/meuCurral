@@ -11,6 +11,7 @@ import { DialogManejoSanitario } from "@/components/DialogManejoSanitario";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
+import { CampoFiltro, CLASSE_SELECT_FILTRO, PainelFiltros } from "@/components/PainelFiltros";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
@@ -297,6 +298,15 @@ function Rebanho() {
     filtroSituacao !== "todas" ||
     filtroSexo !== "todos" ||
     (abaRebanho === "vendido" && filtroSaida !== "todas");
+  const qtdFiltros =
+    (busca.trim() ? 1 : 0) +
+    [
+      filtroEspecie !== "todas",
+      filtroCategoria !== "todas",
+      abaRebanho === "ativo" && filtroSituacao !== "todas",
+      filtroSexo !== "todos",
+      abaRebanho === "vendido" && filtroSaida !== "todas",
+    ].filter(Boolean).length;
 
   const lista = useMemo(() => {
     const termo = busca.trim().toLowerCase();
@@ -642,103 +652,106 @@ function Rebanho() {
         </p>
       ) : null}
 
-      <div className="mb-4 grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:items-center [&>*:last-child:nth-child(even)]:col-span-2">
-        <div className="relative col-span-2 sm:max-w-sm sm:flex-1">
-          <Search
-            className="pointer-events-none absolute top-2.5 left-3 size-4 text-muted-foreground"
-            aria-hidden="true"
-          />
-          <Input
-            value={busca}
-            onChange={(e) => setBusca(e.target.value)}
-            placeholder="Buscar por nome, brinco ou lote"
-            className="pl-9"
-            aria-label="Buscar animal"
-          />
-        </div>
+      <PainelFiltros
+        className="mb-4"
+        ativos={qtdFiltros}
+        onLimpar={() => {
+          setBusca("");
+          setFiltroEspecie("todas");
+          setFiltroCategoria("todas");
+          setFiltroSituacao("todas");
+          setFiltroSexo("todos");
+          setFiltroSaida("todas");
+        }}
+      >
+        <CampoFiltro rotulo="Buscar" largo>
+          <div className="relative">
+            <Search
+              className="pointer-events-none absolute top-3 left-3 size-4 text-muted-foreground"
+              aria-hidden="true"
+            />
+            <Input
+              value={busca}
+              onChange={(e) => setBusca(e.target.value)}
+              placeholder="Nome, brinco ou lote"
+              className="pl-9"
+              aria-label="Buscar animal"
+            />
+          </div>
+        </CampoFiltro>
         {especiesPermitidas.length > 1 ? (
-          <select
-            aria-label="Filtrar por espécie"
-            value={filtroEspecie}
-            onChange={(e) => {
-              setFiltroEspecie(e.target.value as typeof filtroEspecie);
-              setFiltroCategoria("todas");
-            }}
-            className="h-10 w-full min-w-0 rounded-md border border-input bg-background px-2.5 text-sm sm:w-auto"
-          >
-            <option value="todas">Todas as espécies</option>
-            <option value="bovino">Bovino</option>
-            <option value="ovino">Ovino</option>
-          </select>
+          <CampoFiltro rotulo="Espécie">
+            <select
+              value={filtroEspecie}
+              onChange={(e) => {
+                setFiltroEspecie(e.target.value as typeof filtroEspecie);
+                setFiltroCategoria("todas");
+              }}
+              className={CLASSE_SELECT_FILTRO}
+            >
+              <option value="todas">Todas</option>
+              <option value="bovino">Bovino</option>
+              <option value="ovino">Ovino</option>
+            </select>
+          </CampoFiltro>
         ) : null}
-        <select
-          aria-label="Filtrar por categoria"
-          value={filtroCategoria}
-          onChange={(e) => setFiltroCategoria(e.target.value as typeof filtroCategoria)}
-          className="h-10 w-full min-w-0 rounded-md border border-input bg-background px-2.5 text-sm sm:w-auto"
-        >
-          <option value="todas">Todas as categorias</option>
-          {categoriasParaFiltro.map((c) => (
-            <option key={c} value={c}>
-              {rotuloCategoria(c)}
-            </option>
-          ))}
-        </select>
-        {abaRebanho === "ativo" ? (
+        <CampoFiltro rotulo="Categoria">
           <select
-            aria-label="Filtrar por situação"
-            value={filtroSituacao}
-            onChange={(e) => setFiltroSituacao(e.target.value as typeof filtroSituacao)}
-            className="h-10 w-full min-w-0 rounded-md border border-input bg-background px-2.5 text-sm sm:w-auto"
+            value={filtroCategoria}
+            onChange={(e) => setFiltroCategoria(e.target.value as typeof filtroCategoria)}
+            className={CLASSE_SELECT_FILTRO}
           >
-            <option value="todas">Todas as situações</option>
-            {STATUS.filter((s) => s !== "vendido" && s !== "morto").map((s) => (
-              <option key={s} value={s}>
-                {rotuloStatus(s)}
+            <option value="todas">Todas</option>
+            {categoriasParaFiltro.map((c) => (
+              <option key={c} value={c}>
+                {rotuloCategoria(c)}
               </option>
             ))}
           </select>
+        </CampoFiltro>
+        {abaRebanho === "ativo" ? (
+          <CampoFiltro rotulo="Situação">
+            <select
+              value={filtroSituacao}
+              onChange={(e) => setFiltroSituacao(e.target.value as typeof filtroSituacao)}
+              className={CLASSE_SELECT_FILTRO}
+            >
+              <option value="todas">Todas</option>
+              {STATUS.filter((s) => s !== "vendido" && s !== "morto").map((s) => (
+                <option key={s} value={s}>
+                  {rotuloStatus(s)}
+                </option>
+              ))}
+            </select>
+          </CampoFiltro>
         ) : (
-          <select
-            aria-label="Filtrar saídas"
-            value={filtroSaida}
-            onChange={(e) => setFiltroSaida(e.target.value as typeof filtroSaida)}
-            className="h-10 w-full min-w-0 rounded-md border border-input bg-background px-2.5 text-sm sm:w-auto"
-          >
-            <option value="todas">Todas as saídas</option>
-            <option value="vendido">Vendidos</option>
-            <option value="morto">Mortos</option>
-          </select>
+          <CampoFiltro rotulo="Tipo de saída">
+            <select
+              value={filtroSaida}
+              onChange={(e) => setFiltroSaida(e.target.value as typeof filtroSaida)}
+              className={CLASSE_SELECT_FILTRO}
+            >
+              <option value="todas">Todas</option>
+              <option value="vendido">Vendidos</option>
+              <option value="morto">Mortos</option>
+            </select>
+          </CampoFiltro>
         )}
-        <select
-          aria-label="Filtrar por sexo"
-          value={filtroSexo}
-          onChange={(e) => setFiltroSexo(e.target.value as typeof filtroSexo)}
-          className="h-10 w-full min-w-0 rounded-md border border-input bg-background px-2.5 text-sm sm:w-auto"
-        >
-          <option value="todos">Todos os sexos</option>
-          {SEXOS.map((s) => (
-            <option key={s} value={s}>
-              {rotuloSexo(s)}
-            </option>
-          ))}
-        </select>
-        {filtroAtivo ? (
-          <button
-            type="button"
-            onClick={() => {
-              setFiltroEspecie("todas");
-              setFiltroCategoria("todas");
-              setFiltroSituacao("todas");
-              setFiltroSexo("todos");
-              setFiltroSaida("todas");
-            }}
-            className="text-xs font-medium text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
+        <CampoFiltro rotulo="Sexo">
+          <select
+            value={filtroSexo}
+            onChange={(e) => setFiltroSexo(e.target.value as typeof filtroSexo)}
+            className={CLASSE_SELECT_FILTRO}
           >
-            Limpar filtros
-          </button>
-        ) : null}
-      </div>
+            <option value="todos">Todos</option>
+            {SEXOS.map((s) => (
+              <option key={s} value={s}>
+                {rotuloSexo(s)}
+              </option>
+            ))}
+          </select>
+        </CampoFiltro>
+      </PainelFiltros>
 
       {lista.length === 0 ? (
         <EmptyState

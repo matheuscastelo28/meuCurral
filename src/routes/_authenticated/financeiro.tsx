@@ -5,6 +5,7 @@ import { Ban, CircleCheck, FileText, Plus, Wallet } from "lucide-react";
 import { toast } from "sonner";
 import { db } from "@/lib/local-db";
 import { AppShell } from "@/components/AppShell";
+import { CampoFiltro, CLASSE_SELECT_FILTRO, PainelFiltros } from "@/components/PainelFiltros";
 import { EmptyState } from "@/components/EmptyState";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -971,54 +972,53 @@ function Financeiro() {
         />
       ) : (
         <div className="rounded-xl border border-border bg-card">
-          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border p-4">
-            <h2 className="text-base font-semibold">Lançamentos</h2>
-            <div className="flex flex-wrap items-center gap-2">
+          <PainelFiltros
+            className="border-b border-border p-4"
+            titulo={<h2 className="text-base font-semibold">Lançamentos</h2>}
+            ativos={
+              (filtroTipo !== "todos" ? 1 : 0) +
+              (filtroStatus !== "todos" ? 1 : 0) +
+              (filtroData ? 1 : 0)
+            }
+            onLimpar={() => {
+              setFiltroTipo("todos");
+              setFiltroStatus("todos");
+              setFiltroData("");
+            }}
+          >
+            <CampoFiltro rotulo="Tipo">
               <select
-                aria-label="Filtrar por tipo"
                 value={filtroTipo}
                 onChange={(e) => setFiltroTipo(e.target.value as typeof filtroTipo)}
-                className="h-9 rounded-md border border-input bg-background px-2.5 text-sm"
+                className={CLASSE_SELECT_FILTRO}
               >
-                <option value="todos">Todos os tipos</option>
+                <option value="todos">Todos</option>
                 <option value="despesa">Despesa</option>
                 <option value="receita">Receita</option>
               </select>
+            </CampoFiltro>
+            <CampoFiltro rotulo="Status">
               <select
-                aria-label="Filtrar por status"
                 value={filtroStatus}
                 onChange={(e) => setFiltroStatus(e.target.value as typeof filtroStatus)}
-                className="h-9 rounded-md border border-input bg-background px-2.5 text-sm"
+                className={CLASSE_SELECT_FILTRO}
               >
-                <option value="todos">Todos os status</option>
+                <option value="todos">Todos</option>
                 <option value="pendente">Pendente</option>
                 <option value="parcial">Parcial</option>
                 <option value="pago">Pago</option>
                 <option value="atrasado">Atrasado</option>
                 <option value="cancelado">Cancelado</option>
               </select>
+            </CampoFiltro>
+            <CampoFiltro rotulo="Data">
               <Input
                 type="date"
-                aria-label="Filtrar por data"
                 value={filtroData}
                 onChange={(e) => setFiltroData(e.target.value)}
-                className="h-9 w-auto"
               />
-              {filtroAtivo ? (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setFiltroTipo("todos");
-                    setFiltroStatus("todos");
-                    setFiltroData("");
-                  }}
-                  className="text-xs font-medium text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
-                >
-                  Limpar filtros
-                </button>
-              ) : null}
-            </div>
-          </div>
+            </CampoFiltro>
+          </PainelFiltros>
 
           {linhasFiltradas.length === 0 ? (
             <p className="px-4 py-10 text-center text-sm text-muted-foreground">
