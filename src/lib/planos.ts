@@ -22,14 +22,16 @@ export const PLANOS: Plano[] = [
     preco: "R$ 0",
     periodo: "para sempre",
     resumo: "Para começar a sair da planilha hoje.",
-    limiteAnimais: 10,
+    // Fase de testes: sem limite de cabeças no grátis. Pra voltar ao
+    // limite, troque por 10 (e o texto do primeiro benefício abaixo).
+    limiteAnimais: Number.POSITIVE_INFINITY,
     limiteUsuarios: 1,
     relatorios: false,
     exportacao: false,
     multiUsuario: false,
     api: false,
     beneficios: [
-      "Até 10 cabeças cadastradas",
+      "Cabeças ilimitadas na fase de testes",
       "1 usuário",
       "Cadastro e ficha do animal",
       "Calendário e manejo básico",
@@ -85,7 +87,12 @@ export const PLANOS: Plano[] = [
     exportacao: true,
     multiUsuario: true,
     api: true,
-    beneficios: ["Cabeças ilimitadas", "Suporte prioritário", "Acesso via API", "Onboarding assistido"],
+    beneficios: [
+      "Cabeças ilimitadas",
+      "Suporte prioritário",
+      "Acesso via API",
+      "Onboarding assistido",
+    ],
   },
 ];
 
@@ -95,4 +102,10 @@ export function getPlano(id: PlanoId | string | null | undefined): Plano {
 
 export function limiteTexto(valor: number) {
   return Number.isFinite(valor) ? String(valor) : "ilimitado";
+}
+
+/** "3 de 10 cabeças" com limite; só "3 cabeças" quando é ilimitado. */
+export function usoCabecasTexto(usados: number, limite: number) {
+  const cabecas = usados === 1 ? "cabeça" : "cabeças";
+  return Number.isFinite(limite) ? `${usados} de ${limite} ${cabecas}` : `${usados} ${cabecas}`;
 }

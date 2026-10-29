@@ -19,7 +19,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { db } from "@/lib/local-db";
 import { useLimitePlano } from "@/hooks/use-fazenda";
-import { limiteTexto } from "@/lib/planos";
+import { usoCabecasTexto } from "@/lib/planos";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
@@ -304,7 +304,7 @@ export function AppShell({
             to="/config"
             className="flex items-center justify-center rounded-full border border-border px-3 py-1.5 text-xs font-medium text-muted-foreground transicao-suave hover:bg-accent"
           >
-            {!colapsada ? `${usados} de ${limiteTexto(limite)} cabeças · ${plano.nome}` : usados}
+            {!colapsada ? `${usoCabecasTexto(usados, limite)} · ${plano.nome}` : usados}
           </Link>
           <Button variant="ghost" size="sm" className="w-full justify-center gap-2" onClick={sair}>
             <LogOut className="size-4" aria-hidden="true" />
@@ -332,7 +332,7 @@ export function AppShell({
                 to="/config"
                 className="hidden rounded-full border border-border px-3 py-1.5 text-xs font-medium text-muted-foreground transicao-suave hover:bg-accent sm:block"
               >
-                {usados} de {limiteTexto(limite)} cabeças · {plano.nome}
+                {usoCabecasTexto(usados, limite)} · {plano.nome}
               </Link>
               <Button variant="ghost" size="sm" onClick={sair} aria-label="Sair da conta">
                 <LogOut className="size-4" aria-hidden="true" />
