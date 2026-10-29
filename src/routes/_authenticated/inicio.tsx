@@ -5,7 +5,6 @@ import {
   Beef,
   CalendarDays,
   Check,
-  FileText,
   Milk,
   Plus,
   Receipt,
@@ -17,6 +16,7 @@ import {
 import type { LucideIcon } from "lucide-react";
 import { toast } from "sonner";
 import { db } from "@/lib/local-db";
+import { cn } from "@/lib/utils";
 import { AppShell } from "@/components/AppShell";
 import { EmptyState } from "@/components/EmptyState";
 import { Button } from "@/components/ui/button";
@@ -143,6 +143,74 @@ function Inicio() {
     return acc;
   }, {});
 
+  // Com algo atrasado, os compromissos sobem pro topo da tela: é o que
+  // pede ação primeiro.
+  const qtdAtrasados = resumo.data?.atrasados.length ?? 0;
+  const temAtrasados = qtdAtrasados > 0;
+  const compromissos = (
+    <section
+      className={cn(
+        "rounded-xl border bg-card p-5",
+        temAtrasados ? "border-destructive/40" : "border-border",
+      )}
+    >
+      <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
+        <h2 className="flex flex-wrap items-center gap-2 text-base font-semibold">
+          Próximos compromissos
+          {temAtrasados ? (
+            <span className="whitespace-nowrap rounded-full bg-destructive/15 px-2 py-0.5 text-xs font-semibold text-destructive">
+              {qtdAtrasados} {qtdAtrasados === 1 ? "atrasado" : "atrasados"}
+            </span>
+          ) : null}
+        </h2>
+        <Link
+          to="/calendario"
+          className="whitespace-nowrap text-sm text-primary underline-offset-4 hover:underline"
+        >
+          Ver calendário
+        </Link>
+      </div>
+      {(resumo.data?.atrasados.length ?? 0) === 0 && (resumo.data?.proximos.length ?? 0) === 0 ? (
+        <p className="mt-4 text-sm text-muted-foreground">
+          Nada agendado. Ao registrar uma vacina com próxima dose, ela aparece aqui.
+        </p>
+      ) : (
+        <ul className="mt-4 space-y-3">
+          {resumo.data?.atrasados.map((ev) => (
+            <EventoItem
+              key={ev.id}
+              ev={ev}
+              atrasado
+              onConcluir={() => concluirOuRegistrar(ev)}
+              concluindo={concluirEvento.isPending}
+            />
+          ))}
+          {resumo.data?.proximos.map((ev) => (
+            <EventoItem
+              key={ev.id}
+              ev={ev}
+              atrasado={false}
+              onConcluir={() => concluirOuRegistrar(ev)}
+              concluindo={concluirEvento.isPending}
+            />
+          ))}
+        </ul>
+      )}
+    </section>
+  );
+
+  const atalhos: {
+    rotulo: string;
+    icon: LucideIcon;
+    to: "/pesagem" | "/rebanho" | "/leite" | "/financeiro";
+    search?: { sanidade?: boolean; novo?: boolean };
+  }[] = [
+    { rotulo: "Pesagem", icon: Weight, to: "/pesagem" },
+    { rotulo: "Vacina", icon: Syringe, to: "/rebanho", search: { sanidade: true } },
+    ...(soOvino ? [] : [{ rotulo: "Leite", icon: Milk, to: "/leite" as const }]),
+    { rotulo: "Lançamento", icon: Receipt, to: "/financeiro", search: { novo: true } },
+  ];
+
   return (
     <AppShell
       titulo={`Olá! Sua fazenda hoje`}
@@ -174,6 +242,7 @@ function Inicio() {
         />
       ) : (
         <div className="space-y-5">
+          {temAtrasados ? compromissos : null}
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
             <Cartao
               icon={Beef}
@@ -215,42 +284,28 @@ function Inicio() {
             </Link>
           </div>
 
-          <div className="flex flex-wrap gap-2">
-            <Button variant="outline" size="sm" asChild>
-              <Link to="/financeiro" search={{ novo: true }}>
-                <Receipt className="size-4" aria-hidden="true" />
-                Novo lançamento
+          {/* Atalhos do dia a dia: botões grandes, fáceis de acertar com o
+              celular numa mão. Relatório fica no Financeiro/menu, não é rotina. */}
+          <nav
+            aria-label="Atalhos"
+            className={cn("grid grid-cols-2 gap-3", soOvino ? "sm:grid-cols-3" : "sm:grid-cols-4")}
+          >
+            {atalhos.map((a) => (
+              <Link
+                key={a.rotulo}
+                to={a.to}
+                search={a.search ?? {}}
+                className="flex min-h-24 flex-col items-center justify-center gap-2 rounded-xl border border-border bg-card p-4 text-center transicao-suave hover:border-primary/40 hover:bg-accent"
+              >
+                <span className="flex size-11 items-center justify-center rounded-full bg-accent text-primary">
+                  <a.icon className="size-5" aria-hidden="true" />
+                </span>
+                <span className="text-sm font-semibold">{a.rotulo}</span>
               </Link>
-            </Button>
-            {soOvino ? null : (
-              <Button variant="outline" size="sm" asChild>
-                <Link to="/leite">
-                  <Milk className="size-4" aria-hidden="true" />
-                  Registrar leite
-                </Link>
-              </Button>
-            )}
-            <Button variant="outline" size="sm" asChild>
-              <Link to="/pesagem">
-                <Weight className="size-4" aria-hidden="true" />
-                Registrar pesagem
-              </Link>
-            </Button>
-            <Button variant="outline" size="sm" asChild>
-              <Link to="/rebanho" search={{ sanidade: true }}>
-                <Syringe className="size-4" aria-hidden="true" />
-                Vacinas e manejo
-              </Link>
-            </Button>
-            <Button variant="outline" size="sm" asChild>
-              <Link to="/relatorios">
-                <FileText className="size-4" aria-hidden="true" />
-                Relatório PDF
-              </Link>
-            </Button>
-          </div>
+            ))}
+          </nav>
 
-          <div className="grid gap-4 lg:grid-cols-2">
+          <div className={cn("grid gap-4", !temAtrasados && "lg:grid-cols-2")}>
             <section className="rounded-xl border border-border bg-card p-5">
               <h2 className="text-base font-semibold">Distribuição do rebanho</h2>
               <ul className="mt-4 space-y-3">
@@ -271,44 +326,7 @@ function Inicio() {
               </ul>
             </section>
 
-            <section className="rounded-xl border border-border bg-card p-5">
-              <div className="flex items-center justify-between">
-                <h2 className="text-base font-semibold">Próximos compromissos</h2>
-                <Link
-                  to="/calendario"
-                  className="text-sm text-primary underline-offset-4 hover:underline"
-                >
-                  Ver calendário
-                </Link>
-              </div>
-              {(resumo.data?.atrasados.length ?? 0) === 0 &&
-              (resumo.data?.proximos.length ?? 0) === 0 ? (
-                <p className="mt-4 text-sm text-muted-foreground">
-                  Nada agendado. Ao registrar uma vacina com próxima dose, ela aparece aqui.
-                </p>
-              ) : (
-                <ul className="mt-4 space-y-3">
-                  {resumo.data?.atrasados.map((ev) => (
-                    <EventoItem
-                      key={ev.id}
-                      ev={ev}
-                      atrasado
-                      onConcluir={() => concluirOuRegistrar(ev)}
-                      concluindo={concluirEvento.isPending}
-                    />
-                  ))}
-                  {resumo.data?.proximos.map((ev) => (
-                    <EventoItem
-                      key={ev.id}
-                      ev={ev}
-                      atrasado={false}
-                      onConcluir={() => concluirOuRegistrar(ev)}
-                      concluindo={concluirEvento.isPending}
-                    />
-                  ))}
-                </ul>
-              )}
-            </section>
+            {temAtrasados ? null : compromissos}
           </div>
         </div>
       )}
