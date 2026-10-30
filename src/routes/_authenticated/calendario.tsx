@@ -7,6 +7,7 @@ import {
   Check,
   ChevronLeft,
   ChevronRight,
+  MoreHorizontal,
   Pencil,
   Plus,
   Receipt,
@@ -23,6 +24,12 @@ import { DialogManejoSanitario, type EventoSanitario } from "@/components/Dialog
 import { EmptyState } from "@/components/EmptyState";
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -530,7 +537,7 @@ function Calendario() {
   return (
     <AppShell
       titulo="Agenda"
-      descricao="Compromissos da fazenda. Vacinas planejadas, próximas doses e vencimentos do Financeiro entram aqui sozinhos. Ao concluir uma vacina, a aplicação já vem preenchida."
+      descricao="Compromissos, vacinas e vencimentos da fazenda."
       acao={
         <div className="flex flex-wrap gap-2">
           <Button variant="outline" onClick={() => setSanitarioAberto(true)}>
@@ -922,22 +929,19 @@ function EventoItem({
   const status = statusDoEvento(evento, hoje);
 
   return (
-    <li className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border p-3">
-      <span className="min-w-0">
-        {mostrarData ? (
-          <span className="block text-xs font-semibold text-muted-foreground">
-            {dataCurta(evento.data)}
-          </span>
-        ) : null}
-        <span className="block text-sm font-medium">{evento.titulo}</span>
-        <span className="block text-xs text-muted-foreground capitalize">
-          {evento.tipo}
-          {evento.descricao ? ` · ${evento.descricao}` : ""}
+    <li className="flex items-start gap-3 rounded-lg border border-border p-3">
+      <span className="min-w-0 flex-1">
+        <span className="block text-sm font-medium break-words">{evento.titulo}</span>
+        <span className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
+          <StatusBadge status={status} />
+          {mostrarData ? <span className="font-semibold">{dataCurta(evento.data)}</span> : null}
+          <span className="capitalize">{evento.tipo}</span>
+          {evento.descricao ? <span className="w-full">{evento.descricao}</span> : null}
         </span>
       </span>
 
-      <span className="flex flex-wrap items-center gap-2">
-        <StatusBadge status={status} />
+      {/* Só a ação principal à vista; Remarcar e Cancelar ficam no "⋯". */}
+      <span className="flex shrink-0 items-center gap-1">
         {status === "feito" ? (
           <Button size="sm" variant="ghost" onClick={() => onDesfazerConcluido(evento.id)}>
             <Undo2 className="size-4" aria-hidden="true" />
@@ -952,16 +956,33 @@ function EventoItem({
           <>
             <Button size="sm" variant="outline" onClick={() => onConcluir(evento.id)}>
               <Check className="size-4" aria-hidden="true" />
-              Marcar como feito
+              Feito
             </Button>
-            <Button size="sm" variant="ghost" onClick={() => onRemarcar(evento)}>
-              <Pencil className="size-4" aria-hidden="true" />
-              Remarcar
-            </Button>
-            <Button size="sm" variant="ghost" onClick={() => onPedirCancelamento(evento)}>
-              <Ban className="size-4" aria-hidden="true" />
-              Cancelar evento
-            </Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="w-8 px-0"
+                  aria-label={`Mais ações: ${evento.titulo ?? "compromisso"}`}
+                >
+                  <MoreHorizontal className="size-4" aria-hidden="true" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onSelect={() => onRemarcar(evento)}>
+                  <Pencil className="size-4" aria-hidden="true" />
+                  Remarcar
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  className="text-destructive focus:text-destructive"
+                  onSelect={() => onPedirCancelamento(evento)}
+                >
+                  <Ban className="size-4" aria-hidden="true" />
+                  Cancelar evento
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </>
         )}
       </span>
