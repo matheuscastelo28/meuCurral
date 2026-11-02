@@ -832,32 +832,6 @@ function Leite() {
         )}
       </div>
 
-      <div className="mb-5 rounded-xl border border-border bg-card p-4">
-        <div className="flex items-baseline justify-between gap-2">
-          <h2 className="text-base font-semibold">Produção dos últimos 30 dias</h2>
-          <span className="text-xs text-muted-foreground">
-            Total: {total30Dias.toLocaleString("pt-BR", { maximumFractionDigits: 1 })} L
-          </span>
-        </div>
-        {total30Dias > 0 ? (
-          <ChartContainer
-            config={{ litros: { label: "Litros", color: "var(--primary)" } }}
-            className="mt-3 h-48 w-full"
-          >
-            <BarChart data={porDia}>
-              <CartesianGrid vertical={false} strokeDasharray="3 3" />
-              <XAxis dataKey="data" tickLine={false} axisLine={false} fontSize={10} interval={4} />
-              <ChartTooltip content={<ChartTooltipContent />} />
-              <Bar dataKey="litros" fill="var(--primary)" radius={[3, 3, 0, 0]} />
-            </BarChart>
-          </ChartContainer>
-        ) : (
-          <p className="mt-3 text-sm text-muted-foreground">
-            O gráfico aparece assim que houver produção registrada.
-          </p>
-        )}
-      </div>
-
       {/* Os 5 números do dia a dia à vista; o resto fica em "Ver todos". */}
       <div className="mb-3 grid auto-rows-fr grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5 [&>*:last-child:nth-child(odd)]:col-span-2 sm:[&>*:last-child:nth-child(odd)]:col-span-1">
         <Kpi icon={Milk} rotulo="Leite hoje" valor={`${totalHoje.toLocaleString("pt-BR")} L`} />
@@ -938,7 +912,39 @@ function Leite() {
         ) : null}
       </div>
 
-      <div className="mb-5">
+      <div className="mb-5 grid gap-4 lg:grid-cols-2">
+        <div className="rounded-xl border border-border bg-card p-4">
+          <div className="flex items-baseline justify-between gap-2">
+            <h2 className="text-base font-semibold">Produção dos últimos 30 dias</h2>
+            <span className="text-xs text-muted-foreground">
+              Total: {total30Dias.toLocaleString("pt-BR", { maximumFractionDigits: 1 })} L
+            </span>
+          </div>
+          {total30Dias > 0 ? (
+            <ChartContainer
+              config={{ litros: { label: "Litros", color: "var(--primary)" } }}
+              className="mt-3 h-48 w-full"
+            >
+              <BarChart data={porDia}>
+                <CartesianGrid vertical={false} strokeDasharray="3 3" />
+                <XAxis
+                  dataKey="data"
+                  tickLine={false}
+                  axisLine={false}
+                  fontSize={10}
+                  interval={4}
+                />
+                <ChartTooltip content={<ChartTooltipContent />} />
+                <Bar dataKey="litros" fill="var(--primary)" radius={[3, 3, 0, 0]} />
+              </BarChart>
+            </ChartContainer>
+          ) : (
+            <p className="mt-3 text-sm text-muted-foreground">
+              O gráfico aparece assim que houver produção registrada.
+            </p>
+          )}
+        </div>
+
         <div className="rounded-xl border border-border bg-card">
           <div className="border-b border-border px-4 py-3 text-sm font-semibold">
             Últimos registros
