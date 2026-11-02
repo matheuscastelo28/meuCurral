@@ -1,7 +1,19 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Baby, Beef, Coins, Droplet, Milk, Percent, Plus, Skull, Tag, Trash2 } from "lucide-react";
+import {
+  Baby,
+  Beef,
+  ChevronDown,
+  Coins,
+  Droplet,
+  Milk,
+  Percent,
+  Plus,
+  Skull,
+  Tag,
+  Trash2,
+} from "lucide-react";
 import { Bar, BarChart, CartesianGrid, XAxis } from "recharts";
 import { toast } from "sonner";
 import { db } from "@/lib/local-db";
@@ -24,6 +36,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { useFazenda } from "@/hooks/use-fazenda";
+import { cn } from "@/lib/utils";
 import { useIndicesRebanho } from "@/hooks/use-indices-rebanho";
 import { dataCurta, dataISO, diasAtrasISO, hojeISO, moeda as formatarMoeda } from "@/lib/formato";
 import { rotuloTurno } from "@/lib/rotulos";
@@ -75,6 +88,7 @@ function Leite() {
   const indices = useIndicesRebanho(fazenda?.id, CATEGORIAS_BOVINO);
   const queryClient = useQueryClient();
   const hoje = hojeISO();
+  const [todosIndices, setTodosIndices] = useState(false);
   const [modoRegistro, setModoRegistro] = useState<"vaca" | "lote">("vaca");
   const [data, setData] = useState(hoje);
   const [litros, setLitros] = useState("");
@@ -818,7 +832,34 @@ function Leite() {
         )}
       </div>
 
-      <div className="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5 xl:grid-cols-7 [&>*:last-child:nth-child(odd)]:col-span-2 sm:[&>*:last-child:nth-child(odd)]:col-span-1">
+      <div className="mb-5 rounded-xl border border-border bg-card p-4">
+        <div className="flex items-baseline justify-between gap-2">
+          <h2 className="text-base font-semibold">Produção dos últimos 30 dias</h2>
+          <span className="text-xs text-muted-foreground">
+            Total: {total30Dias.toLocaleString("pt-BR", { maximumFractionDigits: 1 })} L
+          </span>
+        </div>
+        {total30Dias > 0 ? (
+          <ChartContainer
+            config={{ litros: { label: "Litros", color: "var(--primary)" } }}
+            className="mt-3 h-48 w-full"
+          >
+            <BarChart data={porDia}>
+              <CartesianGrid vertical={false} strokeDasharray="3 3" />
+              <XAxis dataKey="data" tickLine={false} axisLine={false} fontSize={10} interval={4} />
+              <ChartTooltip content={<ChartTooltipContent />} />
+              <Bar dataKey="litros" fill="var(--primary)" radius={[3, 3, 0, 0]} />
+            </BarChart>
+          </ChartContainer>
+        ) : (
+          <p className="mt-3 text-sm text-muted-foreground">
+            O gráfico aparece assim que houver produção registrada.
+          </p>
+        )}
+      </div>
+
+      {/* Os 5 números do dia a dia à vista; o resto fica em "Ver todos". */}
+      <div className="mb-3 grid auto-rows-fr grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5 [&>*:last-child:nth-child(odd)]:col-span-2 sm:[&>*:last-child:nth-child(odd)]:col-span-1">
         <Kpi icon={Milk} rotulo="Leite hoje" valor={`${totalHoje.toLocaleString("pt-BR")} L`} />
         <Kpi
           icon={Droplet}
@@ -837,76 +878,67 @@ function Leite() {
         <Kpi icon={Milk} rotulo="Vacas em lactação" valor={i ? `${i.lactantes}` : "—"} />
         <Kpi
           icon={Percent}
-          rotulo="Em lactação / vacas"
-          valor={i ? `${i.lactantesVacasPct}%` : "—"}
-        />
-        <Kpi
-          icon={Milk}
-          rotulo="Dias em lactação (média)"
-          valor={i ? (i.delMedio !== null ? `${i.delMedio} dias` : "—") : "—"}
-        />
-        <Kpi icon={Beef} rotulo="Total do rebanho" valor={i ? `${i.totalRebanho} cab` : "—"} />
-        <Kpi icon={Baby} rotulo="Total de prenhes" valor={i ? `${i.totalPrenhes} cab` : "—"} />
-        <Kpi
-          icon={Percent}
           rotulo="Taxa de prenhes / vacas"
           valor={i ? (i.vacas > 0 ? `${Math.round((i.totalPrenhes / i.vacas) * 100)}%` : "—") : "—"}
         />
-        <Kpi icon={Baby} rotulo="Partos (últimos 30 dias)" valor={i ? `${i.partos30d} cab` : "—"} />
-        <Kpi
-          icon={Skull}
-          rotulo="Mortes (últimos 30 dias)"
-          valor={i ? `${i.mortes30d} cab` : "—"}
-        />
-        <Kpi
-          icon={Percent}
-          rotulo="Lactantes / rebanho"
-          valor={i ? `${i.lactantesRebanhoPct}%` : "—"}
-        />
-        <Kpi
-          icon={Droplet}
-          rotulo="Total do último controle"
-          valor={
-            i
-              ? `${i.totalUltimoControle.toLocaleString("pt-BR", { maximumFractionDigits: 1 })} L`
-              : "—"
-          }
-        />
+      </div>
+      <div className="mb-5">
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          onClick={() => setTodosIndices((v) => !v)}
+          aria-expanded={todosIndices}
+        >
+          <ChevronDown
+            className={cn("size-4 transition-transform", todosIndices && "rotate-180")}
+            aria-hidden="true"
+          />
+          {todosIndices ? "Ocultar índices" : "Ver todos os índices (8)"}
+        </Button>
+        {todosIndices ? (
+          <div className="mt-3 grid auto-rows-fr grid-cols-2 gap-3 sm:grid-cols-4">
+            <Kpi
+              icon={Percent}
+              rotulo="Em lactação / vacas"
+              valor={i ? `${i.lactantesVacasPct}%` : "—"}
+            />
+            <Kpi
+              icon={Milk}
+              rotulo="Dias em lactação (média)"
+              valor={i ? (i.delMedio !== null ? `${i.delMedio} dias` : "—") : "—"}
+            />
+            <Kpi icon={Beef} rotulo="Total do rebanho" valor={i ? `${i.totalRebanho} cab` : "—"} />
+            <Kpi icon={Baby} rotulo="Total de prenhes" valor={i ? `${i.totalPrenhes} cab` : "—"} />
+            <Kpi
+              icon={Baby}
+              rotulo="Partos (últimos 30 dias)"
+              valor={i ? `${i.partos30d} cab` : "—"}
+            />
+            <Kpi
+              icon={Skull}
+              rotulo="Mortes (últimos 30 dias)"
+              valor={i ? `${i.mortes30d} cab` : "—"}
+            />
+            <Kpi
+              icon={Percent}
+              rotulo="Lactantes / rebanho"
+              valor={i ? `${i.lactantesRebanhoPct}%` : "—"}
+            />
+            <Kpi
+              icon={Droplet}
+              rotulo="Total do último controle"
+              valor={
+                i
+                  ? `${i.totalUltimoControle.toLocaleString("pt-BR", { maximumFractionDigits: 1 })} L`
+                  : "—"
+              }
+            />
+          </div>
+        ) : null}
       </div>
 
-      <div className="mb-5 grid gap-4 lg:grid-cols-2">
-        <div className="rounded-xl border border-border bg-card p-4">
-          <div className="flex items-baseline justify-between gap-2">
-            <h2 className="text-base font-semibold">Produção dos últimos 30 dias</h2>
-            <span className="text-xs text-muted-foreground">
-              Total: {total30Dias.toLocaleString("pt-BR", { maximumFractionDigits: 1 })} L
-            </span>
-          </div>
-          {total30Dias > 0 ? (
-            <ChartContainer
-              config={{ litros: { label: "Litros", color: "var(--primary)" } }}
-              className="mt-3 h-48 w-full"
-            >
-              <BarChart data={porDia}>
-                <CartesianGrid vertical={false} strokeDasharray="3 3" />
-                <XAxis
-                  dataKey="data"
-                  tickLine={false}
-                  axisLine={false}
-                  fontSize={10}
-                  interval={4}
-                />
-                <ChartTooltip content={<ChartTooltipContent />} />
-                <Bar dataKey="litros" fill="var(--primary)" radius={[3, 3, 0, 0]} />
-              </BarChart>
-            </ChartContainer>
-          ) : (
-            <p className="mt-3 text-sm text-muted-foreground">
-              O gráfico aparece assim que houver produção registrada.
-            </p>
-          )}
-        </div>
-
+      <div className="mb-5">
         <div className="rounded-xl border border-border bg-card">
           <div className="border-b border-border px-4 py-3 text-sm font-semibold">
             Últimos registros
@@ -1721,7 +1753,7 @@ function Leite() {
 
 function Kpi({ icon: Icon, rotulo, valor }: { icon: typeof Milk; rotulo: string; valor: string }) {
   return (
-    <div className="rounded-xl border border-border bg-card p-3">
+    <div className="h-full rounded-xl border border-border bg-card p-3">
       <span className="flex size-8 items-center justify-center rounded-lg bg-accent text-primary">
         <Icon className="size-4" aria-hidden="true" />
       </span>
