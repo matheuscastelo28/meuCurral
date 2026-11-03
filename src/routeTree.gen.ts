@@ -27,6 +27,7 @@ import { Route as AuthenticatedPlanosRouteImport } from './routes/_authenticated
 import { Route as AuthenticatedRebanhoRouteImport } from './routes/_authenticated/rebanho'
 import { Route as AuthenticatedRelatoriosRouteImport } from './routes/_authenticated/relatorios'
 import { Route as AuthenticatedReproducaoRouteImport } from './routes/_authenticated/reproducao'
+import { Route as ApiSaudeBancoRouteImport } from './routes/api/saude-banco'
 import { Route as AuthenticatedRebanhoAnimalIdRouteImport } from './routes/_authenticated/rebanho_.$animalId'
 
 const IndexRoute = IndexRouteImport.update({
@@ -118,6 +119,11 @@ const AuthenticatedReproducaoRoute = AuthenticatedReproducaoRouteImport.update({
   path: '/reproducao',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
+const ApiSaudeBancoRoute = ApiSaudeBancoRouteImport.update({
+  id: '/api/saude-banco',
+  path: '/api/saude-banco',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const AuthenticatedRebanhoAnimalIdRoute =
   AuthenticatedRebanhoAnimalIdRouteImport.update({
     id: '/rebanho_/$animalId',
@@ -143,6 +149,7 @@ export interface FileRoutesByFullPath {
   '/rebanho': typeof AuthenticatedRebanhoRoute
   '/relatorios': typeof AuthenticatedRelatoriosRoute
   '/reproducao': typeof AuthenticatedReproducaoRoute
+  '/api/saude-banco': typeof ApiSaudeBancoRoute
   '/rebanho/$animalId': typeof AuthenticatedRebanhoAnimalIdRoute
 }
 export interface FileRoutesByTo {
@@ -163,6 +170,7 @@ export interface FileRoutesByTo {
   '/rebanho': typeof AuthenticatedRebanhoRoute
   '/relatorios': typeof AuthenticatedRelatoriosRoute
   '/reproducao': typeof AuthenticatedReproducaoRoute
+  '/api/saude-banco': typeof ApiSaudeBancoRoute
   '/rebanho/$animalId': typeof AuthenticatedRebanhoAnimalIdRoute
 }
 export interface FileRoutesById {
@@ -185,6 +193,7 @@ export interface FileRoutesById {
   '/_authenticated/rebanho': typeof AuthenticatedRebanhoRoute
   '/_authenticated/relatorios': typeof AuthenticatedRelatoriosRoute
   '/_authenticated/reproducao': typeof AuthenticatedReproducaoRoute
+  '/api/saude-banco': typeof ApiSaudeBancoRoute
   '/_authenticated/rebanho_/$animalId': typeof AuthenticatedRebanhoAnimalIdRoute
 }
 export interface FileRouteTypes {
@@ -207,6 +216,7 @@ export interface FileRouteTypes {
     | '/rebanho'
     | '/relatorios'
     | '/reproducao'
+    | '/api/saude-banco'
     | '/rebanho/$animalId'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -227,6 +237,7 @@ export interface FileRouteTypes {
     | '/rebanho'
     | '/relatorios'
     | '/reproducao'
+    | '/api/saude-banco'
     | '/rebanho/$animalId'
   id:
     | '__root__'
@@ -248,6 +259,7 @@ export interface FileRouteTypes {
     | '/_authenticated/rebanho'
     | '/_authenticated/relatorios'
     | '/_authenticated/reproducao'
+    | '/api/saude-banco'
     | '/_authenticated/rebanho_/$animalId'
   fileRoutesById: FileRoutesById
 }
@@ -259,6 +271,7 @@ export interface RootRouteChildren {
   PrivacidadeRoute: typeof PrivacidadeRoute
   TermosRoute: typeof TermosRoute
   VerificarEmailRoute: typeof VerificarEmailRoute
+  ApiSaudeBancoRoute: typeof ApiSaudeBancoRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -389,6 +402,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedReproducaoRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/api/saude-banco': {
+      id: '/api/saude-banco'
+      path: '/api/saude-banco'
+      fullPath: '/api/saude-banco'
+      preLoaderRoute: typeof ApiSaudeBancoRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/_authenticated/rebanho_/$animalId': {
       id: '/_authenticated/rebanho_/$animalId'
       path: '/rebanho/$animalId'
@@ -440,6 +460,7 @@ const rootRouteChildren: RootRouteChildren = {
   PrivacidadeRoute: PrivacidadeRoute,
   TermosRoute: TermosRoute,
   VerificarEmailRoute: VerificarEmailRoute,
+  ApiSaudeBancoRoute: ApiSaudeBancoRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
