@@ -16,7 +16,7 @@ export const Route = createFileRoute("/cadastro")({
       {
         name: "description",
         content:
-          "Crie sua conta em 4 passos e comece a controlar o rebanho grátis, sem limite de cabeças na fase de testes.",
+          "Crie sua conta em 4 passos e comece a controlar o rebanho com até 10 cabeças grátis.",
       },
       { property: "og:title", content: "Criar conta grátis — Curral Online" },
       {

@@ -8,7 +8,8 @@ import { AppShell } from "@/components/AppShell";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { useFazenda } from "@/hooks/use-fazenda";
+import { useFazenda, useLimitePlano } from "@/hooks/use-fazenda";
+import { RecursoBloqueado } from "@/components/RecursoBloqueado";
 import { usePerfil } from "@/hooks/use-preferencias";
 import { dataCurta, hojeISO, moeda } from "@/lib/formato";
 import { especiesDasAtividades } from "@/lib/especies";
@@ -63,6 +64,7 @@ function lerIdentificacao(chave: string): Identificacao | null {
 
 function Relatorios() {
   const { data: fazenda } = useFazenda();
+  const { plano, carregando: carregandoPlano } = useLimitePlano();
   const { data: perfil } = usePerfil();
   const especies = especiesDasAtividades(fazenda?.atividades);
   const temLeite = especies.includes("bovino");
@@ -106,7 +108,7 @@ function Relatorios() {
 
   const dados = useQuery({
     queryKey: ["relatorio", fazenda?.id, periodo.inicio, periodo.fim, temLeite],
-    enabled: !!fazenda?.id && periodoValido,
+    enabled: !!fazenda?.id && periodoValido && plano.relatorios,
     queryFn: async () => {
       const id = fazenda!.id;
       const [animais, lancamentos, parcelas, contas, manejos, leite] = await Promise.all([
@@ -208,6 +210,25 @@ function Relatorios() {
   const soma = (campo: "inicial" | "nascimentos" | "entradas" | "vendas" | "mortes" | "final") =>
     (relatorio?.evolucao ?? []).reduce((s, l) => s + l[campo], 0);
   const resultado = (relatorio?.totalReceitas ?? 0) - (relatorio?.totalDespesas ?? 0);
+
+  // Plano sem relatórios (grátis de conta nova): mostra o que é e como liberar.
+  if (!carregandoPlano && !plano.relatorios) {
+    return (
+      <AppShell
+        titulo="Relatórios"
+        descricao="Relatório em PDF do rebanho e da atividade, no formato que banco e cooperativa pedem."
+      >
+        <div className="max-w-xl space-y-4">
+          <RecursoBloqueado recurso="O relatório em PDF" planoNecessario="Essencial" />
+          <Button asChild>
+            <a href="mailto:contato@curralonline.com?subject=Quero%20liberar%20os%20relat%C3%B3rios">
+              Falar com a gente
+            </a>
+          </Button>
+        </div>
+      </AppShell>
+    );
+  }
 
   return (
     <AppShell

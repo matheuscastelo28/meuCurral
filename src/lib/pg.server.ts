@@ -120,6 +120,25 @@ create table if not exists fazendas (
 -- com ["bovino"], que é o comportamento que elas já tinham.
 alter table fazendas add column if not exists atividades jsonb default '["bovino"]'::jsonb;
 
+-- Acesso total: toda fazenda que já existia quando o sistema de planos foi
+-- ligado fica sem limite de cabeças e com todos os recursos. A coluna nasce
+-- com default true (as linhas existentes herdam true) e logo em seguida o
+-- default vira false — fazenda nova cai no plano que escolheu. O bloco só
+-- roda quando a coluna ainda não existe, então rodar o esquema de novo nunca
+-- marca ninguém. A troca é uma transação só (o ALTER segura o lock da
+-- tabela), então nenhum cadastro novo escapa com true no meio do caminho.
+do $$
+begin
+  if not exists (
+    select 1 from information_schema.columns
+    where table_schema = current_schema()
+      and table_name = 'fazendas' and column_name = 'acesso_total'
+  ) then
+    alter table fazendas add column if not exists acesso_total boolean not null default true;
+    alter table fazendas alter column acesso_total set default false;
+  end if;
+end $$;
+
 create table if not exists fazenda_membros (
   id uuid primary key default gen_random_uuid(),
   fazenda_id uuid references fazendas(id) on delete cascade,

@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { db } from "@/lib/local-db";
-import { getPlano } from "@/lib/planos";
+import { planoDaFazenda } from "@/lib/planos";
 
 export type Atividade = "bovino" | "ovino";
 
@@ -10,6 +10,7 @@ export interface Fazenda {
   cidade: string | null;
   estado: string | null;
   plano: string;
+  acesso_total: boolean;
   dono_id: string;
   produtos_leite: string[];
   atividades: Atividade[] | null;
@@ -34,7 +35,9 @@ export function useFazenda() {
       if (!user) return null;
       const { data, error } = await db
         .from("fazendas")
-        .select("id, nome, cidade, estado, plano, dono_id, produtos_leite, atividades")
+        .select(
+          "id, nome, cidade, estado, plano, acesso_total, dono_id, produtos_leite, atividades",
+        )
         .eq("dono_id", user.id)
         .order("created_at", { ascending: true })
         .limit(1);
@@ -63,14 +66,17 @@ export function useContagemAnimais(fazendaId: string | undefined) {
 export function useLimitePlano() {
   const fazenda = useFazenda();
   const contagem = useContagemAnimais(fazenda.data?.id);
-  const plano = getPlano(fazenda.data?.plano);
+  const plano = planoDaFazenda(fazenda.data);
   const usados = contagem.data ?? 0;
+  // Enquanto a fazenda não chegou não dá pra saber o plano: não bloqueia
+  // ninguém (quem tem acesso total e muitas cabeças veria um aviso falso).
+  const limite = fazenda.data ? plano.limiteAnimais : Number.POSITIVE_INFINITY;
   return {
     fazenda: fazenda.data ?? null,
     carregando: fazenda.isLoading || contagem.isLoading,
     plano,
     usados,
-    limite: plano.limiteAnimais,
-    atingiu: usados >= plano.limiteAnimais,
+    limite,
+    atingiu: usados >= limite,
   };
 }

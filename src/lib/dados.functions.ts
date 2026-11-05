@@ -7,6 +7,7 @@
  */
 import { createServerFn } from "@tanstack/react-start";
 import type { Sql } from "./pg.server";
+import { planoDaFazenda } from "./planos";
 
 // ---------------------------------------------------------------------------
 // Tipos trocados com o navegador
@@ -74,6 +75,45 @@ function normalizarBrinco(valor: string): string {
  * `entrada` traga mais de um animal de uma vez. `idExcluido` evita que uma
  * edição acuse o próprio animal de duplicidade.
  */
+const STATUS_DE_SAIDA = ["vendido", "morto"];
+
+/**
+ * Limite de cabeças do plano, validado aqui no servidor — a tela sozinha não
+ * segura ninguém. Conta só o que está no rebanho (sem vendido/morto), igual
+ * ao contador da tela. `entradas` = quantas cabeças passam a contar agora,
+ * por fazenda. Devolve a mensagem de erro, ou null se está dentro do plano.
+ */
+async function verificarLimiteAnimais(
+  sql: Sql,
+  entradas: Map<string, number>,
+): Promise<string | null> {
+  for (const [fazendaId, novos] of entradas) {
+    if (novos <= 0) continue;
+    const fazendas: { plano: string | null; acesso_total: boolean | null }[] =
+      await sql`select plano, acesso_total from fazendas where id = ${fazendaId}`;
+    const plano = planoDaFazenda(fazendas[0]);
+    if (!Number.isFinite(plano.limiteAnimais)) continue;
+    const contagem: { n: number }[] = await sql`
+      select count(*)::int as n from animais
+      where fazenda_id = ${fazendaId}
+        and (status is null or status <> all(${STATUS_DE_SAIDA}))`;
+    const atuais = contagem[0]?.n ?? 0;
+    if (atuais + novos > plano.limiteAnimais) {
+      return `O plano ${plano.nome} permite ${plano.limiteAnimais} cabeças e você já tem ${atuais}. Fale com a gente para liberar mais espaço.`;
+    }
+  }
+  return null;
+}
+
+function contarPorFazenda(linhas: Record<string, unknown>[]): Map<string, number> {
+  const mapa = new Map<string, number>();
+  for (const l of linhas) {
+    const id = String(l["fazenda_id"]);
+    mapa.set(id, (mapa.get(id) ?? 0) + 1);
+  }
+  return mapa;
+}
+
 async function verificarBrincosDuplicados(
   sql: Sql,
   entrada: Record<string, unknown>[],
@@ -230,7 +270,13 @@ export const consultar = createServerFn({ method: "POST" })
         if (tabela === "perfis") {
           entradaSegura = entrada.map((v) => ({ ...v, id: userId }));
         } else if (tabela === "fazendas") {
-          entradaSegura = entrada.map((v) => ({ ...v, dono_id: userId }));
+          // Fazenda nasce só no cadastro (função própria). Criar fazendas
+          // extras por aqui driblaria o limite de cabeças de cada plano.
+          return {
+            data: [],
+            error: { message: "Fazendas são criadas no cadastro da conta." },
+            count: 0,
+          };
         } else {
           const idsPermitidos = await fazendasDoUsuario();
           const invalida = entrada.some(
@@ -243,6 +289,15 @@ export const consultar = createServerFn({ method: "POST" })
         if (tabela === "animais") {
           const erroBrinco = await verificarBrincosDuplicados(sql, entradaSegura, null);
           if (erroBrinco) return { data: [], error: { message: erroBrinco }, count: 0 };
+          const erroLimite = await verificarLimiteAnimais(
+            sql,
+            contarPorFazenda(
+              entradaSegura.filter(
+                (v) => !STATUS_DE_SAIDA.includes(String(v["status"] ?? "ativo")),
+              ),
+            ),
+          );
+          if (erroLimite) return { data: [], error: { message: erroLimite }, count: 0 };
         }
 
         const criadas: any[] =
@@ -254,7 +309,14 @@ export const consultar = createServerFn({ method: "POST" })
       if (pedido.modo === "update") {
         const valoresAtualizacao: Record<string, unknown> = { ...(pedido.valores as any) };
         if (tabela === "perfis") delete valoresAtualizacao["id"];
-        if (tabela === "fazendas") delete valoresAtualizacao["dono_id"];
+        if (tabela === "fazendas") {
+          delete valoresAtualizacao["dono_id"];
+          delete valoresAtualizacao["plano"];
+          delete valoresAtualizacao["acesso_total"];
+          if (Object.keys(valoresAtualizacao).length === 0) {
+            return { data: [], error: { message: "Nada para atualizar." }, count: 0 };
+          }
+        }
         if (tabela !== "perfis" && tabela !== "fazendas" && "fazenda_id" in valoresAtualizacao) {
           const idsPermitidos = await fazendasDoUsuario();
           if (!idsPermitidos.includes(String(valoresAtualizacao["fazenda_id"]))) {
@@ -276,6 +338,20 @@ export const consultar = createServerFn({ method: "POST" })
             );
             if (erroBrinco) return { data: [], error: { message: erroBrinco }, count: 0 };
           }
+        }
+
+        // Trazer de volta pro rebanho um animal vendido/morto também ocupa
+        // uma vaga do plano.
+        if (
+          tabela === "animais" &&
+          typeof valoresAtualizacao["status"] === "string" &&
+          !STATUS_DE_SAIDA.includes(valoresAtualizacao["status"])
+        ) {
+          const reativados: { fazenda_id: string }[] = await sql`
+            select fazenda_id from animais
+            where ${onde} and status = any(${STATUS_DE_SAIDA})`;
+          const erroLimite = await verificarLimiteAnimais(sql, contarPorFazenda(reativados));
+          if (erroLimite) return { data: [], error: { message: erroLimite }, count: 0 };
         }
 
         const atualizadas: any[] = await sql`

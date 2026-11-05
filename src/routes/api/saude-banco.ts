@@ -17,7 +17,7 @@ export const Route = createFileRoute("/api/saude-banco")({
             status,
             headers: { "content-type": "application/json; charset=utf-8" },
           });
-        const { sqlCliente, urlBanco } = await import("@/lib/pg.server");
+        const { conexao, urlBanco } = await import("@/lib/pg.server");
         const url = urlBanco();
         let host: string | null = null;
         let banco: string | null = null;
@@ -30,7 +30,8 @@ export const Route = createFileRoute("/api/saude-banco")({
         }
         if (!url) return json({ ok: false, erro: "DATABASE_URL não definida" }, 500);
         try {
-          const sql = sqlCliente();
+          // mesmo caminho do sistema: garante o esquema (e as migrações) antes de contar
+          const sql = await conexao();
           const [info] = await sql`select current_database() as banco, version() as versao`;
           const tabelas: { table_name: string }[] = await sql`
             select table_name from information_schema.tables
@@ -48,8 +49,28 @@ export const Route = createFileRoute("/api/saude-banco")({
             const [linha] = await sql`select count(*)::int as n from ${sql(t)}`;
             contagens[t] = linha?.["n"] ?? 0;
           }
+          // Planos: quantas fazendas têm acesso total (cadastros antigos) e
+          // quantas já nasceram sob os planos.
+          let planos: Record<string, number | string | null> | undefined;
+          const temColuna: { n: number }[] = await sql`
+            select count(*)::int as n from information_schema.columns
+            where table_schema = current_schema()
+              and table_name = 'fazendas' and column_name = 'acesso_total'`;
+          if ((temColuna[0]?.n ?? 0) > 0) {
+            const [p] = await sql`
+              select count(*) filter (where acesso_total)::int as acesso_total,
+                     count(*) filter (where not acesso_total)::int as sob_planos,
+                     min(created_at) filter (where not acesso_total) as sob_planos_desde
+              from fazendas`;
+            planos = {
+              acesso_total: p?.["acesso_total"] ?? 0,
+              sob_planos: p?.["sob_planos"] ?? 0,
+              sob_planos_desde: p?.["sob_planos_desde"] ?? null,
+            };
+          }
           return json({
             ok: true,
+            planos,
             host,
             banco_na_url: banco,
             banco_conectado: info?.["banco"],

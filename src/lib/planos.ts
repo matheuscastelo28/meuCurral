@@ -1,4 +1,4 @@
-export type PlanoId = "gratis" | "essencial" | "profissional" | "fazenda_grande";
+export type PlanoId = "gratis" | "essencial" | "profissional" | "fazenda_grande" | "acesso_total";
 
 export interface Plano {
   id: PlanoId;
@@ -22,16 +22,14 @@ export const PLANOS: Plano[] = [
     preco: "R$ 0",
     periodo: "para sempre",
     resumo: "Para começar a sair da planilha hoje.",
-    // Fase de testes: sem limite de cabeças no grátis. Pra voltar ao
-    // limite, troque por 10 (e o texto do primeiro benefício abaixo).
-    limiteAnimais: Number.POSITIVE_INFINITY,
+    limiteAnimais: 10,
     limiteUsuarios: 1,
     relatorios: false,
     exportacao: false,
     multiUsuario: false,
     api: false,
     beneficios: [
-      "Cabeças ilimitadas na fase de testes",
+      "Até 10 cabeças cadastradas",
       "1 usuário",
       "Cadastro e ficha do animal",
       "Calendário e manejo básico",
@@ -95,6 +93,34 @@ export const PLANOS: Plano[] = [
     ],
   },
 ];
+
+/**
+ * Plano das fazendas que já existiam quando os planos foram ligados
+ * (fazendas.acesso_total = true): sem limite de cabeças e com tudo liberado.
+ * Não aparece na página de preços — só quem já tinha conta chega nele.
+ */
+export const PLANO_ACESSO_TOTAL: Plano = {
+  id: "acesso_total",
+  nome: "Acesso total",
+  preco: "—",
+  periodo: "",
+  resumo: "Cadastro anterior aos planos: tudo liberado, sem limite de cabeças.",
+  limiteAnimais: Number.POSITIVE_INFINITY,
+  limiteUsuarios: Number.POSITIVE_INFINITY,
+  relatorios: true,
+  exportacao: true,
+  multiUsuario: true,
+  api: false,
+  beneficios: [],
+};
+
+/** Plano que vale de fato pra uma fazenda (acesso total tem prioridade). */
+export function planoDaFazenda(
+  fazenda: { plano?: string | null; acesso_total?: boolean | null } | null | undefined,
+): Plano {
+  if (fazenda?.acesso_total) return PLANO_ACESSO_TOTAL;
+  return getPlano(fazenda?.plano);
+}
 
 export function getPlano(id: PlanoId | string | null | undefined): Plano {
   return PLANOS.find((p) => p.id === id) ?? PLANOS[0]!;

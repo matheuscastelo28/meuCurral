@@ -47,11 +47,11 @@ function Termos() {
 
         <h2 className="text-base font-semibold text-foreground">Planos, cobrança e cancelamento</h2>
         <p>
-          O plano grátis não expira. Durante a fase de testes ele não tem limite de cabeças; ao fim
-          dessa fase, um limite pode voltar a valer, com aviso prévio. Nos planos pagos, a cobrança
-          é recorrente conforme o período contratado (mensal ou anual) e o cancelamento pode ser
-          feito a qualquer momento, sem multa — o acesso aos recursos do plano permanece até o fim
-          do período já pago.
+          O plano grátis não expira e tem limite de cabeças cadastradas. Contas criadas antes de
+          05/11/2026 mantêm acesso total, sem limite de cabeças. Nos planos pagos, a cobrança é
+          recorrente conforme o período contratado (mensal ou anual) e o cancelamento pode ser feito
+          a qualquer momento, sem multa — o acesso aos recursos do plano permanece até o fim do
+          período já pago.
         </p>
 
         <h2 className="text-base font-semibold text-foreground">Uso aceitável</h2>
