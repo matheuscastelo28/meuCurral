@@ -8,6 +8,11 @@
 import { createServerFn } from "@tanstack/react-start";
 import type { Sql } from "./pg.server";
 import { planoDaFazenda } from "./planos";
+import { PRODUTOS_LEITE, rotuloProduto } from "./produtos-leite";
+
+const DERIVADOS_VALIDOS = new Set<string>(
+  PRODUTOS_LEITE.filter((p) => p.valor !== "leite").map((p) => p.valor),
+);
 
 // ---------------------------------------------------------------------------
 // Tipos trocados com o navegador
@@ -1016,11 +1021,20 @@ export const registrarDestinacaoLeite = createServerFn({ method: "POST" })
       }
 
       const destinosValidos = data.destinos.filter((d) => d.quantidade > 0);
-      const totalDestinado = destinosValidos.reduce((soma, d) => soma + d.quantidade, 0);
+      // Leite já usado em fabricação de derivado (linhas com producao_id)
+      // não vem da tela: continua valendo e entra na soma.
+      const fabricacao: { total: string | null }[] = await sql`
+        select sum(quantidade) as total from destinacoes_leite
+        where fazenda_id = ${data.fazendaId} and data = ${data.data} and producao_id is not null`;
+      const totalDestinado =
+        destinosValidos.reduce((soma, d) => soma + d.quantidade, 0) +
+        Number(fabricacao[0]?.total ?? 0);
 
+      // Só leite conta como produção — queijo em kg não é litro de leite.
       const producao: { total: string | null }[] = await sql`
         select sum(litros) as total from producao_leite
-        where fazenda_id = ${data.fazendaId} and data = ${data.data}`;
+        where fazenda_id = ${data.fazendaId} and data = ${data.data}
+          and coalesce(produto, 'leite') = 'leite'`;
       const totalProduzido = Number(producao[0]?.total ?? 0);
 
       if (totalDestinado > totalProduzido + 0.001) {
@@ -1034,7 +1048,9 @@ export const registrarDestinacaoLeite = createServerFn({ method: "POST" })
       }
 
       const linhas = await sql.begin(async (tx) => {
-        await tx`delete from destinacoes_leite where fazenda_id = ${data.fazendaId} and data = ${data.data}`;
+        await tx`
+          delete from destinacoes_leite
+          where fazenda_id = ${data.fazendaId} and data = ${data.data} and producao_id is null`;
         if (destinosValidos.length === 0) return [];
         const entradas = destinosValidos.map((d) => ({
           fazenda_id: data.fazendaId,
@@ -1051,6 +1067,86 @@ export const registrarDestinacaoLeite = createServerFn({ method: "POST" })
       return {
         data: null,
         error: { message: erro instanceof Error ? erro.message : "Erro ao registrar destinação." },
+      };
+    }
+  });
+
+/**
+ * Fabricação de um derivado (queijo, manteiga...): grava a produção do
+ * derivado e, se informado, o leite usado como destinação "derivados" do
+ * mesmo dia — ligada à fabricação, então excluir uma apaga a outra. O leite
+ * usado não pode passar do leite ainda sem destino naquele dia.
+ */
+export const registrarFabricacaoDerivado = createServerFn({ method: "POST" })
+  .inputValidator(
+    (dados: {
+      token: string | null;
+      fazendaId: string;
+      produto: string;
+      data: string;
+      quantidade: number;
+      leiteUsado?: number | null;
+      observacoes?: string | null;
+    }) => dados,
+  )
+  .handler(async ({ data }) => {
+    try {
+      const { conexao } = await import("./pg.server");
+      const sql = await conexao();
+      const userId = await fazendaDoUsuario(sql, data.token, data.fazendaId);
+      if (!userId) {
+        return { data: null, error: { message: "Não autenticado ou fazenda inválida." } };
+      }
+      if (!DERIVADOS_VALIDOS.has(data.produto)) {
+        return { data: null, error: { message: "Escolha um derivado." } };
+      }
+      if (!(data.quantidade > 0)) {
+        return { data: null, error: { message: "Informe a quantidade produzida." } };
+      }
+      const leite = Number(data.leiteUsado ?? 0);
+      if (leite < 0) {
+        return { data: null, error: { message: "O leite usado não pode ser negativo." } };
+      }
+
+      const linha = await sql.begin(async (tx) => {
+        if (leite > 0) {
+          const producao: { total: string | null }[] = await tx`
+            select sum(litros) as total from producao_leite
+            where fazenda_id = ${data.fazendaId} and data = ${data.data}
+              and coalesce(produto, 'leite') = 'leite'`;
+          const destinado: { total: string | null }[] = await tx`
+            select sum(quantidade) as total from destinacoes_leite
+            where fazenda_id = ${data.fazendaId} and data = ${data.data}`;
+          const disponivel = Number(producao[0]?.total ?? 0) - Number(destinado[0]?.total ?? 0);
+          if (leite > disponivel + 0.001) {
+            const livre = Math.max(0, Math.round(disponivel * 10) / 10);
+            throw new Error(
+              `Nesse dia só há ${livre.toLocaleString("pt-BR")} L de leite sem destino. Registre a ordenha do dia antes ou ajuste o leite usado.`,
+            );
+          }
+        }
+        const criadas: { id: string }[] = await tx`
+          insert into producao_leite (fazenda_id, data, litros, produto, observacoes)
+          values (${data.fazendaId}, ${data.data}, ${data.quantidade}, ${data.produto},
+                  ${data.observacoes?.trim() || null})
+          returning *`;
+        const producao = criadas[0]!;
+        if (leite > 0) {
+          await tx`
+            insert into destinacoes_leite (fazenda_id, data, destino, quantidade, observacoes, producao_id)
+            values (${data.fazendaId}, ${data.data}, 'derivados', ${leite},
+                    ${rotuloProduto(data.produto)}, ${producao.id})`;
+        }
+        return producao;
+      });
+
+      return { data: { id: linha.id }, error: null };
+    } catch (erro) {
+      return {
+        data: null,
+        error: {
+          message: erro instanceof Error ? erro.message : "Erro ao registrar a fabricação.",
+        },
       };
     }
   });
@@ -1107,7 +1203,10 @@ export const registrarVenda = createServerFn({ method: "POST" })
       }
       const unidade = data.unidade ?? "litro";
       const valorTotal = Math.round(data.quantidade * data.precoUnitario * 100) / 100;
-      const descricao = `Venda de ${produto}${data.comprador ? ` — ${data.comprador}` : ""}`;
+      const derivado = DERIVADOS_VALIDOS.has(produto);
+      const nomeProduto = derivado ? rotuloProduto(produto).toLowerCase() : produto;
+      const descricao = `Venda de ${nomeProduto}${data.comprador ? ` — ${data.comprador}` : ""}`;
+      const categoria = derivado ? "venda_derivados" : `venda_${produto}`;
       const status = data.pago ? "recebido" : "a_receber";
       const formaPagamento = data.pago ? (data.formaPagamento ?? "dinheiro") : "dinheiro";
       const parcelas = data.pago && formaPagamento === "cartao" ? (data.parcelas ?? 1) : null;
@@ -1115,7 +1214,7 @@ export const registrarVenda = createServerFn({ method: "POST" })
       const venda = await sql.begin(async (tx) => {
         const financeiros: { id: string }[] = await tx`
           insert into financeiro_lancamentos (fazenda_id, tipo, descricao, valor, data, categoria, status, forma_pagamento, parcelas)
-          values (${data.fazendaId}, 'receita', ${descricao}, ${valorTotal}, ${data.data}, ${`venda_${produto}`}, ${status}, ${formaPagamento}, ${parcelas})
+          values (${data.fazendaId}, 'receita', ${descricao}, ${valorTotal}, ${data.data}, ${categoria}, ${status}, ${formaPagamento}, ${parcelas})
           returning id`;
         const financeiroId = financeiros[0]!.id;
 

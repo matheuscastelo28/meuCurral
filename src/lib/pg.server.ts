@@ -268,6 +268,11 @@ create table if not exists destinacoes_leite (
   updated_at timestamptz not null default now()
 );
 
+-- Leite usado numa fabricação de derivado (queijo, manteiga...): a linha de
+-- destinação aponta pra produção do derivado que a gerou. Excluir a
+-- fabricação apaga junto o leite que ela tinha consumido.
+alter table destinacoes_leite add column if not exists producao_id uuid references producao_leite(id) on delete cascade;
+
 -- Uma venda gera no máximo um lançamento financeiro (financeiro_id), que
 -- começa "a_receber" e vira "recebido" quando o produtor confirma.
 create table if not exists vendas (

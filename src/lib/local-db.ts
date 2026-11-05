@@ -19,6 +19,7 @@ import {
   enviarCodigoVerificacao,
   verificarCodigoEmail,
   registrarDestinacaoLeite,
+  registrarFabricacaoDerivado,
   registrarVenda,
   marcarLancamentosRecebidos,
   registrarPesagemLote,
@@ -398,6 +399,17 @@ export const db = {
   },
   auth,
   leite: {
+    /** Fabricação de derivado + leite usado (destinação ligada a ela). */
+    async registrarFabricacao(params: {
+      fazendaId: string;
+      produto: string;
+      data: string;
+      quantidade: number;
+      leiteUsado?: number | null;
+      observacoes?: string | null;
+    }) {
+      return registrarFabricacaoDerivado({ data: { token: tokenSessao(), ...params } });
+    },
     /** Substitui a destinação do dia inteiro pela lista enviada. */
     async registrarDestinacao(params: {
       fazendaId: string;
