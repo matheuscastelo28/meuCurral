@@ -1,12 +1,25 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, Baby, Coins, Milk, Pencil, Scale, Syringe, Trash2, Wrench } from "lucide-react";
+import {
+  ArrowLeft,
+  Baby,
+  BadgeDollarSign,
+  Coins,
+  Milk,
+  Pencil,
+  Scale,
+  Syringe,
+  Trash2,
+  Undo2,
+  Wrench,
+} from "lucide-react";
 import { toast } from "sonner";
 import { Area, AreaChart, CartesianGrid, XAxis, YAxis } from "recharts";
 import { db } from "@/lib/local-db";
 import { AppShell } from "@/components/AppShell";
 import { DialogManejoSanitario } from "@/components/DialogManejoSanitario";
+import { DialogVenderAnimal, type AnimalParaVenda } from "@/components/DialogVenderAnimal";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -104,6 +117,9 @@ function Ficha() {
   const [editando, setEditando] = useState<EntradaHistorico | null>(null);
   const [excluindo, setExcluindo] = useState<EntradaHistorico | null>(null);
   const [sanidadeAberto, setSanidadeAberto] = useState(false);
+  const [vendendo, setVendendo] = useState<AnimalParaVenda | null>(null);
+  const [estornando, setEstornando] = useState<EntradaHistorico | null>(null);
+  const { data: fazenda } = useFazenda();
 
   const animal = useQuery({
     queryKey: ["animal-ficha", animalId],
@@ -183,6 +199,32 @@ function Ficha() {
     queryClient.invalidateQueries({ queryKey: ["animais-lactantes"] });
     queryClient.invalidateQueries({ queryKey: ["inicio-resumo"] });
   }
+
+  // Estorno: apaga a venda e a receita dela, e o animal volta pro rebanho.
+  const estornar = useMutation({
+    mutationFn: async (entrada: EntradaHistorico) => {
+      const { error } = await db.financeiro.estornarVenda({
+        fazendaId: fazenda!.id,
+        vendaId: entrada.id,
+      });
+      if (error) throw new Error(error.message);
+    },
+    onSuccess: () => {
+      toast.success("Venda estornada. O animal voltou para o rebanho.");
+      setEstornando(null);
+      for (const chave of [
+        "animal-ficha",
+        "ficha-vendas",
+        "animais",
+        "animais-contagem",
+        "financeiro",
+      ]) {
+        queryClient.invalidateQueries({ queryKey: [chave] });
+      }
+      invalidarTudo();
+    },
+    onError: (e: Error) => toast.error(e.message || "Não conseguimos estornar agora."),
+  });
 
   const excluir = useMutation({
     mutationFn: async (entrada: EntradaHistorico) => {
@@ -333,10 +375,16 @@ function Ficha() {
       acao={
         <div className="flex flex-wrap gap-2">
           {a.status !== "vendido" && a.status !== "morto" ? (
-            <Button variant="outline" onClick={() => setSanidadeAberto(true)}>
-              <Syringe className="size-4" aria-hidden="true" />
-              Vacinas e manejo
-            </Button>
+            <>
+              <Button variant="outline" onClick={() => setSanidadeAberto(true)}>
+                <Syringe className="size-4" aria-hidden="true" />
+                Vacinas e manejo
+              </Button>
+              <Button variant="outline" onClick={() => setVendendo(a)}>
+                <BadgeDollarSign className="size-4" aria-hidden="true" />
+                Vender
+              </Button>
+            </>
           ) : null}
           <Button variant="outline" asChild>
             <Link to="/rebanho">
@@ -347,6 +395,12 @@ function Ficha() {
         </div>
       }
     >
+      <DialogVenderAnimal
+        animal={vendendo}
+        fazendaId={fazenda?.id}
+        onFechar={() => setVendendo(null)}
+        moeda={moeda}
+      />
       <DialogManejoSanitario
         aberto={sanidadeAberto}
         onFechar={() => setSanidadeAberto(false)}
@@ -474,6 +528,18 @@ function Ficha() {
                       {e.valorTexto ? (
                         <span className="font-semibold whitespace-nowrap">{e.valorTexto}</span>
                       ) : null}
+                      {e.tipo === "venda" ? (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="shrink-0"
+                          onClick={() => setEstornando(e)}
+                          aria-label="Estornar venda"
+                        >
+                          <Undo2 className="size-3.5" aria-hidden="true" />
+                          Estornar
+                        </Button>
+                      ) : null}
                       {e.editavel ? (
                         <div className="flex shrink-0 gap-1">
                           <Button
@@ -510,6 +576,29 @@ function Ficha() {
         onFechar={() => setEditando(null)}
         onSalvo={invalidarTudo}
       />
+
+      <AlertDialog open={estornando !== null} onOpenChange={(v) => !v && setEstornando(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Estornar venda?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {estornando
+                ? `A venda de ${dataCurta(estornando.data)} (${estornando.valorTexto ?? ""}) sai do Financeiro e o animal volta para o rebanho na situação que estava antes. Use quando a venda foi registrada por engano.`
+                : ""}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              disabled={estornar.isPending}
+              onClick={() => estornando && estornar.mutate(estornando)}
+            >
+              Estornar venda
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <AlertDialog open={excluindo !== null} onOpenChange={(v) => !v && setExcluindo(null)}>
         <AlertDialogContent>

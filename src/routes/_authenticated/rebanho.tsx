@@ -23,8 +23,10 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { useLimitePlano } from "@/hooks/use-fazenda";
+import { DialogVenderAnimal, type AnimalParaVenda } from "@/components/DialogVenderAnimal";
 import { dataCurta, dataISO, hojeISO, idadeTexto, pesoTexto } from "@/lib/formato";
 import { usePreferencias } from "@/hooks/use-preferencias";
+import { moeda as formatarMoeda } from "@/lib/formato";
 import { rotuloCategoria, rotuloSexo, rotuloStatus } from "@/lib/rotulos";
 import {
   CATEGORIAS,
@@ -221,6 +223,7 @@ function Rebanho() {
   const [raca, setRaca] = useState<string>(racasAtual[0]!);
   const [racaCustom, setRacaCustom] = useState("");
   const [editando, setEditando] = useState<any>(null);
+  const [vendendo, setVendendo] = useState<AnimalParaVenda | null>(null);
 
   function selecionarEspecie(nova: Especie) {
     setEspecie(nova);
@@ -425,14 +428,24 @@ function Rebanho() {
         pai: String(form.get("pai") ?? "").trim() || null,
         observacoes: String(form.get("observacoes") ?? "").trim() || null,
       };
+      // "Vendido" não é só uma etiqueta: salva o resto da edição e abre o
+      // registro da venda (valor, comprador), que leva a receita pro
+      // Financeiro e aí sim marca o animal como vendido.
+      const viraVenda = payload.status === "vendido" && editando!.status !== "vendido";
       const { error } = await db
         .from("animais")
-        .update(payload as never)
+        .update((viraVenda ? { ...payload, status: editando!.status } : payload) as never)
         .eq("id", editando!.id);
       if (error) throw error;
+      return viraVenda ? { id: editando!.id as string, ...payload } : null;
     },
-    onSuccess: () => {
-      toast.success("Animal atualizado.");
+    onSuccess: (paraVender) => {
+      if (paraVender) {
+        toast.info("Registre a venda para concluir a saída do animal.");
+        setVendendo(paraVender);
+      } else {
+        toast.success("Animal atualizado.");
+      }
       setEditando(null);
       queryClient.invalidateQueries({ queryKey: ["animais"] });
       queryClient.invalidateQueries({ queryKey: ["animais-contagem"] });
@@ -1431,6 +1444,12 @@ function Rebanho() {
       </Dialog>
 
       <DialogManejoSanitario aberto={sanidadeAberto} onFechar={() => setSanidadeAberto(false)} />
+      <DialogVenderAnimal
+        animal={vendendo}
+        fazendaId={fazenda?.id}
+        onFechar={() => setVendendo(null)}
+        moeda={(v) => formatarMoeda(v, prefs.moeda)}
+      />
 
       <UpgradeDialog
         aberto={upgrade}

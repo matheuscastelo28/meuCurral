@@ -297,6 +297,10 @@ create table if not exists vendas (
 );
 
 alter table vendas add column if not exists animal_id uuid references animais(id) on delete set null;
+-- Pra estornar uma venda de animal: quais animais saíram nela e em que
+-- situação estavam antes (engorda, lactação...), pra voltarem igual.
+alter table vendas add column if not exists animais_ids uuid[];
+alter table vendas add column if not exists status_anterior text;
 alter table vendas add column if not exists lote text;
 
 -- Despesas de um lote em engorda (ração, sanidade etc.) usam o mesmo texto
