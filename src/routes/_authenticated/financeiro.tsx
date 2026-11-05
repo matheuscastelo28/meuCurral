@@ -565,7 +565,6 @@ function Financeiro() {
   return (
     <AppShell
       titulo="Financeiro"
-      descricao="Entradas e saídas da fazenda, sem planilha."
       acao={
         <div className="flex flex-wrap gap-2">
           <Button variant="outline" asChild>

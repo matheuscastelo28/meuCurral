@@ -51,10 +51,7 @@ function Config() {
   }
 
   return (
-    <AppShell
-      titulo="Configurações"
-      descricao="Ajuste a fazenda, sua conta e como o sistema se comporta."
-    >
+    <AppShell titulo="Configurações">
       <nav aria-label="Seções das configurações" className="mb-5 flex flex-wrap gap-2">
         {ATALHOS.map((a) => (
           <a

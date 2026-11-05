@@ -615,7 +615,6 @@ function Rebanho() {
   return (
     <AppShell
       titulo="Rebanho"
-      descricao="Todos os animais da fazenda, com brinco, categoria e situação."
       acao={
         <div className="flex flex-wrap gap-2">
           <Button variant="outline" onClick={() => setSanidadeAberto(true)}>

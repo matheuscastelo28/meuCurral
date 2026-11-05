@@ -330,7 +330,6 @@ function Ficha() {
   return (
     <AppShell
       titulo={a.nome}
-      descricao={`${a.brinco ? `Brinco ${a.brinco} · ` : ""}Leite, peso, reprodução e vendas em um só lugar.`}
       acao={
         <div className="flex flex-wrap gap-2">
           {a.status !== "vendido" && a.status !== "morto" ? (

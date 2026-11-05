@@ -616,7 +616,7 @@ function Leite() {
   const i = indices.data;
 
   return (
-    <AppShell titulo="Leite" descricao="Registre a ordenha do dia e acompanhe a produção.">
+    <AppShell titulo="Leite">
       <div className="mb-5 rounded-xl border border-border bg-card p-4">
         <h2 className="text-base font-semibold">Registrar produção de leite</h2>
         <p className="mt-1 text-sm text-muted-foreground">

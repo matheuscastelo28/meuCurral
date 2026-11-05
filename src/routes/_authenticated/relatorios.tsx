@@ -214,10 +214,7 @@ function Relatorios() {
   // Plano sem relatórios (grátis de conta nova): mostra o que é e como liberar.
   if (!carregandoPlano && !plano.relatorios) {
     return (
-      <AppShell
-        titulo="Relatórios"
-        descricao="Relatório em PDF do rebanho e da atividade, no formato que banco e cooperativa pedem."
-      >
+      <AppShell titulo="Relatórios">
         <div className="max-w-xl space-y-4">
           <RecursoBloqueado recurso="O relatório em PDF" planoNecessario="Essencial" />
           <Button asChild>
@@ -231,10 +228,7 @@ function Relatorios() {
   }
 
   return (
-    <AppShell
-      titulo="Relatórios"
-      descricao="Relatório em PDF do rebanho e da atividade, no formato que banco e cooperativa pedem (Pronaf, crédito rural, cadastro em cooperativa)."
-    >
+    <AppShell titulo="Relatórios">
       {/* No celular a prévia (com o botão de baixar) vem logo depois do
           período; no desktop ela ocupa a coluna da direita. */}
       <div className="grid gap-4 lg:grid-cols-[22rem_1fr] lg:grid-rows-[auto_1fr] lg:items-start">

@@ -605,7 +605,6 @@ function Engorda() {
   return (
     <AppShell
       titulo="Confinamento"
-      descricao="Peso, ganho médio diário, custo e venda do lote em confinamento."
       acao={
         <Button asChild>
           <Link to="/pesagem">

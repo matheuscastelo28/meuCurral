@@ -332,10 +332,7 @@ function Reproducao() {
   });
 
   return (
-    <AppShell
-      titulo="Reprodução"
-      descricao="Primeiro cio, coberturas, inseminações e partos — com mãe, pai e idade de cada animal à mão."
-    >
+    <AppShell titulo="Reprodução">
       {ambasAtividades ? (
         <div className="mb-4 inline-flex rounded-lg bg-muted p-1">
           <button
