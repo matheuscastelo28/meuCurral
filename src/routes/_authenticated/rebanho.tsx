@@ -27,7 +27,7 @@ import { DialogVenderAnimal, type AnimalParaVenda } from "@/components/DialogVen
 import { dataCurta, dataISO, hojeISO, idadeTexto, pesoTexto } from "@/lib/formato";
 import { usePreferencias } from "@/hooks/use-preferencias";
 import { moeda as formatarMoeda } from "@/lib/formato";
-import { rotuloCategoria, rotuloSexo, rotuloStatus } from "@/lib/rotulos";
+import { textoLote, rotuloCategoria, rotuloSexo, rotuloStatus } from "@/lib/rotulos";
 import {
   CATEGORIAS,
   CATEGORIAS_BOVINO,
@@ -234,6 +234,7 @@ function Rebanho() {
   // ---- Cadastro em grupo (2 cards: escolha de campos, depois o laço) ----
   const [grupoEtapa, setGrupoEtapa] = useState<"campos" | "animais" | null>(null);
   const [grupoLote, setGrupoLote] = useState("");
+  const [grupoCompra, setGrupoCompra] = useState("");
   const [camposGrupo, setCamposGrupo] = useState<Record<CampoGrupo, boolean>>(CAMPOS_GRUPO_PADRAO);
   const [animaisGrupo, setAnimaisGrupo] = useState<EntradaAnimalGrupo[]>([]);
   const [entradaAtual, setEntradaAtual] = useState<EntradaAnimalGrupo>(
@@ -372,6 +373,32 @@ function Rebanho() {
     queryClient.invalidateQueries({ queryKey: ["indices-engorda"] });
   }
 
+  // Compra de animal vira despesa "Compra de animais" no Financeiro, com o
+  // lote (assim já entra no custo do lote no Confinamento). Se só a despesa
+  // falhar, o animal fica cadastrado e avisamos — refazer o cadastro
+  // duplicaria o animal.
+  async function registrarCompra(params: {
+    valor: number;
+    descricao: string;
+    lote: string | null;
+    animalId?: string | null;
+  }): Promise<boolean> {
+    if (!(params.valor > 0)) return true;
+    const { error } = await db.from("financeiro_lancamentos").insert({
+      fazenda_id: fazenda!.id,
+      tipo: "despesa",
+      descricao: params.descricao,
+      valor: Math.round(params.valor * 100) / 100,
+      data: hojeISO(),
+      categoria: "compra",
+      lote: params.lote,
+      animal_id: params.animalId ?? null,
+    } as never);
+    queryClient.invalidateQueries({ queryKey: ["financeiro"] });
+    queryClient.invalidateQueries({ queryKey: ["despesas-lote"] });
+    return !error;
+  }
+
   const criar = useMutation({
     mutationFn: async (form: FormData) => {
       const racaFinal = raca === OUTRA_RACA ? racaCustom.trim() : raca;
@@ -391,9 +418,25 @@ function Rebanho() {
       const { data: criados, error } = await db.from("animais").insert(payload as never);
       if (error) throw error;
       await registrarPesagensIniciais(criados ?? []);
+      const valorCompra = Number(form.get("valor_compra") || 0);
+      const compraOk = await registrarCompra({
+        valor: valorCompra,
+        descricao: `Compra de ${payload.nome}${payload.brinco ? ` (${payload.brinco})` : ""}`,
+        lote: payload.lote,
+        animalId: (criados?.[0]?.id as string | undefined) ?? null,
+      });
+      return { compraOk, comCompra: valorCompra > 0 };
     },
-    onSuccess: () => {
-      toast.success("Animal cadastrado.");
+    onSuccess: ({ compraOk, comCompra }) => {
+      if (!compraOk) {
+        toast.error(
+          "Animal cadastrado, mas a compra não entrou no Financeiro. Lance em Financeiro → Novo lançamento.",
+        );
+      } else {
+        toast.success(
+          comCompra ? "Animal cadastrado e compra lançada no Financeiro." : "Animal cadastrado.",
+        );
+      }
       setAberto(false);
       setRaca(racasDaEspecie(especie)[0]!);
       setRacaCustom("");
@@ -498,12 +541,23 @@ function Rebanho() {
       const { data: criados, error } = await db.from("animais").insert(payloads as never);
       if (error) throw error;
       await registrarPesagensIniciais(criados ?? []);
-      return payloads.length;
+      const valorCompra = Number(grupoCompra) || 0;
+      const compraOk = await registrarCompra({
+        valor: valorCompra,
+        descricao: `Compra de ${payloads.length} ${payloads.length === 1 ? "animal" : "animais"} — ${textoLote(grupoLote)}`,
+        lote: grupoLote.trim() || null,
+      });
+      return { qtd: payloads.length, compraOk, comCompra: valorCompra > 0 };
     },
-    onSuccess: (qtd) => {
+    onSuccess: ({ qtd, compraOk, comCompra }) => {
       toast.success(
-        `${qtd} ${qtd === 1 ? "animal cadastrado" : "animais cadastrados"} no lote "${grupoLote.trim()}".`,
+        `${qtd} ${qtd === 1 ? "animal cadastrado" : "animais cadastrados"} no lote "${grupoLote.trim()}"${comCompra && compraOk ? " e compra lançada no Financeiro" : ""}.`,
       );
+      if (!compraOk) {
+        toast.error(
+          "A compra do grupo não entrou no Financeiro. Lance em Financeiro → Novo lançamento.",
+        );
+      }
       fecharGrupo();
       queryClient.invalidateQueries({ queryKey: ["animais"] });
       queryClient.invalidateQueries({ queryKey: ["animais-contagem"] });
@@ -524,6 +578,7 @@ function Rebanho() {
       return;
     }
     setGrupoLote("");
+    setGrupoCompra("");
     setCamposGrupo(CAMPOS_GRUPO_PADRAO);
     setAnimaisGrupo([]);
     setEntradaAtual(entradaGrupoVazia(soOvino ? "ovino" : "bovino"));
@@ -909,6 +964,20 @@ function Rebanho() {
               </div>
             </div>
             <div className="space-y-1.5">
+              <Label htmlFor="valor_compra">Valor de compra (R$)</Label>
+              <Input
+                id="valor_compra"
+                name="valor_compra"
+                type="number"
+                step="0.01"
+                min="0"
+                placeholder="Opcional — se comprou o animal"
+              />
+              <p className="text-xs text-muted-foreground">
+                Entra no Financeiro como "Compra de animais", no lote informado.
+              </p>
+            </div>
+            <div className="space-y-1.5">
               <Label htmlFor="raca">Raça</Label>
               <select
                 id="raca"
@@ -1130,6 +1199,21 @@ function Rebanho() {
                     placeholder="Ex: Pasto 2"
                     required
                   />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="grupo-compra">Valor total da compra (R$)</Label>
+                  <Input
+                    id="grupo-compra"
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value={grupoCompra}
+                    onChange={(e) => setGrupoCompra(e.target.value)}
+                    placeholder="Opcional — se comprou o grupo"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Entra no Financeiro como "Compra de animais" do lote.
+                  </p>
                 </div>
                 <div className="space-y-1.5">
                   <Label>Campos por animal</Label>

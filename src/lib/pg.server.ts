@@ -307,6 +307,9 @@ alter table vendas add column if not exists lote text;
 -- livre de animais.lote, igual à produção de leite por lote — não existe
 -- uma tabela de lotes própria.
 alter table financeiro_lancamentos add column if not exists lote text;
+-- Despesa ligada a um animal (compra dele, vacina aplicada só nele): mostra
+-- na ficha quanto o animal custou.
+alter table financeiro_lancamentos add column if not exists animal_id uuid references animais(id) on delete set null;
 
 create index if not exists idx_precos_produto_fazenda on precos_produto(fazenda_id, produto, data_inicio);
 create index if not exists idx_destinacoes_leite_fazenda on destinacoes_leite(fazenda_id, data);

@@ -172,6 +172,26 @@ function Ficha() {
     },
   });
 
+  // Despesas ligadas ao animal (compra, vacina aplicada só nele).
+  const custos = useQuery({
+    queryKey: ["ficha-custos", animalId],
+    queryFn: async () => {
+      const { data, error } = await db
+        .from("financeiro_lancamentos")
+        .select("valor, categoria")
+        .eq("animal_id", animalId)
+        .eq("tipo", "despesa");
+      if (error) throw error;
+      const compra = (data ?? [])
+        .filter((l) => l.categoria === "compra")
+        .reduce((s, l) => s + Number(l.valor), 0);
+      const outros = (data ?? [])
+        .filter((l) => l.categoria !== "compra")
+        .reduce((s, l) => s + Number(l.valor), 0);
+      return { compra, outros };
+    },
+  });
+
   const vendas = useQuery({
     queryKey: ["ficha-vendas", animalId],
     queryFn: async () => {
@@ -433,6 +453,12 @@ function Ficha() {
             <LinhaResumo rotulo="Lote" valor={a.lote || "—"} />
             <LinhaResumo rotulo="Mãe" valor={a.mae || "—"} />
             <LinhaResumo rotulo="Entrada no rebanho" valor={dataCurta(a.created_at)} />
+            {custos.data?.compra ? (
+              <LinhaResumo rotulo="Valor de compra" valor={moeda(custos.data.compra)} />
+            ) : null}
+            {custos.data?.outros ? (
+              <LinhaResumo rotulo="Custos lançados" valor={moeda(custos.data.outros)} />
+            ) : null}
           </dl>
           <Button variant="outline" className="mt-4 w-full" asChild>
             <Link to="/rebanho" search={{ editar: a.id }}>
