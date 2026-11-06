@@ -1,3 +1,4 @@
+import { Link } from "@tanstack/react-router";
 import { Lock } from "lucide-react";
 import {
   Dialog,
@@ -14,7 +15,7 @@ export function UpgradeDialog({
   aberto,
   onFechar,
   titulo = "O espaço do seu plano acabou",
-  descricao = "Você já usou todas as cabeças que o plano atual permite. Fale com a gente para liberar mais espaço.",
+  descricao = "Você já usou todas as cabeças que o plano atual permite. Assine um plano para liberar mais espaço.",
 }: {
   aberto: boolean;
   onFechar: () => void;
@@ -41,9 +42,9 @@ export function UpgradeDialog({
         </div>
         <div className="flex flex-wrap gap-2">
           <Button asChild>
-            <a href="mailto:contato@curralonline.com?subject=Quero%20mais%20espaço%20no%20meu%20plano">
-              Falar com a gente
-            </a>
+            <Link to="/config" hash="plano" onClick={onFechar}>
+              Ver planos
+            </Link>
           </Button>
           <Button variant="outline" onClick={onFechar}>
             Continuar assim
