@@ -1,7 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Beef, Plus, Search, Syringe, Users, X } from "lucide-react";
+import { ArrowLeft, Beef, ChevronRight, Plus, Search, Syringe, Users, X } from "lucide-react";
 import { toast } from "sonner";
 import { db } from "@/lib/local-db";
 import { AppShell } from "@/components/AppShell";
@@ -13,7 +13,6 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { CampoFiltro, CLASSE_SELECT_FILTRO, PainelFiltros } from "@/components/PainelFiltros";
 import { Label } from "@/components/ui/label";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Dialog,
   DialogContent,
@@ -49,10 +48,17 @@ export const Route = createFileRoute("/_authenticated/rebanho")({
       { name: "robots", content: "noindex" },
     ],
   }),
-  validateSearch: (search: Record<string, unknown>): { editar?: string; sanidade?: boolean } => {
+  validateSearch: (
+    search: Record<string, unknown>,
+  ): { editar?: string; sanidade?: boolean; saidas?: boolean } => {
     const editar = typeof search["editar"] === "string" ? search["editar"] : undefined;
     const sanidade = search["sanidade"] === true || search["sanidade"] === "1" ? true : undefined;
-    return { ...(editar ? { editar } : {}), ...(sanidade ? { sanidade } : {}) };
+    const saidas = search["saidas"] === true || search["saidas"] === "1" ? true : undefined;
+    return {
+      ...(editar ? { editar } : {}),
+      ...(sanidade ? { sanidade } : {}),
+      ...(saidas ? { saidas } : {}),
+    };
   },
   component: Rebanho,
 });
@@ -203,7 +209,7 @@ function Rebanho() {
       : CATEGORIAS;
   const categoriaPadrao = soOvino ? "ovelha" : "vaca";
   const queryClient = useQueryClient();
-  const { editar: editarId, sanidade: sanidadeNaUrl } = Route.useSearch();
+  const { editar: editarId, sanidade: sanidadeNaUrl, saidas: saidasNaUrl } = Route.useSearch();
   const navigate = Route.useNavigate();
   const [sanidadeAberto, setSanidadeAberto] = useState(false);
 
@@ -255,11 +261,10 @@ function Rebanho() {
     },
   });
 
-  // Rebanho (pertencente à fazenda) e Vendidos são duas listas separadas —
-  // igual ao "Por lote"/"Por animal" da Engorda, cada aba com sua própria
-  // contagem. Vendido some do operacional do dia a dia, mas continua
-  // consultável na própria aba.
-  const [abaRebanho, setAbaRebanho] = useState<"ativo" | "vendido">("ativo");
+  // Rebanho mostra só quem está na fazenda. Vendidos e mortos ficam numa
+  // tela à parte (?saidas=1), aberta por um link discreto no fim da lista:
+  // somem do dia a dia, mas continuam consultáveis.
+  const abaRebanho: "ativo" | "vendido" = saidasNaUrl ? "vendido" : "ativo";
   const [filtroEspecie, setFiltroEspecie] = useState<"todas" | Especie>("todas");
   const [filtroCategoria, setFiltroCategoria] = useState<"todas" | (typeof CATEGORIAS)[number]>(
     "todas",
@@ -682,34 +687,40 @@ function Rebanho() {
 
   return (
     <AppShell
-      titulo="Rebanho"
+      titulo={abaRebanho === "vendido" ? "Saídas do rebanho" : "Rebanho"}
       acao={
-        <div className="flex flex-wrap gap-2">
-          <Button variant="outline" onClick={() => setSanidadeAberto(true)}>
-            <Syringe className="size-4" aria-hidden="true" />
-            Vacinas e manejo
-          </Button>
-          <Button variant="outline" onClick={novoGrupo}>
-            <Users className="size-4" aria-hidden="true" />
-            Novo grupo
-          </Button>
-          <Button onClick={novoAnimal}>
-            <Plus className="size-4" aria-hidden="true" />
-            Novo animal
-          </Button>
-        </div>
+        abaRebanho === "vendido" ? undefined : (
+          <div className="flex flex-wrap gap-2">
+            <Button variant="outline" onClick={() => setSanidadeAberto(true)}>
+              <Syringe className="size-4" aria-hidden="true" />
+              Vacinas e manejo
+            </Button>
+            <Button variant="outline" onClick={novoGrupo}>
+              <Users className="size-4" aria-hidden="true" />
+              Novo grupo
+            </Button>
+            <Button onClick={novoAnimal}>
+              <Plus className="size-4" aria-hidden="true" />
+              Novo animal
+            </Button>
+          </div>
+        )
       }
     >
-      <Tabs
-        value={abaRebanho}
-        onValueChange={(v) => setAbaRebanho(v as "ativo" | "vendido")}
-        className="mb-4"
-      >
-        <TabsList>
-          <TabsTrigger value="ativo">Rebanho ({porAba.ativo.length})</TabsTrigger>
-          <TabsTrigger value="vendido">Saídas ({porAba.vendido.length})</TabsTrigger>
-        </TabsList>
-      </Tabs>
+      {abaRebanho === "vendido" ? (
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+          <Button variant="ghost" size="sm" asChild className="-ml-2">
+            <Link to="/rebanho">
+              <ArrowLeft className="size-4" aria-hidden="true" />
+              Voltar ao rebanho
+            </Link>
+          </Button>
+          <span className="text-xs text-muted-foreground">
+            {porAba.vendido.length} {porAba.vendido.length === 1 ? "animal" : "animais"} · fora da
+            contagem do rebanho
+          </span>
+        </div>
+      ) : null}
 
       {ocultosPorEspecie > 0 ? (
         <p className="mb-4 rounded-lg bg-muted px-3 py-2 text-xs text-muted-foreground">
@@ -898,6 +909,18 @@ function Rebanho() {
           ))}
         </div>
       )}
+      {abaRebanho === "ativo" && porAba.vendido.length > 0 ? (
+        <div className="mt-6 flex justify-center">
+          <Link
+            to="/rebanho"
+            search={{ saidas: true }}
+            className="inline-flex items-center gap-1 text-xs text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
+          >
+            Animais que saíram do rebanho (vendidos e mortos): {porAba.vendido.length}
+            <ChevronRight className="size-3.5" aria-hidden="true" />
+          </Link>
+        </div>
+      ) : null}
 
       <Dialog open={aberto} onOpenChange={setAberto}>
         <DialogContent className="max-h-[85vh] overflow-y-auto">
