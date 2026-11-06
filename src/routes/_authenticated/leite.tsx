@@ -622,11 +622,7 @@ function Leite() {
     <AppShell titulo="Leite">
       <div className="mb-5 rounded-xl border border-border bg-card p-4">
         <h2 className="text-base font-semibold">Registrar produção de leite</h2>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Informe a produção do dia por animal ou por lote.
-        </p>
-
-        <div className="mt-4 flex gap-2">
+        <div className="mt-3 flex gap-2">
           <Button
             type="button"
             size="sm"
@@ -1012,11 +1008,7 @@ function Leite() {
 
       <h2 className="mb-3 text-base font-semibold">Preço, venda e destino do leite</h2>
       <div className="mb-5 grid gap-4 lg:grid-cols-2 [&>*]:min-w-0">
-        <CartaoConfig
-          id="preco-leite"
-          titulo="Preço do leite"
-          descricao="Vale para os litros vendidos a partir da data de vigência — o histórico anterior continua usando o preço antigo."
-        >
+        <CartaoConfig id="preco-leite" titulo="Preço do leite">
           {precoVigente ? (
             <div className="flex items-center gap-3">
               <span className="flex size-9 items-center justify-center rounded-lg bg-accent text-primary">
@@ -1103,11 +1095,6 @@ function Leite() {
 
           <div className="mt-5 border-t border-border pt-4">
             <h3 className="text-base font-semibold">Venda</h3>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Venda avulsa: preço digitado na hora, pra uma ocasião específica. Venda para
-              laticínio: usa o preço do leite vigente na data escolhida, sem digitar de novo.
-            </p>
-
             {mostrarFormVenda ? (
               <div className="mt-3">
                 <div className="flex gap-2">
@@ -1444,11 +1431,7 @@ function Leite() {
           </div>
         </CartaoConfig>
 
-        <CartaoConfig
-          id="destinacao-leite"
-          titulo="Destinação de hoje"
-          descricao="Nem todo litro produzido é vendido — a venda vem das vendas já registradas, e o resto você separa em consumo. Só a parte vendida vira receita."
-        >
+        <CartaoConfig id="destinacao-leite" titulo="Destinação de hoje">
           <div className="mb-3 grid grid-cols-2 gap-3 text-sm sm:grid-cols-5">
             <div>
               <p className="text-xs text-muted-foreground">Produzido hoje</p>
@@ -1505,9 +1488,7 @@ function Leite() {
             <div className="flex items-center justify-between gap-3 rounded-lg border border-border px-3 py-2">
               <div>
                 <p className="text-sm font-medium">Venda</p>
-                <p className="text-xs text-muted-foreground">
-                  Somado das vendas já registradas hoje — registre em "Venda", no card de preço.
-                </p>
+                <p className="text-xs text-muted-foreground">Vem das vendas registradas hoje.</p>
               </div>
               <span className="font-display text-sm font-extrabold whitespace-nowrap">
                 {vendaLitrosHoje.toLocaleString("pt-BR")} L
@@ -1518,9 +1499,6 @@ function Leite() {
               <div className="flex items-center justify-between gap-3">
                 <div>
                   <p className="text-sm font-medium">Consumo</p>
-                  <p className="text-xs text-muted-foreground">
-                    Bezerros, consumo familiar, derivados ou outros.
-                  </p>
                 </div>
                 <div className="flex items-center gap-2">
                   <span className="font-display text-sm font-extrabold whitespace-nowrap">
@@ -1645,9 +1623,6 @@ function Leite() {
               <div className="flex items-center justify-between gap-3">
                 <div>
                   <p className="text-sm font-medium">Descarte</p>
-                  <p className="text-xs text-muted-foreground">
-                    Leite com antibiótico, mastite ou outro motivo de descarte.
-                  </p>
                 </div>
                 <div className="flex items-center gap-2">
                   <span className="font-display text-sm font-extrabold whitespace-nowrap">

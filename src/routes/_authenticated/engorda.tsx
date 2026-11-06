@@ -1377,10 +1377,6 @@ function Engorda() {
 
             <div className="rounded-xl border border-border bg-card p-4">
               <p className="text-sm font-medium">Venda avulsa</p>
-              <p className="mt-1 text-xs text-muted-foreground">
-                Pra vender um animal (ou peso avulso) com um preço diferente do vigente — se
-                escolher um animal do lote, ele já fecha como "vendido" automaticamente.
-              </p>
 
               {mostrarFormVendaAvulsa ? (
                 <form
@@ -1547,11 +1543,7 @@ function Engorda() {
       )}
 
       <div className="mt-5">
-        <CartaoConfig
-          id="lotes-vendidos"
-          titulo="Resultado dos lotes vendidos"
-          descricao="Lucro real de cada lote já vendido: o valor da venda menos tudo o que foi lançado como custo daquele lote (compra, alimentação, sanidade)."
-        >
+        <CartaoConfig id="lotes-vendidos" titulo="Resultado dos lotes vendidos">
           {lotesEncerrados.length === 0 ? (
             <p className="text-sm text-muted-foreground">
               Quando você vender um lote pelo botão "Vender lote", o resultado aparece aqui.

@@ -604,10 +604,6 @@ function Reproducao() {
       <div className="mb-5 grid gap-4 lg:grid-cols-2">
         <section className="rounded-xl border border-border bg-card p-4">
           <h2 className="text-base font-semibold">Partos previstos</h2>
-          <p className="text-xs text-muted-foreground">
-            Fêmeas cobertas ou inseminadas, sem parto registrado depois.
-            {soOvino ? "" : " A data de secagem é ~60 dias antes do parto."}
-          </p>
           {situacao.partos.length === 0 ? (
             <p className="mt-3 text-sm text-muted-foreground">Nenhuma gestação em andamento.</p>
           ) : (
@@ -643,9 +639,6 @@ function Reproducao() {
 
         <section className="rounded-xl border border-border bg-card p-4">
           <h2 className="text-base font-semibold">Aguardando diagnóstico</h2>
-          <p className="text-xs text-muted-foreground">
-            Serviço há mais de {DIAS_PARA_DIAGNOSTICO} dias e nenhum diagnóstico registrado.
-          </p>
           {situacao.aguardandoDiagnostico.length === 0 ? (
             <p className="mt-3 text-sm text-muted-foreground">Nada pendente.</p>
           ) : (

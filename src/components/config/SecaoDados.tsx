@@ -93,12 +93,7 @@ export function SecaoDados() {
   }
 
   return (
-    <CartaoConfig
-      id="dados"
-      titulo="Dados da conta"
-      descricao="Leve seus dados embora ou apague tudo quando quiser."
-      tom="atencao"
-    >
+    <CartaoConfig id="dados" titulo="Dados da conta" tom="atencao">
       <div className="flex flex-wrap gap-2">
         <Button variant="outline" onClick={exportar} disabled={exportando || !fazenda}>
           {exportando ? (

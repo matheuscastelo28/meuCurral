@@ -37,11 +37,7 @@ export function SecaoPreferencias() {
   ] as const;
 
   return (
-    <CartaoConfig
-      id="preferencias"
-      titulo="Preferências"
-      descricao="Como o sistema mostra peso, dinheiro, calendário e avisos."
-    >
+    <CartaoConfig id="preferencias" titulo="Preferências">
       <form
         className="space-y-4"
         onSubmit={(e) => {

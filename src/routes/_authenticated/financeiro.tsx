@@ -711,7 +711,6 @@ function Financeiro() {
         <div className="mb-5 grid gap-4 md:grid-cols-2">
           <section className="rounded-xl border border-border bg-card p-4">
             <h2 className="text-base font-semibold">Para onde foi o dinheiro</h2>
-            <p className="text-xs text-muted-foreground">Despesas já pagas, por categoria.</p>
             <ul className="mt-3 space-y-2.5">
               {despesasPorCategoria.map(({ cat, valor, rotulo, cor }) => (
                 <li key={cat}>
@@ -747,7 +746,6 @@ function Financeiro() {
 
           <section className="flex flex-col rounded-xl border border-border bg-card p-4">
             <h2 className="text-base font-semibold">Despesas por categoria</h2>
-            <p className="text-xs text-muted-foreground">Fatia de cada categoria no total pago.</p>
             <div className="relative mx-auto mt-2 w-full max-w-[260px] flex-1">
               <ChartContainer
                 config={Object.fromEntries(

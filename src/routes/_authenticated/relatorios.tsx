@@ -456,9 +456,6 @@ function Relatorios() {
         </section>
         <section className="rounded-xl lg:col-start-1 lg:row-start-2 border border-border bg-card p-4">
           <h2 className="text-base font-semibold">Identificação no relatório</h2>
-          <p className="mt-1 text-xs text-muted-foreground">
-            O banco costuma pedir. Fica salvo só neste aparelho.
-          </p>
           <div className="mt-3 space-y-3">
             {(
               [

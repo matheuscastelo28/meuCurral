@@ -85,11 +85,7 @@ export function SecaoFazenda() {
   });
 
   return (
-    <CartaoConfig
-      id="fazenda"
-      titulo="Fazenda"
-      descricao="O nome e o local aparecem no topo do sistema e nos relatórios."
-    >
+    <CartaoConfig id="fazenda" titulo="Fazenda">
       <form
         className="grid gap-3 sm:grid-cols-2"
         onSubmit={(e) => {
