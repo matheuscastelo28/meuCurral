@@ -642,28 +642,6 @@ function Engorda() {
           </button>
         </div>
       ) : null}
-      <ol className="mb-5 grid gap-2 rounded-xl border border-border bg-card p-3 text-xs sm:grid-cols-2 lg:grid-cols-4">
-        {[
-          ["Animais", "No Rebanho, coloque a situação 'Confinamento' e um lote."],
-          ["Pesagem", "A 1ª é a entrada; da 2ª em diante sai o ganho por dia (GMD)."],
-          ["Custos", "Lance compra, alimentação e sanidade no lote."],
-          [
-            "Resultado",
-            `Com o preço da ${soOvino ? "carne (kg)" : "arroba"}, veja a margem e o lucro na venda.`,
-          ],
-        ].map(([titulo, texto], idx) => (
-          <li key={titulo} className="flex gap-2">
-            <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-primary text-[10px] font-bold text-primary-foreground">
-              {idx + 1}
-            </span>
-            <span>
-              <span className="font-semibold">{titulo}: </span>
-              <span className="text-muted-foreground">{texto}</span>
-            </span>
-          </li>
-        ))}
-      </ol>
-
       <div className="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5 [&>*:last-child:nth-child(odd)]:col-span-2 sm:[&>*:last-child:nth-child(odd)]:col-span-1">
         <Kpi icon={Weight} rotulo="Em confinamento" valor={e ? `${e.totalEngorda} cab` : "—"} />
         <Kpi
