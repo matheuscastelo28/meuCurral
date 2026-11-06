@@ -138,7 +138,18 @@ export const iniciarAssinatura = createServerFn({ method: "POST" })
       });
       if (!pre.init_point) return erro("O Mercado Pago não devolveu o link de pagamento.");
 
-      // Assinaturas pendentes antigas da fazenda ficam pra trás.
+      // Assinaturas pendentes antigas da fazenda ficam pra trás — também no
+      // Mercado Pago, pra um link de pagamento velho não virar uma segunda
+      // cobrança depois.
+      const antigas: { mp_preapproval_id: string | null }[] = await sql`
+        select mp_preapproval_id from assinaturas
+        where fazenda_id = ${ctx.fazendaId} and status = 'pendente'`;
+      await Promise.all(
+        antigas
+          .map((a) => a.mp_preapproval_id)
+          .filter((id): id is string => !!id && id !== pre.id)
+          .map((id) => mercadoPago.cancelar(id).catch(() => null)),
+      );
       await sql`
         update assinaturas set status = 'cancelada', updated_at = now()
         where fazenda_id = ${ctx.fazendaId} and status = 'pendente'`;

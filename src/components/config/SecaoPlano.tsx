@@ -74,6 +74,22 @@ export function SecaoPlano() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Assinatura pendente (pagou pelo app, fechou a aba, aviso atrasado...):
+  // ao abrir a tela, confere uma vez no Mercado Pago, sem alarde.
+  const conferiuPendente = useRef(false);
+  const statusAtual = info.data?.assinatura?.status;
+  useEffect(() => {
+    if (statusAtual !== "pendente" || conferiuPendente.current) return;
+    conferiuPendente.current = true;
+    void db.assinatura.sincronizar().then(({ data }) => {
+      if (data?.status && data.status !== "pendente") {
+        if (data.status === "ativa") toast.success(MENSAGEM_STATUS["ativa"] ?? "Plano liberado.");
+        atualizarTudo();
+      }
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [statusAtual]);
+
   const iniciar = useMutation({
     mutationFn: async (planoId: string) => {
       const { data, error } = await db.assinatura.iniciar({ plano: planoId, email });
@@ -211,7 +227,8 @@ export function SecaoPlano() {
                 </p>
                 <p className="mt-1 text-xs text-muted-foreground">
                   Se você não terminou o pagamento, continue de onde parou. Se já pagou, confira o
-                  status.
+                  status. Pagamento recusado? Tente outro cartão ou pague pelo app do Mercado Pago,
+                  entrando com a sua conta.
                 </p>
                 <div className="mt-3 flex flex-wrap gap-2">
                   {assinatura.initPoint ? (
