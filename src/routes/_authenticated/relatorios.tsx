@@ -1,7 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Download, FileText, Share2 } from "lucide-react";
+import { Download, FileSpreadsheet, FileText, Share2 } from "lucide-react";
 import { toast } from "sonner";
 import { db } from "@/lib/local-db";
 import { AppShell } from "@/components/AppShell";
@@ -181,27 +181,50 @@ function Relatorios() {
     [dados.data, periodo.inicio, periodo.fim, especies.join(",")],
   );
 
+  function nomeBase() {
+    return `relatorio-${(fazenda?.nome ?? "fazenda")
+      .normalize("NFD")
+      .replace(/[̀-ͯ]/g, "")
+      .replace(/[^a-zA-Z0-9]+/g, "-")
+      .toLowerCase()}-${periodo.inicio}-a-${periodo.fim}`;
+  }
+
+  function cabecalho() {
+    return {
+      fazenda: fazenda?.nome ?? "",
+      municipio: [fazenda?.cidade, fazenda?.estado].filter(Boolean).join("/"),
+      produtor: ident.produtor.trim(),
+      documento: ident.documento.trim(),
+      caf: ident.caf.trim(),
+      inscricao: ident.inscricao.trim(),
+    };
+  }
+
   async function gerar(compartilhar: boolean) {
     if (!relatorio || !fazenda) return;
     setGerando(true);
     try {
       const { gerarRelatorioPDF, entregarPDF } = await import("@/lib/relatorio-pdf");
-      const blob = await gerarRelatorioPDF(relatorio, {
-        fazenda: fazenda.nome,
-        municipio: [fazenda.cidade, fazenda.estado].filter(Boolean).join("/"),
-        produtor: ident.produtor.trim(),
-        documento: ident.documento.trim(),
-        caf: ident.caf.trim(),
-        inscricao: ident.inscricao.trim(),
-      });
-      const nome = `relatorio-${fazenda.nome
-        .normalize("NFD")
-        .replace(/[̀-ͯ]/g, "")
-        .replace(/[^a-zA-Z0-9]+/g, "-")
-        .toLowerCase()}-${periodo.inicio}-a-${periodo.fim}.pdf`;
-      await entregarPDF(blob, nome, compartilhar);
+      const blob = await gerarRelatorioPDF(relatorio, cabecalho());
+      await entregarPDF(blob, `${nomeBase()}.pdf`, compartilhar);
     } catch {
       toast.error("Não conseguimos gerar o PDF agora. Tente novamente.");
+    } finally {
+      setGerando(false);
+    }
+  }
+
+  async function gerarExcel() {
+    if (!relatorio || !fazenda) return;
+    setGerando(true);
+    try {
+      const [{ gerarRelatorioXLSX }, { baixarBytesXLSX }] = await Promise.all([
+        import("@/lib/relatorio-xlsx"),
+        import("@/lib/xlsx"),
+      ]);
+      baixarBytesXLSX(`${nomeBase()}.xlsx`, gerarRelatorioXLSX(relatorio, cabecalho()));
+    } catch {
+      toast.error("Não conseguimos gerar a planilha agora. Tente novamente.");
     } finally {
       setGerando(false);
     }
@@ -310,6 +333,14 @@ function Relatorios() {
                   Compartilhar
                 </Button>
               ) : null}
+              <Button
+                variant="outline"
+                onClick={() => gerarExcel()}
+                disabled={!relatorio || gerando}
+              >
+                <FileSpreadsheet className="size-4" aria-hidden="true" />
+                Baixar Excel
+              </Button>
               <Button onClick={() => gerar(false)} disabled={!relatorio || gerando}>
                 <Download className="size-4" aria-hidden="true" />
                 {gerando ? "Gerando..." : "Baixar PDF"}
@@ -410,13 +441,14 @@ function Relatorios() {
 
               <div className="rounded-lg bg-muted px-4 py-3 text-xs text-muted-foreground">
                 <p className="flex items-center gap-2 font-semibold text-foreground">
-                  <FileText className="size-4" aria-hidden="true" />O PDF traz também
+                  <FileText className="size-4" aria-hidden="true" />O PDF e o Excel trazem também
                 </p>
                 <p className="mt-1">
                   Evolução do rebanho por espécie, lista de nascimentos (
                   {relatorio.nascimentos.length}), vendas e mortes ({relatorio.saidas.length}),
-                  receitas e custos por categoria, vacinas e tratamentos aplicados, e espaço para
-                  assinatura.
+                  receitas e custos por categoria e vacinas e tratamentos aplicados. O PDF tem ainda
+                  espaço para assinatura; o Excel traz uma aba por seção, com números prontos para
+                  somar e filtrar.
                 </p>
               </div>
             </div>
