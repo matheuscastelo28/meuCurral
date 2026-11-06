@@ -70,9 +70,40 @@ export const Route = createFileRoute("/api/saude-banco")({
           }
           const { diagnosticoMercadoPago } = await import("@/lib/mercadopago.server");
           const mercadopago = await diagnosticoMercadoPago();
+          // Assinaturas gravadas aqui x status no Mercado Pago (sem e-mail).
+          let assinaturasLocais: unknown[] = [];
+          if (nomes.includes("assinaturas")) {
+            const { mercadoPago } = await import("@/lib/mercadopago.server");
+            const linhas: {
+              plano: string;
+              status: string;
+              mp: string | null;
+              criada: Date;
+              plano_fazenda: string;
+            }[] = await sql`
+              select a.plano, a.status, a.mp_preapproval_id as mp, a.created_at as criada,
+                     f.plano as plano_fazenda
+              from assinaturas a join fazendas f on f.id = a.fazenda_id
+              order by a.created_at desc limit 10`;
+            assinaturasLocais = await Promise.all(
+              linhas.map(async (l) => ({
+                criada: l.criada,
+                plano: l.plano,
+                status_aqui: l.status,
+                plano_da_fazenda: l.plano_fazenda,
+                status_no_mp: l.mp
+                  ? await mercadoPago
+                      .buscar(l.mp)
+                      .then((p) => p.status)
+                      .catch((e: Error) => `erro: ${e.message}`)
+                  : null,
+              })),
+            );
+          }
           return json({
             ok: true,
             mercadopago,
+            assinaturasLocais,
             planos,
             host,
             banco_na_url: banco,
