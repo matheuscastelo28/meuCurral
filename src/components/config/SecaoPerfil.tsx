@@ -63,7 +63,9 @@ export function SecaoPerfil() {
         </div>
         <div className="sm:col-span-2">
           <Button type="submit" disabled={salvar.isPending}>
-            {salvar.isPending ? <Loader2 className="size-4 animate-spin" aria-hidden="true" /> : null}
+            {salvar.isPending ? (
+              <Loader2 className="size-4 animate-spin" aria-hidden="true" />
+            ) : null}
             Salvar perfil
           </Button>
         </div>
