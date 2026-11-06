@@ -106,6 +106,12 @@ export async function diagnosticoMercadoPago() {
     valor: p["transaction_amount"],
     assinatura: (p["metadata"] as Record<string, unknown> | undefined)?.["preapproval_id"] ?? null,
     operacao: p["operation_type"],
+    descricao: p["description"] ?? null,
+    origem: (p["point_of_interaction"] as Record<string, unknown> | undefined)?.["type"] ?? null,
+    // O Mercado Pago não deixa a própria conta vendedora assinar/pagar a si mesma.
+    pagadorEhVendedor:
+      String((p["payer"] as Record<string, unknown> | undefined)?.["id"] ?? "") ===
+      String(p["collector_id"] ?? "-"),
   }));
   const ultimasAssinaturas = (assinaturas?.results ?? []).map((a) => ({
     id: a["id"],
