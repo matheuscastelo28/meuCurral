@@ -27,8 +27,69 @@ function urlApi() {
   return process.env["MERCADOPAGO_API_URL"] ?? "https://api.mercadopago.com";
 }
 
+/**
+ * Access Token como foi colado no painel, limpo de espaços, aspas e de um
+ * "Bearer " na frente — erros comuns de colagem que dão 401 no Mercado Pago.
+ */
+function tokenMercadoPago(): string | null {
+  const bruto = process.env["MERCADOPAGO_ACCESS_TOKEN"];
+  if (!bruto) return null;
+  const limpo = bruto
+    .trim()
+    .replace(/^["']+|["']+$/g, "")
+    .replace(/^Bearer\s+/i, "")
+    .trim();
+  return limpo || null;
+}
+
+/** Public Key (APP_USR-<uuid>) não serve pra API: só o Access Token. */
+const FORMATO_PUBLIC_KEY =
+  /^(APP_USR|TEST)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 export function mercadoPagoConfigurado() {
-  return !!process.env["MERCADOPAGO_ACCESS_TOKEN"];
+  return !!tokenMercadoPago();
+}
+
+/**
+ * Diagnóstico da credencial sem expor o valor: formato, tipo (produção ou
+ * teste), conta dona do token e se a API do Mercado Pago aceita o token.
+ */
+export async function diagnosticoMercadoPago() {
+  const bruto = process.env["MERCADOPAGO_ACCESS_TOKEN"] ?? "";
+  const token = tokenMercadoPago();
+  if (!token) return { configurado: false as const };
+  const formato = FORMATO_PUBLIC_KEY.test(token)
+    ? "public_key (errado: use o Access Token)"
+    : /^(APP_USR|TEST)-\d+-\d+-[0-9a-f]+-\d+$/i.test(token)
+      ? "access_token"
+      : "desconhecido";
+  const tipo = token.startsWith("TEST-")
+    ? "teste"
+    : token.startsWith("APP_USR-")
+      ? "producao"
+      : "desconhecido";
+  const contaNoToken = formato === "access_token" ? (token.split("-").pop() ?? null) : null;
+  let api: Record<string, unknown>;
+  try {
+    const r = await fetch(`${urlApi()}/users/me`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    const j = (await r.json().catch(() => ({}))) as Record<string, unknown>;
+    api = r.ok
+      ? { aceito: true, conta: j["id"] ?? null, pais: j["site_id"] ?? null }
+      : { aceito: false, status: r.status, mensagem: j["message"] ?? null };
+  } catch (e) {
+    api = { aceito: false, erro: e instanceof Error ? e.message : String(e) };
+  }
+  return {
+    configurado: true as const,
+    formato,
+    tipo,
+    tamanho: token.length,
+    colagemCorrigida: bruto !== token,
+    contaNoToken,
+    api,
+  };
 }
 
 /** Endereço público do sistema, pra onde o Mercado Pago devolve o usuário. */
@@ -40,7 +101,7 @@ export function urlDoSistema() {
 }
 
 async function chamar<T>(metodo: "GET" | "POST" | "PUT", caminho: string, corpo?: unknown) {
-  const token = process.env["MERCADOPAGO_ACCESS_TOKEN"];
+  const token = tokenMercadoPago();
   if (!token) {
     throw new Error("O pagamento online ainda não está configurado. Fale com a gente.");
   }
@@ -56,6 +117,16 @@ async function chamar<T>(metodo: "GET" | "POST" | "PUT", caminho: string, corpo?
   const json = (await resposta.json().catch(() => ({}))) as Record<string, unknown>;
   if (!resposta.ok) {
     const detalhe = typeof json["message"] === "string" ? `: ${json["message"]}` : "";
+    // Fica no log do servidor (sem o token) pra dar pra investigar depois.
+    console.error(
+      `[mercadopago] ${metodo} ${caminho} -> ${resposta.status}`,
+      JSON.stringify({ message: json["message"], error: json["error"], cause: json["cause"] }),
+    );
+    if (resposta.status === 401 || resposta.status === 403) {
+      throw new Error(
+        "O pagamento online está com a credencial do Mercado Pago inválida. Já fomos avisados; tente de novo mais tarde.",
+      );
+    }
     throw new Error(`O Mercado Pago recusou a operação (${resposta.status})${detalhe}.`);
   }
   return json as T;
