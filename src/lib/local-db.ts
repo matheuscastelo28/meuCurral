@@ -31,6 +31,12 @@ import {
   cancelarConta,
   type FiltroRemoto,
 } from "@/lib/dados.functions";
+import {
+  cancelarAssinatura,
+  iniciarAssinatura,
+  minhaAssinatura,
+  sincronizarAssinatura,
+} from "@/lib/assinatura.functions";
 
 const CHAVE_TOKEN = "mcd:pg-token";
 
@@ -474,6 +480,20 @@ export const db = {
       unidade?: string;
     }) {
       return registrarVendaLote({ data: { token: tokenSessao(), ...params } });
+    },
+  },
+  assinatura: {
+    minha() {
+      return minhaAssinatura({ data: { token: tokenSessao() } });
+    },
+    iniciar(params: { plano: string; email: string }) {
+      return iniciarAssinatura({ data: { token: tokenSessao(), ...params } });
+    },
+    sincronizar() {
+      return sincronizarAssinatura({ data: { token: tokenSessao() } });
+    },
+    cancelar() {
+      return cancelarAssinatura({ data: { token: tokenSessao() } });
     },
   },
   rebanho: {

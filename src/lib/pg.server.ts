@@ -430,6 +430,23 @@ create index if not exists idx_contas_fazenda on contas(fazenda_id, status);
 create index if not exists idx_contas_animal on contas(animal_id);
 create index if not exists idx_parcelas_conta on parcelas(conta_id, numero);
 create index if not exists idx_parcelas_vencimento on parcelas(vencimento, status);
+
+-- Assinatura do plano no Mercado Pago (preapproval). O plano da fazenda só
+-- muda quando o Mercado Pago confirma (webhook ou consulta na volta do
+-- checkout) — nunca pelo navegador.
+create table if not exists assinaturas (
+  id uuid primary key default gen_random_uuid(),
+  fazenda_id uuid references fazendas(id) on delete cascade,
+  plano text not null,
+  valor numeric not null,
+  mp_preapproval_id text unique,
+  init_point text,
+  payer_email text,
+  status text not null default 'pendente', -- pendente | ativa | pausada | cancelada
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+create index if not exists idx_assinaturas_fazenda on assinaturas(fazenda_id, created_at);
 `;
 
 /** Cria as tabelas na primeira vez que o banco é usado. */

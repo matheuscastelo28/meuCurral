@@ -8,6 +8,8 @@ export interface Plano {
   resumo: string;
   limiteAnimais: number;
   limiteUsuarios: number;
+  /** Valor cobrado por mês na assinatura (Mercado Pago). Sem ele, não há checkout. */
+  valorMensal?: number;
   relatorios: boolean;
   exportacao: boolean;
   multiUsuario: boolean;
@@ -39,6 +41,7 @@ export const PLANOS: Plano[] = [
     id: "essencial",
     nome: "Essencial",
     preco: "R$ 49,90",
+    valorMensal: 49.9,
     periodo: "por mês",
     resumo: "Para o produtor que já tem rebanho formado.",
     limiteAnimais: 100,
@@ -58,6 +61,7 @@ export const PLANOS: Plano[] = [
     id: "profissional",
     nome: "Profissional",
     preco: "R$ 79,90",
+    valorMensal: 79.9,
     periodo: "por mês",
     resumo: "Para quem divide o manejo com a equipe.",
     limiteAnimais: 250,

@@ -1,4 +1,4 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Download, FileText, Share2 } from "lucide-react";
@@ -218,9 +218,9 @@ function Relatorios() {
         <div className="max-w-xl space-y-4">
           <RecursoBloqueado recurso="O relatório em PDF" planoNecessario="Essencial" />
           <Button asChild>
-            <a href="mailto:contato@curralonline.com?subject=Quero%20liberar%20os%20relat%C3%B3rios">
-              Falar com a gente
-            </a>
+            <Link to="/config" hash="plano">
+              Ver planos
+            </Link>
           </Button>
         </div>
       </AppShell>

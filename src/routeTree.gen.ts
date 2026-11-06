@@ -29,6 +29,7 @@ import { Route as AuthenticatedRelatoriosRouteImport } from './routes/_authentic
 import { Route as AuthenticatedReproducaoRouteImport } from './routes/_authenticated/reproducao'
 import { Route as ApiSaudeBancoRouteImport } from './routes/api/saude-banco'
 import { Route as AuthenticatedRebanhoAnimalIdRouteImport } from './routes/_authenticated/rebanho_.$animalId'
+import { Route as ApiMercadopagoWebhookRouteImport } from './routes/api/mercadopago/webhook'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -130,6 +131,11 @@ const AuthenticatedRebanhoAnimalIdRoute =
     path: '/rebanho/$animalId',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
+const ApiMercadopagoWebhookRoute = ApiMercadopagoWebhookRouteImport.update({
+  id: '/api/mercadopago/webhook',
+  path: '/api/mercadopago/webhook',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -151,6 +157,7 @@ export interface FileRoutesByFullPath {
   '/reproducao': typeof AuthenticatedReproducaoRoute
   '/api/saude-banco': typeof ApiSaudeBancoRoute
   '/rebanho/$animalId': typeof AuthenticatedRebanhoAnimalIdRoute
+  '/api/mercadopago/webhook': typeof ApiMercadopagoWebhookRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -172,6 +179,7 @@ export interface FileRoutesByTo {
   '/reproducao': typeof AuthenticatedReproducaoRoute
   '/api/saude-banco': typeof ApiSaudeBancoRoute
   '/rebanho/$animalId': typeof AuthenticatedRebanhoAnimalIdRoute
+  '/api/mercadopago/webhook': typeof ApiMercadopagoWebhookRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -195,6 +203,7 @@ export interface FileRoutesById {
   '/_authenticated/reproducao': typeof AuthenticatedReproducaoRoute
   '/api/saude-banco': typeof ApiSaudeBancoRoute
   '/_authenticated/rebanho_/$animalId': typeof AuthenticatedRebanhoAnimalIdRoute
+  '/api/mercadopago/webhook': typeof ApiMercadopagoWebhookRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -218,6 +227,7 @@ export interface FileRouteTypes {
     | '/reproducao'
     | '/api/saude-banco'
     | '/rebanho/$animalId'
+    | '/api/mercadopago/webhook'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -239,6 +249,7 @@ export interface FileRouteTypes {
     | '/reproducao'
     | '/api/saude-banco'
     | '/rebanho/$animalId'
+    | '/api/mercadopago/webhook'
   id:
     | '__root__'
     | '/'
@@ -261,6 +272,7 @@ export interface FileRouteTypes {
     | '/_authenticated/reproducao'
     | '/api/saude-banco'
     | '/_authenticated/rebanho_/$animalId'
+    | '/api/mercadopago/webhook'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -272,6 +284,7 @@ export interface RootRouteChildren {
   TermosRoute: typeof TermosRoute
   VerificarEmailRoute: typeof VerificarEmailRoute
   ApiSaudeBancoRoute: typeof ApiSaudeBancoRoute
+  ApiMercadopagoWebhookRoute: typeof ApiMercadopagoWebhookRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -416,6 +429,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedRebanhoAnimalIdRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/api/mercadopago/webhook': {
+      id: '/api/mercadopago/webhook'
+      path: '/api/mercadopago/webhook'
+      fullPath: '/api/mercadopago/webhook'
+      preLoaderRoute: typeof ApiMercadopagoWebhookRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -461,6 +481,7 @@ const rootRouteChildren: RootRouteChildren = {
   TermosRoute: TermosRoute,
   VerificarEmailRoute: VerificarEmailRoute,
   ApiSaudeBancoRoute: ApiSaudeBancoRoute,
+  ApiMercadopagoWebhookRoute: ApiMercadopagoWebhookRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
