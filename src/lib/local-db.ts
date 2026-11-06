@@ -408,6 +408,7 @@ export const db = {
       data: string;
       quantidade: number;
       leiteUsado?: number | null;
+      custoInsumos?: number | null;
       observacoes?: string | null;
     }) {
       return registrarFabricacaoDerivado({ data: { token: tokenSessao(), ...params } });

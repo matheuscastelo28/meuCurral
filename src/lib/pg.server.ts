@@ -310,6 +310,11 @@ alter table financeiro_lancamentos add column if not exists lote text;
 -- Despesa ligada a um animal (compra dele, vacina aplicada só nele): mostra
 -- na ficha quanto o animal custou.
 alter table financeiro_lancamentos add column if not exists animal_id uuid references animais(id) on delete set null;
+-- Custo que nasceu de um registro de reprodução (sêmen, inseminação,
+-- veterinário) ou de uma fabricação de derivado (coalho, embalagem): excluir
+-- o registro apaga a despesa junto.
+alter table financeiro_lancamentos add column if not exists reproducao_id uuid references reproducao(id) on delete cascade;
+alter table financeiro_lancamentos add column if not exists producao_id uuid references producao_leite(id) on delete cascade;
 
 create index if not exists idx_precos_produto_fazenda on precos_produto(fazenda_id, produto, data_inicio);
 create index if not exists idx_destinacoes_leite_fazenda on destinacoes_leite(fazenda_id, data);

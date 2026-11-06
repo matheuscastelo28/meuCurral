@@ -1109,6 +1109,7 @@ export const registrarFabricacaoDerivado = createServerFn({ method: "POST" })
       data: string;
       quantidade: number;
       leiteUsado?: number | null;
+      custoInsumos?: number | null;
       observacoes?: string | null;
     }) => dados,
   )
@@ -1119,6 +1120,9 @@ export const registrarFabricacaoDerivado = createServerFn({ method: "POST" })
       const userId = await fazendaDoUsuario(sql, data.token, data.fazendaId);
       if (!userId) {
         return { data: null, error: { message: "Não autenticado ou fazenda inválida." } };
+      }
+      if (Number(data.custoInsumos ?? 0) < 0) {
+        return { data: null, error: { message: "O custo não pode ser negativo." } };
       }
       if (!DERIVADOS_VALIDOS.has(data.produto)) {
         return { data: null, error: { message: "Escolha um derivado." } };
@@ -1159,6 +1163,17 @@ export const registrarFabricacaoDerivado = createServerFn({ method: "POST" })
             insert into destinacoes_leite (fazenda_id, data, destino, quantidade, observacoes, producao_id)
             values (${data.fazendaId}, ${data.data}, 'derivados', ${leite},
                     ${rotuloProduto(data.produto)}, ${producao.id})`;
+        }
+        // Insumos (coalho, sal, embalagem...) viram despesa ligada à
+        // fabricação: excluir a fabricação apaga a despesa junto.
+        const custo = Math.round(Number(data.custoInsumos ?? 0) * 100) / 100;
+        if (custo > 0) {
+          await tx`
+            insert into financeiro_lancamentos
+              (fazenda_id, tipo, descricao, valor, data, categoria, producao_id)
+            values (${data.fazendaId}, 'despesa',
+                    ${`Insumos — fabricação de ${rotuloProduto(data.produto).toLowerCase()}`},
+                    ${custo}, ${data.data}, 'outro', ${producao.id})`;
         }
         return producao;
       });

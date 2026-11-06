@@ -1301,6 +1301,14 @@ function Financeiro() {
               {(() => {
                 const venda = origens.data?.vendaPorLancamento.get(lancamentoSelecionado.id);
                 const daAlimentacao = origens.data?.daAlimentacao.has(lancamentoSelecionado.id);
+                // Custo que nasceu de uma fabricação de derivado ou de um
+                // registro de reprodução: muda-se lá (excluir o registro apaga
+                // a despesa junto).
+                const doRegistro = lancamentoSelecionado.producao_id
+                  ? "da fabricação de derivado (aba Leite)"
+                  : lancamentoSelecionado.reproducao_id
+                    ? "do registro de reprodução"
+                    : null;
                 const lista =
                   lancamentoSelecionado.tipo === "despesa"
                     ? CATEGORIAS_DESPESA
@@ -1442,6 +1450,10 @@ function Financeiro() {
                         Gerado pela alimentação do lote. Para mudar, edite a alimentação em
                         Confinamento.
                       </p>
+                    ) : doRegistro ? (
+                      <p className="text-xs text-muted-foreground">
+                        Custo {doRegistro}. Para mudar, exclua o registro lá e registre de novo.
+                      </p>
                     ) : null}
                     <DialogFooter className="mt-3 flex-wrap gap-2">
                       {venda ? (
@@ -1453,7 +1465,7 @@ function Financeiro() {
                           <Undo2 className="size-4" aria-hidden="true" />
                           Estornar venda
                         </Button>
-                      ) : !daAlimentacao ? (
+                      ) : !daAlimentacao && !doRegistro ? (
                         <>
                           <Button
                             type="button"

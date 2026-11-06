@@ -102,6 +102,7 @@ function Reproducao() {
     "positivo",
   );
   const [excluindo, setExcluindo] = useState<{ id: string; texto: string } | null>(null);
+  const [custo, setCusto] = useState("");
   const [previsaoParto, setPrevisaoParto] = useState(() =>
     previsaoPartoDe(hojeISO(), diasGestacao),
   );
@@ -119,7 +120,7 @@ function Reproducao() {
     queryFn: async () => {
       const { data, error } = await db
         .from("animais")
-        .select("id, nome, brinco, categoria, especie, nascimento, mae, pai, sexo, status")
+        .select("id, nome, brinco, categoria, especie, nascimento, mae, pai, sexo, status, lote")
         .eq("fazenda_id", fazenda!.id)
         .order("nome");
       if (error) throw error;
@@ -263,6 +264,8 @@ function Reproducao() {
       queryClient.invalidateQueries({ queryKey: ["reproducao"] });
       queryClient.invalidateQueries({ queryKey: ["ficha-reproducao"] });
       queryClient.invalidateQueries({ queryKey: ["indices-rebanho"] });
+      queryClient.invalidateQueries({ queryKey: ["financeiro"] });
+      queryClient.invalidateQueries({ queryKey: ["ficha-custos"] });
     },
     onError: () => toast.error("Não conseguimos excluir agora. Tente novamente."),
   });
@@ -280,8 +283,9 @@ function Reproducao() {
       touro: string;
       previsaoParto: string | null;
       resultado: string | null;
+      custo: number;
     }) => {
-      const { error } = await db.from("reproducao").insert({
+      const { data: criados, error } = await db.from("reproducao").insert({
         fazenda_id: fazenda!.id,
         animal_id: vars.animalId || null,
         tipo: vars.tipo,
@@ -291,12 +295,44 @@ function Reproducao() {
         resultado: vars.resultado,
       } as never);
       if (error) throw error;
-      return vars;
+      // Custo (sêmen, inseminador, veterinário) vira despesa ligada ao
+      // registro e à fêmea; excluir o registro apaga a despesa junto. Se só
+      // a despesa falhar, o registro fica e avisamos (refazer duplicaria).
+      let custoOk = true;
+      if (vars.custo > 0) {
+        const animal = animais.data?.find((a) => a.id === vars.animalId);
+        const nome = animal ? `${animal.nome}${animal.brinco ? ` (${animal.brinco})` : ""}` : "";
+        const { error: erroCusto } = await db.from("financeiro_lancamentos").insert({
+          fazenda_id: fazenda!.id,
+          tipo: "despesa",
+          descricao: `${TIPO_LABEL[vars.tipo] ?? vars.tipo}${vars.touro.trim() ? `: ${vars.touro.trim()}` : ""}${nome ? ` — ${nome}` : ""}`,
+          valor: Math.round(vars.custo * 100) / 100,
+          data: vars.data,
+          categoria: "sanidade",
+          lote: String(animal?.lote ?? "").trim() || null,
+          animal_id: vars.animalId || null,
+          reproducao_id: (criados?.[0]?.id as string | undefined) ?? null,
+        } as never);
+        custoOk = !erroCusto;
+      }
+      return { ...vars, custoOk };
     },
     onSuccess: (vars) => {
-      toast.success("Registro salvo.");
+      if (!vars.custoOk) {
+        toast.error(
+          "Registro salvo, mas o custo não entrou no Financeiro. Lance em Financeiro → Novo lançamento.",
+        );
+      } else {
+        toast.success(
+          vars.custo > 0 ? "Registro salvo e custo lançado no Financeiro." : "Registro salvo.",
+        );
+      }
       setTouroId("");
       setTouroCustom("");
+      setCusto("");
+      for (const chave of ["financeiro", "inicio-resumo", "ficha-custos", "despesas-lote"]) {
+        queryClient.invalidateQueries({ queryKey: [chave] });
+      }
       queryClient.invalidateQueries({ queryKey: ["reproducao"] });
       queryClient.invalidateQueries({ queryKey: ["eventos"] });
       queryClient.invalidateQueries({ queryKey: ["indices-rebanho"] });
@@ -376,6 +412,7 @@ function Reproducao() {
             touro: requerPrevisao ? touroTextoAtual() : "",
             previsaoParto: requerPrevisao ? previsaoParto : null,
             resultado: tipo === "diagnostico" ? resultadoDiagnostico : null,
+            custo: Number(custo) || 0,
           });
         }}
       >
@@ -503,6 +540,19 @@ function Reproducao() {
             </p>
           </div>
         ) : null}
+        <div className="min-w-[150px] flex-1 space-y-1.5">
+          <Label htmlFor="custo-reproducao">Custo (R$)</Label>
+          <Input
+            id="custo-reproducao"
+            type="number"
+            step="0.01"
+            min="0"
+            value={custo}
+            placeholder="Opcional"
+            onChange={(e) => setCusto(e.target.value)}
+          />
+          <p className="text-xs text-muted-foreground">Sêmen, inseminador, veterinário.</p>
+        </div>
         <div className="w-full space-y-1.5 sm:w-auto sm:min-w-[150px]">
           <Label className="invisible hidden sm:block">Registrar</Label>
           <Button

@@ -86,6 +86,28 @@ export function SecaoDerivados({
     },
   });
 
+  // Custo de insumos lançado em cada fabricação (despesa ligada a ela).
+  const insumos = useQuery({
+    queryKey: ["derivados-insumos", fazendaId],
+    enabled: valores.length > 0,
+    queryFn: async () => {
+      const { data, error } = await db
+        .from("financeiro_lancamentos")
+        .select("producao_id, valor")
+        .eq("fazenda_id", fazendaId)
+        .eq("categoria", "outro");
+      if (error) throw error;
+      const mapa = new Map<string, number>();
+      for (const l of data ?? []) {
+        if (l.producao_id) {
+          const id = String(l.producao_id);
+          mapa.set(id, (mapa.get(id) ?? 0) + Number(l.valor));
+        }
+      }
+      return mapa;
+    },
+  });
+
   const vendas = useQuery({
     queryKey: ["derivados-vendas", fazendaId, valores.join(",")],
     enabled: valores.length > 0,
@@ -130,6 +152,9 @@ export function SecaoDerivados({
       const produzido = prod.reduce((s, f) => s + Number(f.litros), 0);
       const vendido = vend.reduce((s, v) => s + Number(v.quantidade), 0);
       const leiteTotal = prod.reduce((s, f) => s + (leiteUsado.data?.get(f.id) ?? 0), 0);
+      const comCusto = prod.filter((f) => insumos.data?.has(f.id));
+      const custoInsumos = comCusto.reduce((s, f) => s + (insumos.data?.get(f.id) ?? 0), 0);
+      const produzidoComCusto = comCusto.reduce((s, f) => s + Number(f.litros), 0);
       const produzidoComLeite = prod
         .filter((f) => leiteUsado.data?.has(f.id))
         .reduce((s, f) => s + Number(f.litros), 0);
@@ -145,10 +170,12 @@ export function SecaoDerivados({
         // Litros de leite por kg (ou L) de derivado, só com fabricações que
         // informaram o leite usado.
         rendimento: produzidoComLeite > 0 ? leiteTotal / produzidoComLeite : null,
+        // Custo de insumos por kg (ou L), só com fabricações que lançaram custo.
+        insumosPorUnidade: produzidoComCusto > 0 ? custoInsumos / produzidoComCusto : null,
       };
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [fabricacoes.data, vendas.data, leiteUsado.data, valores.join(",")]);
+  }, [fabricacoes.data, vendas.data, leiteUsado.data, insumos.data, valores.join(",")]);
 
   function invalidar() {
     for (const chave of [
@@ -156,6 +183,7 @@ export function SecaoDerivados({
       "derivados-leite-usado",
       "derivados-vendas",
       "derivados-precos",
+      "derivados-insumos",
       "destinacoes-leite",
       "leite",
       "leite-30d",
@@ -172,6 +200,7 @@ export function SecaoDerivados({
   const [fabData, setFabData] = useState(hoje);
   const [fabQuantidade, setFabQuantidade] = useState("");
   const [fabLeite, setFabLeite] = useState("");
+  const [fabCusto, setFabCusto] = useState("");
   const produtoFab = valores.includes(fabProduto) ? fabProduto : (valores[0] ?? "");
 
   const fabricar = useMutation({
@@ -182,6 +211,7 @@ export function SecaoDerivados({
         data: fabData,
         quantidade: Number(fabQuantidade),
         leiteUsado: fabLeite ? Number(fabLeite) : null,
+        custoInsumos: fabCusto ? Number(fabCusto) : null,
       });
       if (error) throw new Error(error.message);
     },
@@ -191,6 +221,7 @@ export function SecaoDerivados({
       );
       setFabQuantidade("");
       setFabLeite("");
+      setFabCusto("");
       invalidar();
     },
     onError: (e: Error) => toast.error(e.message || "Não conseguimos registrar agora."),
@@ -290,7 +321,13 @@ export function SecaoDerivados({
           data: dataISO(f.data),
           produto: f.produto,
           quantidade: Number(f.litros),
-          detalhe: leite ? `${num(leite)} L de leite` : "Fabricação",
+          detalhe:
+            [
+              leite ? `${num(leite)} L de leite` : null,
+              insumos.data?.get(f.id) ? `insumos ${moeda(insumos.data.get(f.id) ?? 0)}` : null,
+            ]
+              .filter(Boolean)
+              .join(" · ") || "Fabricação",
         };
       }),
       ...(vendas.data ?? []).map((v) => ({
@@ -304,7 +341,7 @@ export function SecaoDerivados({
     ];
     return lista.sort((a, b) => b.data.localeCompare(a.data)).slice(0, 15);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [fabricacoes.data, vendas.data, leiteUsado.data]);
+  }, [fabricacoes.data, vendas.data, leiteUsado.data, insumos.data]);
 
   if (derivados.length === 0) return null;
 
@@ -353,6 +390,14 @@ export function SecaoDerivados({
                   <dt className="text-muted-foreground">Rendimento</dt>
                   <dd className="font-semibold tabular-nums">
                     {r.rendimento ? `${num(r.rendimento)} L por ${r.unidade}` : "—"}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-muted-foreground">Insumos</dt>
+                  <dd className="font-semibold tabular-nums">
+                    {r.insumosPorUnidade !== null
+                      ? `${moeda(r.insumosPorUnidade)}/${r.unidade}`
+                      : "—"}
                   </dd>
                 </div>
                 <div>
@@ -490,9 +535,22 @@ export function SecaoDerivados({
                 onChange={(e) => setFabLeite(e.target.value)}
               />
             </div>
+            <div className="col-span-2 space-y-1.5">
+              <Label htmlFor="fab-custo">Custo dos insumos (R$)</Label>
+              <Input
+                id="fab-custo"
+                type="number"
+                step="0.01"
+                min="0"
+                value={fabCusto}
+                placeholder="Opcional — coalho, sal, embalagem"
+                onChange={(e) => setFabCusto(e.target.value)}
+              />
+            </div>
           </div>
           <p className="mt-2 text-xs text-muted-foreground">
-            O leite usado sai da destinação do leite do dia como "Derivados".
+            O leite usado sai da destinação do leite do dia como "Derivados"; o custo dos insumos
+            entra no Financeiro.
             {Number(fabQuantidade) > 0 && Number(fabLeite) > 0
               ? ` Rendimento: ${num(Number(fabLeite) / Number(fabQuantidade))} L por ${unidadeProduto(produtoFab)}.`
               : ""}
