@@ -94,25 +94,29 @@ export async function diagnosticoMercadoPago() {
     }
   };
   const [pagamentos, assinaturas] = await Promise.all([
-    consultar("/v1/payments/search?sort=date_created&criteria=desc&limit=8"),
+    consultar("/v1/payments/search?sort=date_created&criteria=desc&limit=30"),
     consultar("/preapproval/search?sort=date_created&criteria=desc&limit=8"),
   ]);
-  const ultimosPagamentos = (pagamentos?.results ?? []).map((p) => ({
-    data: p["date_created"],
-    status: p["status"],
-    motivo: p["status_detail"],
-    meio: p["payment_method_id"],
-    tipo: p["payment_type_id"],
-    valor: p["transaction_amount"],
-    assinatura: (p["metadata"] as Record<string, unknown> | undefined)?.["preapproval_id"] ?? null,
-    operacao: p["operation_type"],
-    descricao: p["description"] ?? null,
-    origem: (p["point_of_interaction"] as Record<string, unknown> | undefined)?.["type"] ?? null,
-    // O Mercado Pago não deixa a própria conta vendedora assinar/pagar a si mesma.
-    pagadorEhVendedor:
-      String((p["payer"] as Record<string, unknown> | undefined)?.["id"] ?? "") ===
-      String(p["collector_id"] ?? "-"),
-  }));
+  // Só pagamentos do Curral Online — nada de outras compras da conta.
+  const ultimosPagamentos = (pagamentos?.results ?? [])
+    .filter((p) => String(p["description"] ?? "").startsWith("Curral Online"))
+    .map((p) => ({
+      data: p["date_created"],
+      status: p["status"],
+      motivo: p["status_detail"],
+      meio: p["payment_method_id"],
+      tipo: p["payment_type_id"],
+      valor: p["transaction_amount"],
+      assinatura:
+        (p["metadata"] as Record<string, unknown> | undefined)?.["preapproval_id"] ?? null,
+      operacao: p["operation_type"],
+      descricao: p["description"] ?? null,
+      origem: (p["point_of_interaction"] as Record<string, unknown> | undefined)?.["type"] ?? null,
+      // O Mercado Pago não deixa a própria conta vendedora assinar/pagar a si mesma.
+      pagadorEhVendedor:
+        String((p["payer"] as Record<string, unknown> | undefined)?.["id"] ?? "") ===
+        String(p["collector_id"] ?? "-"),
+    }));
   const ultimasAssinaturas = (assinaturas?.results ?? []).map((a) => ({
     id: a["id"],
     data: a["date_created"],
@@ -224,7 +228,19 @@ export async function aplicarPreapproval(sql: Sql, pre: Preapproval): Promise<st
     select id, fazenda_id, plano from assinaturas where mp_preapproval_id = ${pre.id}`;
   const assinatura = linhas[0];
   if (!assinatura) return null;
-  const status = STATUS_INTERNO[pre.status] ?? pre.status;
+  let status = STATUS_INTERNO[pre.status] ?? pre.status;
+
+  // Link de pagamento antigo pago depois de outra assinatura já ativa: não
+  // cobra duas vezes — cancela esta no Mercado Pago.
+  if (status === "ativa") {
+    const outraAtiva: { n: number }[] = await sql`
+      select count(*)::int as n from assinaturas
+      where fazenda_id = ${assinatura.fazenda_id} and status = 'ativa' and id <> ${assinatura.id}`;
+    if ((outraAtiva[0]?.n ?? 0) > 0) {
+      const cancelada = await mercadoPago.cancelar(pre.id).catch(() => null);
+      if (cancelada) status = "cancelada";
+    }
+  }
 
   await sql.begin(async (tx) => {
     await tx`
