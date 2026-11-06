@@ -81,8 +81,45 @@ export async function diagnosticoMercadoPago() {
   } catch (e) {
     api = { aceito: false, erro: e instanceof Error ? e.message : String(e) };
   }
+  // Últimos pagamentos e assinaturas da conta: só status, motivo e valor
+  // (sem nome, e-mail ou cartão) — explica recusas do checkout.
+  const consultar = async (caminho: string) => {
+    try {
+      const r = await fetch(`${urlApi()}${caminho}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      return r.ok ? ((await r.json()) as { results?: Record<string, unknown>[] }) : null;
+    } catch {
+      return null;
+    }
+  };
+  const [pagamentos, assinaturas] = await Promise.all([
+    consultar("/v1/payments/search?sort=date_created&criteria=desc&limit=8"),
+    consultar("/preapproval/search?sort=date_created&criteria=desc&limit=8"),
+  ]);
+  const ultimosPagamentos = (pagamentos?.results ?? []).map((p) => ({
+    data: p["date_created"],
+    status: p["status"],
+    motivo: p["status_detail"],
+    meio: p["payment_method_id"],
+    tipo: p["payment_type_id"],
+    valor: p["transaction_amount"],
+    assinatura: (p["metadata"] as Record<string, unknown> | undefined)?.["preapproval_id"] ?? null,
+    operacao: p["operation_type"],
+  }));
+  const ultimasAssinaturas = (assinaturas?.results ?? []).map((a) => ({
+    id: a["id"],
+    data: a["date_created"],
+    status: a["status"],
+    referencia: a["external_reference"],
+    valor: (a["auto_recurring"] as Record<string, unknown> | undefined)?.["transaction_amount"],
+    proximaCobranca: a["next_payment_date"] ?? null,
+    pagas: (a["summarized"] as Record<string, unknown> | undefined)?.["charged_quantity"] ?? null,
+  }));
   return {
     configurado: true as const,
+    ultimosPagamentos,
+    ultimasAssinaturas,
     formato,
     tipo,
     tamanho: token.length,
