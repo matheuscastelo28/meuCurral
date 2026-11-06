@@ -68,8 +68,11 @@ export const Route = createFileRoute("/api/saude-banco")({
               sob_planos_desde: p?.["sob_planos_desde"] ?? null,
             };
           }
+          const { diagnosticoMercadoPago } = await import("@/lib/mercadopago.server");
+          const mercadopago = await diagnosticoMercadoPago();
           return json({
             ok: true,
+            mercadopago,
             planos,
             host,
             banco_na_url: banco,
