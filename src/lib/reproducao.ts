@@ -31,9 +31,12 @@ export type EstadoFemea = {
   /** Resultado do diagnóstico desse serviço, se houve. */
   diagnostico: "positivo" | "negativo" | null;
   ultimoParto: string | null;
-  /** Último evento que deixou a fêmea vazia (parto ou diagnóstico negativo). */
+  /** Último evento que deixou a fêmea vazia/apta (parto, diagnóstico negativo ou cio). */
   vaziaDesde: string | null;
+  vaziaMotivo: "parto" | "diagnostico" | "cio" | null;
   secagemDepoisDoServico: boolean;
+  /** Prenhez confirmada por diagnóstico sem serviço registrado antes (sem previsão de parto). */
+  semServico: boolean;
 };
 
 // Mesmo dia: vale a ordem em que foi lançado (diagnóstico e parto no mesmo dia).
@@ -61,31 +64,62 @@ export function estadoDaFemea(historico: RegistroRepro[]): EstadoFemea {
   let diagnostico: "positivo" | "negativo" | null = null;
   let ultimoParto: string | null = null;
   let vaziaDesde: string | null = null;
+  let vaziaMotivo: EstadoFemea["vaziaMotivo"] = null;
   let secagemDepoisDoServico = false;
+  let semServico = false;
   for (const r of ordenar(historico)) {
     const d = dataISO(r.data);
     if (SERVICO.has(r.tipo ?? "")) {
       servicoAberto = r;
       diagnostico = null;
       vaziaDesde = null;
+      vaziaMotivo = null;
       secagemDepoisDoServico = false;
-    } else if (r.tipo === "diagnostico" && servicoAberto) {
-      diagnostico = r.resultado === "negativo" ? "negativo" : "positivo";
-      if (diagnostico === "negativo") {
+      semServico = false;
+    } else if (r.tipo === "diagnostico") {
+      const positivo = r.resultado !== "negativo";
+      if (positivo) {
+        // Sem serviço lançado antes (produtor só registrou o resultado do
+        // veterinário): o próprio diagnóstico abre a gestação.
+        if (!servicoAberto) {
+          servicoAberto = r;
+          semServico = true;
+          secagemDepoisDoServico = false;
+        }
+        diagnostico = "positivo";
+        vaziaDesde = null;
+        vaziaMotivo = null;
+      } else {
         servicoAberto = null;
+        diagnostico = "negativo";
+        semServico = false;
         vaziaDesde = d;
+        vaziaMotivo = "diagnostico";
       }
     } else if (r.tipo === "parto") {
       servicoAberto = null;
       diagnostico = null;
       ultimoParto = d;
       vaziaDesde = d;
+      vaziaMotivo = "parto";
       secagemDepoisDoServico = false;
+      semServico = false;
     } else if (r.tipo === "secagem" && servicoAberto) {
       secagemDepoisDoServico = true;
+    } else if (r.tipo === "primeiro_cio" && !servicoAberto) {
+      vaziaDesde = d;
+      vaziaMotivo = "cio";
     }
   }
-  return { servicoAberto, diagnostico, ultimoParto, vaziaDesde, secagemDepoisDoServico };
+  return {
+    servicoAberto,
+    diagnostico,
+    ultimoParto,
+    vaziaDesde,
+    vaziaMotivo,
+    secagemDepoisDoServico,
+    semServico,
+  };
 }
 
 function diasEntre(a: string, b: string) {

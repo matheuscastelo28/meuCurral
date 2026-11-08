@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Baby,
   CalendarClock,
+  CircleDashed,
   HeartPulse,
   Pencil,
   Plus,
@@ -236,79 +237,147 @@ function Reproducao() {
     const partos: {
       animalId: string;
       nome: string;
-      previsao: string;
+      previsao: string | null;
       confirmada: boolean;
+      origem: string;
       secarAte: string | null;
       secar: boolean;
     }[] = [];
-    const aguardandoDiagnostico: { animalId: string; nome: string; servico: string }[] = [];
+    const aguardandoDiagnostico: {
+      animalId: string;
+      nome: string;
+      servico: string;
+      aPartir: string;
+      pronto: boolean;
+    }[] = [];
     const vazias: {
       animalId: string;
       nome: string;
-      desde: string;
-      dias: number;
+      dias: number | null;
       motivo: string;
     }[] = [];
     const diasVazia = DIAS_VAZIA[especieVisivel];
-    for (const [animalId, historico] of porAnimal) {
-      const animal = ativa(animalId);
-      if (!animal) continue;
+    const limiteDiagnostico = diasAtrasISO(DIAS_PARA_DIAGNOSTICO);
+    const diasDesde = (d: string) =>
+      Math.round(
+        (new Date(`${hoje}T00:00:00Z`).getTime() - new Date(`${d}T00:00:00Z`).getTime()) / 86400000,
+      );
+    // Todas as fêmeas da espécie em vista que estão no rebanho — inclusive as
+    // que ainda não têm nenhum registro reprodutivo.
+    const femeas = (animais.data ?? []).filter(
+      (a) =>
+        a.status !== "vendido" &&
+        a.status !== "morto" &&
+        a.sexo !== "macho" &&
+        a.sexo !== "castrado" &&
+        a.categoria !== categoriaReprodutor &&
+        especieDoAnimal(a) === especieVisivel,
+    );
+    const adulta = (categoria: string | null | undefined) =>
+      categoria === (soOvino ? "ovelha" : "vaca");
+    for (const animal of femeas) {
+      const animalId = animal.id;
       const nome = animal.nome || animal.brinco || "Animal";
-      const est = estadoDaFemea(historico);
+      const est = estadoDaFemea(porAnimal.get(animalId) ?? []);
       if (est.servicoAberto) {
         const dataServico = dataISO(est.servicoAberto.data);
-        if (est.servicoAberto.previsao_parto) {
-          const previsao = dataISO(est.servicoAberto.previsao_parto);
+        const previsao = est.servicoAberto.previsao_parto
+          ? dataISO(est.servicoAberto.previsao_parto)
+          : null;
+        let secarAte: string | null = null;
+        if (previsao && !soOvino) {
           const secarEm = new Date(`${previsao}T00:00:00Z`);
           secarEm.setUTCDate(secarEm.getUTCDate() - DIAS_SECAGEM_ANTES_PARTO);
-          const secarAte = soOvino ? null : secarEm.toISOString().slice(0, 10);
-          partos.push({
+          secarAte = secarEm.toISOString().slice(0, 10);
+        }
+        partos.push({
+          animalId,
+          nome,
+          previsao,
+          confirmada: est.diagnostico === "positivo",
+          origem: est.semServico
+            ? "Prenhez confirmada · sem serviço registrado"
+            : est.diagnostico === "positivo"
+              ? "Prenhez confirmada"
+              : "Sem diagnóstico ainda",
+          secarAte,
+          // Hora de secar: já passou da data e ainda não registrou secagem.
+          secar:
+            !!secarAte &&
+            secarAte <= hoje &&
+            !est.secagemDepoisDoServico &&
+            animal.status !== "seca",
+        });
+        if (est.diagnostico === null && !est.semServico) {
+          const aPartir = new Date(`${dataServico}T00:00:00Z`);
+          aPartir.setUTCDate(aPartir.getUTCDate() + DIAS_PARA_DIAGNOSTICO);
+          aguardandoDiagnostico.push({
             animalId,
             nome,
-            previsao,
-            confirmada: est.diagnostico === "positivo",
-            secarAte,
-            // Hora de secar: já passou da data e ainda não registrou secagem.
-            secar:
-              !!secarAte &&
-              secarAte <= hoje &&
-              !est.secagemDepoisDoServico &&
-              animal.status !== "seca",
+            servico: dataServico,
+            aPartir: aPartir.toISOString().slice(0, 10),
+            pronto: dataServico <= limiteDiagnostico,
           });
         }
-        if (est.diagnostico === null && dataServico <= diasAtrasISO(DIAS_PARA_DIAGNOSTICO)) {
-          aguardandoDiagnostico.push({ animalId, nome, servico: dataServico });
-        }
-      } else if (est.vaziaDesde) {
-        const dias = Math.round(
-          (new Date(`${hoje}T00:00:00Z`).getTime() -
-            new Date(`${est.vaziaDesde}T00:00:00Z`).getTime()) /
-            86400000,
-        );
-        const posParto = est.vaziaDesde === est.ultimoParto;
-        // Diagnóstico negativo: vazia na hora. Depois do parto: só passa a
-        // contar quando já devia ter sido servida de novo.
-        if (!posParto || dias >= diasVazia) {
+        continue;
+      }
+      // Marcada como prenhe no Rebanho, sem registro que mostre a gestação.
+      if (animal.status === "prenhe") {
+        partos.push({
+          animalId,
+          nome,
+          previsao: null,
+          confirmada: true,
+          origem: "Marcada como prenhe no Rebanho",
+          secarAte: null,
+          secar: false,
+        });
+        continue;
+      }
+      if (animal.status === "engorda" || animal.status === "seca") continue;
+      if (est.vaziaDesde) {
+        const dias = diasDesde(est.vaziaDesde);
+        // Depois do parto só passa a contar quando já devia ter sido servida
+        // de novo; diagnóstico negativo e cio contam na hora.
+        if (est.vaziaMotivo !== "parto" || dias >= diasVazia) {
           vazias.push({
             animalId,
             nome,
-            desde: est.vaziaDesde,
             dias,
-            motivo: posParto ? "desde o parto" : "diagnóstico negativo",
+            motivo:
+              est.vaziaMotivo === "parto"
+                ? "desde o parto"
+                : est.vaziaMotivo === "cio"
+                  ? "desde o primeiro cio"
+                  : "diagnóstico negativo",
           });
         }
+      } else if (adulta(animal.categoria) && !porAnimal.has(animalId)) {
+        vazias.push({ animalId, nome, dias: null, motivo: "sem registro reprodutivo" });
       }
     }
-    partos.sort((a, b) => a.previsao.localeCompare(b.previsao));
+    partos.sort((a, b) => (a.previsao ?? "9999").localeCompare(b.previsao ?? "9999"));
     aguardandoDiagnostico.sort((a, b) => a.servico.localeCompare(b.servico));
-    vazias.sort((a, b) => b.dias - a.dias);
+    vazias.sort((a, b) => (b.dias ?? -1) - (a.dias ?? -1));
     const ativos = new Map(
       [...porAnimal].filter(([id]) => ativa(id)) as [string, RegistroRepro[]][],
     );
     const indices = indicesReproducao(ativos, hoje);
     // IEP olha o histórico inteiro, inclusive de quem já saiu do rebanho.
     const iep = indicesReproducao(porAnimal, hoje).intervaloEntrePartos;
-    return { partos, aguardandoDiagnostico, vazias, hoje, indices: { ...indices, iep } };
+    return {
+      partos,
+      aguardandoDiagnostico,
+      vazias,
+      hoje,
+      indices: {
+        ...indices,
+        iep,
+        // Mesma conta das listas abaixo, pra o número do topo bater com elas.
+        gestantes: partos.length,
+        confirmadas: partos.filter((p) => p.confirmada).length,
+      },
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [registrosFiltrados, animais.data, soOvino]);
 
@@ -581,12 +650,35 @@ function Reproducao() {
   }
 
   const ind = situacao.indices;
-  const kpis: { icone: typeof Baby; rotulo: string; valor: string; detalhe?: string }[] = [
+  const prontos = situacao.aguardandoDiagnostico.filter((a) => a.pronto).length;
+  const kpis: {
+    icone: typeof Baby;
+    rotulo: string;
+    valor: string;
+    detalhe?: string;
+    /** Card da lista que esse número resume: clicar leva até ela. */
+    alvo?: string;
+  }[] = [
     {
       icone: Baby,
       rotulo: "Gestantes",
       valor: `${ind.gestantes}`,
       detalhe: `${ind.confirmadas} confirmada${ind.confirmadas === 1 ? "" : "s"}`,
+      alvo: "card-partos",
+    },
+    {
+      icone: Stethoscope,
+      rotulo: "Aguardando diagnóstico",
+      valor: `${situacao.aguardandoDiagnostico.length}`,
+      detalhe: `${prontos} já pode${prontos === 1 ? "" : "m"} ser diagnosticada${prontos === 1 ? "" : "s"}`,
+      alvo: "card-diagnostico",
+    },
+    {
+      icone: CircleDashed,
+      rotulo: "Vazias",
+      valor: `${situacao.vazias.length}`,
+      detalhe: "prontas pra novo serviço",
+      alvo: "card-vazias",
     },
     {
       icone: HeartPulse,
@@ -614,13 +706,15 @@ function Reproducao() {
           : "—",
       detalhe: ind.iep !== null ? `${ind.iep} dias em média` : "precisa de 2 partos da mesma fêmea",
     },
-    {
-      icone: Stethoscope,
-      rotulo: `Vazias`,
-      valor: `${situacao.vazias.length}`,
-      detalhe: `+${DIAS_VAZIA[especieVisivel]} dias do parto ou diagnóstico negativo`,
-    },
   ];
+
+  function irPara(id: string) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.scrollIntoView({ behavior: "smooth", block: "start" });
+    el.classList.add("ring-2", "ring-primary");
+    window.setTimeout(() => el.classList.remove("ring-2", "ring-primary"), 1500);
+  }
 
   return (
     <AppShell titulo="Reprodução">
@@ -652,17 +746,34 @@ function Reproducao() {
           </button>
         </div>
       ) : null}
-      <div className="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5 [&>*:last-child:nth-child(odd)]:col-span-2 sm:[&>*:last-child:nth-child(odd)]:col-span-1">
-        {kpis.map((k) => (
-          <div key={k.rotulo} className="h-full rounded-xl border border-border bg-card p-3">
-            <span className="flex size-8 items-center justify-center rounded-lg bg-accent text-primary">
-              <k.icone className="size-4" aria-hidden="true" />
-            </span>
-            <p className="mt-2 text-[11px] text-muted-foreground">{k.rotulo}</p>
-            <p className="font-display text-lg font-extrabold">{k.valor}</p>
-            {k.detalhe ? <p className="text-[11px] text-muted-foreground">{k.detalhe}</p> : null}
-          </div>
-        ))}
+      <div className="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+        {kpis.map((k) => {
+          const conteudo = (
+            <>
+              <span className="flex size-8 items-center justify-center rounded-lg bg-accent text-primary">
+                <k.icone className="size-4" aria-hidden="true" />
+              </span>
+              <p className="mt-2 text-[11px] text-muted-foreground">{k.rotulo}</p>
+              <p className="font-display text-lg font-extrabold">{k.valor}</p>
+              {k.detalhe ? <p className="text-[11px] text-muted-foreground">{k.detalhe}</p> : null}
+            </>
+          );
+          return k.alvo ? (
+            <button
+              key={k.rotulo}
+              type="button"
+              onClick={() => irPara(k.alvo!)}
+              className="flex h-full flex-col items-start justify-start rounded-xl border border-border bg-card p-3 text-left transicao-suave hover:border-primary/50"
+              aria-label={`${k.rotulo}: ${k.valor}. Ver lista`}
+            >
+              {conteudo}
+            </button>
+          ) : (
+            <div key={k.rotulo} className="h-full rounded-xl border border-border bg-card p-3">
+              {conteudo}
+            </div>
+          );
+        })}
       </div>
 
       <form
@@ -945,14 +1056,17 @@ function Reproducao() {
       ) : null}
 
       <div className="mb-5 grid gap-4 lg:grid-cols-3">
-        <section className="rounded-xl border border-border bg-card p-4">
+        <section
+          id="card-partos"
+          className="scroll-mt-24 rounded-xl border border-border bg-card p-4 transition-shadow"
+        >
           <h2 className="text-base font-semibold">Partos previstos</h2>
           {situacao.partos.length === 0 ? (
             <p className="mt-3 text-sm text-muted-foreground">Nenhuma gestação em andamento.</p>
           ) : (
             <ul className="mt-3 max-h-64 divide-y divide-border overflow-y-auto">
               {situacao.partos.map((p) => {
-                const passou = p.previsao < situacao.hoje;
+                const passou = !!p.previsao && p.previsao < situacao.hoje;
                 return (
                   <li
                     key={p.animalId}
@@ -961,7 +1075,7 @@ function Reproducao() {
                     <span className="min-w-0">
                       <span className="block truncate font-medium">{p.nome}</span>
                       <span className="block text-xs text-muted-foreground">
-                        {p.confirmada ? "Prenhez confirmada" : "Sem diagnóstico ainda"}
+                        {p.origem}
                         {p.secarAte && !passou ? ` · secar até ${dataCurta(p.secarAte)}` : ""}
                       </span>
                     </span>
@@ -972,7 +1086,11 @@ function Reproducao() {
                           passou ? "bg-destructive/15 text-destructive" : "bg-accent text-primary",
                         )}
                       >
-                        {passou ? `Previsto ${dataCurta(p.previsao)}` : dataCurta(p.previsao)}
+                        {!p.previsao
+                          ? "Sem previsão"
+                          : passou
+                            ? `Previsto ${dataCurta(p.previsao)}`
+                            : dataCurta(p.previsao)}
                       </span>
                       <span className="flex gap-1">
                         {p.secar ? (
@@ -1004,7 +1122,10 @@ function Reproducao() {
           )}
         </section>
 
-        <section className="rounded-xl border border-border bg-card p-4">
+        <section
+          id="card-diagnostico"
+          className="scroll-mt-24 rounded-xl border border-border bg-card p-4 transition-shadow"
+        >
           <h2 className="text-base font-semibold">Aguardando diagnóstico</h2>
           {situacao.aguardandoDiagnostico.length === 0 ? (
             <p className="mt-3 text-sm text-muted-foreground">Nada pendente.</p>
@@ -1018,7 +1139,12 @@ function Reproducao() {
                   <span className="min-w-0">
                     <span className="block truncate font-medium">{a.nome}</span>
                     <span className="block text-xs text-muted-foreground">
-                      serviço em {dataCurta(a.servico)}
+                      serviço em {dataCurta(a.servico)} ·{" "}
+                      {a.pronto ? (
+                        <span className="font-medium text-primary">já pode diagnosticar</span>
+                      ) : (
+                        `a partir de ${dataCurta(a.aPartir)}`
+                      )}
                     </span>
                   </span>
                   <Button
@@ -1036,7 +1162,10 @@ function Reproducao() {
           )}
         </section>
 
-        <section className="rounded-xl border border-border bg-card p-4">
+        <section
+          id="card-vazias"
+          className="scroll-mt-24 rounded-xl border border-border bg-card p-4 transition-shadow"
+        >
           <h2 className="text-base font-semibold">Vazias</h2>
           {situacao.vazias.length === 0 ? (
             <p className="mt-3 text-sm text-muted-foreground">
@@ -1052,7 +1181,8 @@ function Reproducao() {
                   <span className="min-w-0">
                     <span className="block truncate font-medium">{v.nome}</span>
                     <span className="block text-xs text-muted-foreground">
-                      {v.dias} dia{v.dias === 1 ? "" : "s"} · {v.motivo}
+                      {v.dias !== null ? `${v.dias} dia${v.dias === 1 ? "" : "s"} · ` : ""}
+                      {v.motivo}
                     </span>
                   </span>
                   <Button
