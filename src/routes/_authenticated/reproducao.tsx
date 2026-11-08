@@ -568,14 +568,13 @@ function Reproducao() {
   });
 
   // Histórico: filtro por animal e tipo, 30 por vez, e edição de registro.
-  const [visaoLista, setVisaoLista] = useState<"historico" | "vazias">("historico");
   const [filtroAnimalHist, setFiltroAnimalHist] = useState("");
   const [filtroTipoHist, setFiltroTipoHist] = useState("");
   const [limiteHist, setLimiteHist] = useState(30);
   const historico = registrosFiltrados.filter(
     (r) =>
       (!filtroAnimalHist || r.animal_id === filtroAnimalHist) &&
-      (!filtroTipoHist || r.tipo === filtroTipoHist),
+      (!filtroTipoHist || filtroTipoHist === "vazias" || r.tipo === filtroTipoHist),
   );
   const animaisDoHistorico = useMemo(() => {
     const vistos = new Map<string, string>();
@@ -711,7 +710,10 @@ function Reproducao() {
   ];
 
   function irPara(id: string) {
-    if (id === "card-lista") setVisaoLista("vazias");
+    if (id === "card-lista") {
+      setFiltroTipoHist("vazias");
+      setFiltroAnimalHist("");
+    }
     const el = document.getElementById(id);
     if (!el) return;
     el.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -782,7 +784,7 @@ function Reproducao() {
       <form
         ref={formRef}
         id="form-reproducao"
-        className="mb-5 flex scroll-mt-24 flex-wrap items-start justify-between gap-3 rounded-xl border border-border bg-card p-4"
+        className="mb-5 grid scroll-mt-24 grid-cols-2 items-start gap-3 rounded-xl border border-border bg-card p-4 sm:flex sm:flex-wrap sm:justify-between"
         onSubmit={(e) => {
           e.preventDefault();
           if (requerPrevisao && !touroTextoAtual()) {
@@ -809,7 +811,7 @@ function Reproducao() {
           });
         }}
       >
-        <div className="min-w-[150px] flex-1 space-y-1.5">
+        <div className="min-w-0 space-y-1.5 sm:min-w-[150px] sm:flex-1">
           <Label htmlFor="tipo">Tipo</Label>
           <select
             id="tipo"
@@ -824,7 +826,7 @@ function Reproducao() {
             ))}
           </select>
         </div>
-        <div className="min-w-[150px] flex-1 space-y-1.5">
+        <div className="min-w-0 space-y-1.5 sm:min-w-[150px] sm:flex-1">
           <Label htmlFor="animal">Animal</Label>
           <select
             id="animal"
@@ -854,7 +856,7 @@ function Reproducao() {
             </p>
           ) : null}
         </div>
-        <div className="min-w-[150px] flex-1 space-y-1.5">
+        <div className="min-w-0 space-y-1.5 sm:min-w-[150px] sm:flex-1">
           <Label htmlFor="data-repro">Data</Label>
           <Input
             id="data-repro"
@@ -865,7 +867,7 @@ function Reproducao() {
           />
         </div>
         {tipo === "diagnostico" ? (
-          <div className="min-w-[150px] flex-1 space-y-1.5">
+          <div className="min-w-0 space-y-1.5 sm:min-w-[150px] sm:flex-1">
             <Label htmlFor="resultado-diagnostico">Resultado</Label>
             <select
               id="resultado-diagnostico"
@@ -879,7 +881,7 @@ function Reproducao() {
           </div>
         ) : null}
         {requerPrevisao ? (
-          <div className="min-w-[150px] flex-1 space-y-1.5">
+          <div className="min-w-0 space-y-1.5 sm:min-w-[150px] sm:flex-1">
             <Label htmlFor="touro">
               {rotuloReprodutor} / sêmen <span className="text-destructive">*</span>
             </Label>
@@ -904,7 +906,7 @@ function Reproducao() {
           </div>
         ) : null}
         {requerPrevisao && touroId === "outro" ? (
-          <div className="min-w-[150px] flex-1 space-y-1.5">
+          <div className="min-w-0 space-y-1.5 sm:min-w-[150px] sm:flex-1">
             <Label htmlFor="touro-custom">
               Nome do {rotuloReprodutor.toLowerCase()}/sêmen{" "}
               <span className="text-destructive">*</span>
@@ -919,7 +921,7 @@ function Reproducao() {
           </div>
         ) : null}
         {requerPrevisao ? (
-          <div className="min-w-[150px] flex-1 space-y-1.5">
+          <div className="min-w-0 space-y-1.5 sm:min-w-[150px] sm:flex-1">
             <Label htmlFor="previsao-parto">Previsão de parto</Label>
             <Input
               id="previsao-parto"
@@ -935,7 +937,7 @@ function Reproducao() {
         ) : null}
         {tipo === "parto" ? (
           <>
-            <div className="min-w-[150px] flex-1 space-y-1.5">
+            <div className="min-w-0 space-y-1.5 sm:min-w-[150px] sm:flex-1">
               <Label htmlFor="cria-sexo">Cria</Label>
               <select
                 id="cria-sexo"
@@ -950,7 +952,7 @@ function Reproducao() {
             </div>
             {criaSexo !== "nao" ? (
               <>
-                <div className="min-w-[150px] flex-1 space-y-1.5">
+                <div className="min-w-0 space-y-1.5 sm:min-w-[150px] sm:flex-1">
                   <Label htmlFor="cria-nome">Nome da cria</Label>
                   <Input
                     id="cria-nome"
@@ -961,7 +963,7 @@ function Reproducao() {
                     onChange={(e) => setCriaNome(e.target.value)}
                   />
                 </div>
-                <div className="min-w-[120px] flex-1 space-y-1.5">
+                <div className="min-w-0 space-y-1.5 sm:min-w-[120px] sm:flex-1">
                   <Label htmlFor="cria-brinco">Brinco</Label>
                   <Input
                     id="cria-brinco"
@@ -970,7 +972,7 @@ function Reproducao() {
                     onChange={(e) => setCriaBrinco(e.target.value)}
                   />
                 </div>
-                <div className="min-w-[120px] flex-1 space-y-1.5">
+                <div className="min-w-0 space-y-1.5 sm:min-w-[120px] sm:flex-1">
                   <Label htmlFor="cria-peso">Peso ao nascer (kg)</Label>
                   <Input
                     id="cria-peso"
@@ -986,7 +988,7 @@ function Reproducao() {
             ) : null}
           </>
         ) : null}
-        <div className="min-w-[150px] flex-1 space-y-1.5">
+        <div className="min-w-0 space-y-1.5 sm:min-w-[150px] sm:flex-1">
           <Label htmlFor="custo-reproducao">Custo (R$)</Label>
           <Input
             id="custo-reproducao"
@@ -999,7 +1001,7 @@ function Reproducao() {
           />
           <p className="text-xs text-muted-foreground">Sêmen, inseminador, veterinário.</p>
         </div>
-        <div className="w-full space-y-1.5 sm:w-auto sm:min-w-[150px]">
+        <div className="col-span-2 w-full space-y-1.5 sm:w-auto sm:min-w-[150px]">
           <Label className="invisible hidden sm:block">Registrar</Label>
           <Button
             type="submit"
@@ -1178,73 +1180,44 @@ function Reproducao() {
           className="scroll-mt-24 rounded-xl border border-border bg-card transition-shadow"
         >
           <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border px-4 py-3">
-            <div className="inline-flex rounded-lg bg-muted p-1" role="tablist">
-              {(
-                [
-                  ["historico", "Histórico"],
-                  ["vazias", `Vazias (${situacao.vazias.length})`],
-                ] as const
-              ).map(([v, rotulo]) => (
-                <button
-                  key={v}
-                  type="button"
-                  role="tab"
-                  aria-selected={visaoLista === v}
-                  onClick={() => setVisaoLista(v)}
-                  className={cn(
-                    "rounded-md px-3 py-1.5 text-sm font-medium transicao-suave",
-                    visaoLista === v
-                      ? "bg-background text-foreground shadow-sm"
-                      : "text-muted-foreground hover:text-foreground",
-                  )}
-                >
-                  {rotulo}
-                </button>
-              ))}
+            <h2 className="text-base font-semibold">Histórico</h2>
+            <div className="flex flex-wrap gap-2">
+              <select
+                aria-label="Filtrar por animal"
+                value={filtroAnimalHist}
+                onChange={(e) => {
+                  setFiltroAnimalHist(e.target.value);
+                  setLimiteHist(30);
+                }}
+                className="h-9 rounded-md border border-input bg-background px-2 text-sm"
+              >
+                <option value="">Todos os animais</option>
+                {animaisDoHistorico.map(([id, nome]) => (
+                  <option key={id} value={id}>
+                    {nome}
+                  </option>
+                ))}
+              </select>
+              <select
+                aria-label="Filtrar por tipo"
+                value={filtroTipoHist}
+                onChange={(e) => {
+                  setFiltroTipoHist(e.target.value);
+                  setLimiteHist(30);
+                }}
+                className="h-9 rounded-md border border-input bg-background px-2 text-sm"
+              >
+                <option value="">Todos os tipos</option>
+                {TIPOS.map((t) => (
+                  <option key={t} value={t}>
+                    {TIPO_LABEL[t] ?? t}
+                  </option>
+                ))}
+                <option value="vazias">Vazias ({situacao.vazias.length})</option>
+              </select>
             </div>
-            {visaoLista === "historico" ? (
-              <div className="flex flex-wrap gap-2">
-                <select
-                  aria-label="Filtrar por animal"
-                  value={filtroAnimalHist}
-                  onChange={(e) => {
-                    setFiltroAnimalHist(e.target.value);
-                    setLimiteHist(30);
-                  }}
-                  className="h-9 rounded-md border border-input bg-background px-2 text-sm"
-                >
-                  <option value="">Todos os animais</option>
-                  {animaisDoHistorico.map(([id, nome]) => (
-                    <option key={id} value={id}>
-                      {nome}
-                    </option>
-                  ))}
-                </select>
-                <select
-                  aria-label="Filtrar por tipo"
-                  value={filtroTipoHist}
-                  onChange={(e) => {
-                    setFiltroTipoHist(e.target.value);
-                    setLimiteHist(30);
-                  }}
-                  className="h-9 rounded-md border border-input bg-background px-2 text-sm"
-                >
-                  <option value="">Todos os tipos</option>
-                  {TIPOS.map((t) => (
-                    <option key={t} value={t}>
-                      {TIPO_LABEL[t] ?? t}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            ) : (
-              <span className="text-xs text-muted-foreground">
-                Diagnóstico negativo, primeiro cio, +{DIAS_VAZIA[especieVisivel]} dias do parto ou
-                sem registro
-              </span>
-            )}
           </div>
-          {visaoLista === "vazias" ? (
+          {filtroTipoHist === "vazias" ? (
             <>
               {situacao.vazias.length === 0 ? (
                 <p className="px-4 py-6 text-sm text-muted-foreground">
@@ -1252,29 +1225,31 @@ function Reproducao() {
                 </p>
               ) : (
                 <ul className="divide-y divide-border">
-                  {situacao.vazias.map((v) => (
-                    <li
-                      key={v.animalId}
-                      className="flex items-center justify-between gap-3 px-4 py-3 text-sm"
-                    >
-                      <span className="min-w-0">
-                        <span className="block truncate font-medium">{v.nome}</span>
-                        <span className="block text-xs text-muted-foreground">
-                          {v.dias !== null ? `${v.dias} dia${v.dias === 1 ? "" : "s"} · ` : ""}
-                          {v.motivo}
-                        </span>
-                      </span>
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="outline"
-                        className="h-7 shrink-0 px-2 text-xs"
-                        onClick={() => preencher("cobertura", v.animalId)}
+                  {situacao.vazias
+                    .filter((v) => !filtroAnimalHist || v.animalId === filtroAnimalHist)
+                    .map((v) => (
+                      <li
+                        key={v.animalId}
+                        className="flex items-center justify-between gap-3 px-4 py-3 text-sm"
                       >
-                        Registrar serviço
-                      </Button>
-                    </li>
-                  ))}
+                        <span className="min-w-0">
+                          <span className="block truncate font-medium">{v.nome}</span>
+                          <span className="block text-xs text-muted-foreground">
+                            {v.dias !== null ? `${v.dias} dia${v.dias === 1 ? "" : "s"} · ` : ""}
+                            {v.motivo}
+                          </span>
+                        </span>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          className="h-7 shrink-0 px-2 text-xs"
+                          onClick={() => preencher("cobertura", v.animalId)}
+                        >
+                          Registrar serviço
+                        </Button>
+                      </li>
+                    ))}
                 </ul>
               )}
             </>
@@ -1307,9 +1282,9 @@ function Reproducao() {
                   return (
                     <li
                       key={r.id}
-                      className="flex flex-wrap items-center justify-between gap-2 px-4 py-3 text-sm"
+                      className="flex items-center justify-between gap-3 px-4 py-3 text-sm"
                     >
-                      <span className="min-w-0">
+                      <span className="min-w-0 flex-1">
                         <span>
                           <span className="font-medium">{TIPO_LABEL[r.tipo ?? ""] ?? r.tipo}</span>
                           {r.tipo === "diagnostico" && r.resultado ? (
@@ -1327,6 +1302,12 @@ function Reproducao() {
                           {" · "}
                           <span className="text-muted-foreground">{animal?.nome ?? "Rebanho"}</span>
                         </span>
+                        <span className="block text-xs text-muted-foreground">
+                          {dataCurta(r.data)}
+                          {r.previsao_parto
+                            ? ` · previsão de parto ${dataCurta(r.previsao_parto)}`
+                            : ""}
+                        </span>
                         {genealogia.length > 0 ? (
                           <span className="flex items-center gap-1 text-xs text-muted-foreground">
                             <Users className="size-3 shrink-0" aria-hidden="true" />
@@ -1334,11 +1315,7 @@ function Reproducao() {
                           </span>
                         ) : null}
                       </span>
-                      <span className="flex items-center gap-1 text-xs text-muted-foreground">
-                        {dataCurta(r.data)}
-                        {r.previsao_parto
-                          ? ` · previsão de parto ${dataCurta(r.previsao_parto)}`
-                          : ""}
+                      <span className="flex shrink-0 items-center gap-1">
                         <Button
                           type="button"
                           variant="ghost"
