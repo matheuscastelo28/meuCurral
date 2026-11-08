@@ -130,11 +130,7 @@ export function SecaoPlano() {
     v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
   return (
-    <CartaoConfig
-      id="plano"
-      titulo="Plano e uso"
-      descricao="O que está liberado hoje na sua conta."
-    >
+    <CartaoConfig id="plano" titulo="Plano e uso">
       <p className="text-sm font-semibold">Plano {plano.nome}</p>
       <p className="mt-1 text-sm text-muted-foreground">
         {usoCabecasTexto(usados, limite)} no rebanho.

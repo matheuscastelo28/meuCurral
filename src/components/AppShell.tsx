@@ -63,12 +63,10 @@ function isGroup(entry: NavLink | NavGroup): entry is NavGroup {
 
 export function AppShell({
   titulo,
-  descricao,
   acao,
   children,
 }: {
   titulo: string;
-  descricao?: string;
   acao?: ReactNode;
   children: ReactNode;
 }) {
@@ -350,7 +348,6 @@ export function AppShell({
           <div className="mb-5 flex flex-wrap items-end justify-between gap-3">
             <div>
               <h1 className="text-2xl">{titulo}</h1>
-              {descricao ? <p className="mt-1 text-sm text-muted-foreground">{descricao}</p> : null}
             </div>
             {acao ? (
               <div className="flex w-full flex-wrap gap-2 sm:w-auto [&>*]:flex-1 sm:[&>*]:flex-none [&>div]:contents [&>div>*]:flex-1 sm:[&>div>*]:flex-none">

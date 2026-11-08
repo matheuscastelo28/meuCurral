@@ -8,6 +8,12 @@
 import { createServerFn } from "@tanstack/react-start";
 import type { Sql } from "./pg.server";
 import { planoDaFazenda } from "./planos";
+import { PRODUTOS_LEITE, rotuloProduto } from "./produtos-leite";
+import { especieDoAnimal } from "./especies";
+
+const DERIVADOS_VALIDOS = new Set<string>(
+  PRODUTOS_LEITE.filter((p) => p.valor !== "leite").map((p) => p.valor),
+);
 
 // ---------------------------------------------------------------------------
 // Tipos trocados com o navegador
@@ -76,6 +82,19 @@ function normalizarBrinco(valor: string): string {
  * edição acuse o próprio animal de duplicidade.
  */
 const STATUS_DE_SAIDA = ["vendido", "morto"];
+
+/**
+ * Lançamento que nasceu de uma venda (leite, derivado, animal, lote) não se
+ * edita nem se apaga solto — a venda ficaria sem o dinheiro. Só pelo estorno.
+ */
+async function lancamentoDeVenda(sql: Sql, onde: unknown): Promise<string | null> {
+  const ligados: { n: number }[] = await sql`
+    select count(*)::int as n from vendas
+    where financeiro_id in (select id from financeiro_lancamentos where ${onde as never})`;
+  return (ligados[0]?.n ?? 0) > 0
+    ? 'Esse lançamento veio de uma venda. Para desfazer, use "Estornar venda".'
+    : null;
+}
 
 /**
  * Limite de cabeças do plano, validado aqui no servidor — a tela sozinha não
@@ -340,6 +359,11 @@ export const consultar = createServerFn({ method: "POST" })
           }
         }
 
+        if (tabela === "financeiro_lancamentos") {
+          const erroVenda = await lancamentoDeVenda(sql, onde);
+          if (erroVenda) return { data: [], error: { message: erroVenda }, count: 0 };
+        }
+
         // Trazer de volta pro rebanho um animal vendido/morto também ocupa
         // uma vaga do plano.
         if (
@@ -362,6 +386,10 @@ export const consultar = createServerFn({ method: "POST" })
 
       // ----- DELETE -----
       if (pedido.modo === "delete") {
+        if (tabela === "financeiro_lancamentos") {
+          const erroVenda = await lancamentoDeVenda(sql, onde);
+          if (erroVenda) return { data: [], error: { message: erroVenda }, count: 0 };
+        }
         await sql`delete from ${sql(tabela)} where ${onde}`;
         return { data: [], error: null, count: 0 };
       }
@@ -1016,11 +1044,20 @@ export const registrarDestinacaoLeite = createServerFn({ method: "POST" })
       }
 
       const destinosValidos = data.destinos.filter((d) => d.quantidade > 0);
-      const totalDestinado = destinosValidos.reduce((soma, d) => soma + d.quantidade, 0);
+      // Leite já usado em fabricação de derivado (linhas com producao_id)
+      // não vem da tela: continua valendo e entra na soma.
+      const fabricacao: { total: string | null }[] = await sql`
+        select sum(quantidade) as total from destinacoes_leite
+        where fazenda_id = ${data.fazendaId} and data = ${data.data} and producao_id is not null`;
+      const totalDestinado =
+        destinosValidos.reduce((soma, d) => soma + d.quantidade, 0) +
+        Number(fabricacao[0]?.total ?? 0);
 
+      // Só leite conta como produção — queijo em kg não é litro de leite.
       const producao: { total: string | null }[] = await sql`
         select sum(litros) as total from producao_leite
-        where fazenda_id = ${data.fazendaId} and data = ${data.data}`;
+        where fazenda_id = ${data.fazendaId} and data = ${data.data}
+          and coalesce(produto, 'leite') = 'leite'`;
       const totalProduzido = Number(producao[0]?.total ?? 0);
 
       if (totalDestinado > totalProduzido + 0.001) {
@@ -1034,7 +1071,9 @@ export const registrarDestinacaoLeite = createServerFn({ method: "POST" })
       }
 
       const linhas = await sql.begin(async (tx) => {
-        await tx`delete from destinacoes_leite where fazenda_id = ${data.fazendaId} and data = ${data.data}`;
+        await tx`
+          delete from destinacoes_leite
+          where fazenda_id = ${data.fazendaId} and data = ${data.data} and producao_id is null`;
         if (destinosValidos.length === 0) return [];
         const entradas = destinosValidos.map((d) => ({
           fazenda_id: data.fazendaId,
@@ -1051,6 +1090,101 @@ export const registrarDestinacaoLeite = createServerFn({ method: "POST" })
       return {
         data: null,
         error: { message: erro instanceof Error ? erro.message : "Erro ao registrar destinação." },
+      };
+    }
+  });
+
+/**
+ * Fabricação de um derivado (queijo, manteiga...): grava a produção do
+ * derivado e, se informado, o leite usado como destinação "derivados" do
+ * mesmo dia — ligada à fabricação, então excluir uma apaga a outra. O leite
+ * usado não pode passar do leite ainda sem destino naquele dia.
+ */
+export const registrarFabricacaoDerivado = createServerFn({ method: "POST" })
+  .inputValidator(
+    (dados: {
+      token: string | null;
+      fazendaId: string;
+      produto: string;
+      data: string;
+      quantidade: number;
+      leiteUsado?: number | null;
+      custoInsumos?: number | null;
+      observacoes?: string | null;
+    }) => dados,
+  )
+  .handler(async ({ data }) => {
+    try {
+      const { conexao } = await import("./pg.server");
+      const sql = await conexao();
+      const userId = await fazendaDoUsuario(sql, data.token, data.fazendaId);
+      if (!userId) {
+        return { data: null, error: { message: "Não autenticado ou fazenda inválida." } };
+      }
+      if (Number(data.custoInsumos ?? 0) < 0) {
+        return { data: null, error: { message: "O custo não pode ser negativo." } };
+      }
+      if (!DERIVADOS_VALIDOS.has(data.produto)) {
+        return { data: null, error: { message: "Escolha um derivado." } };
+      }
+      if (!(data.quantidade > 0)) {
+        return { data: null, error: { message: "Informe a quantidade produzida." } };
+      }
+      const leite = Number(data.leiteUsado ?? 0);
+      if (leite < 0) {
+        return { data: null, error: { message: "O leite usado não pode ser negativo." } };
+      }
+
+      const linha = await sql.begin(async (tx) => {
+        if (leite > 0) {
+          const producao: { total: string | null }[] = await tx`
+            select sum(litros) as total from producao_leite
+            where fazenda_id = ${data.fazendaId} and data = ${data.data}
+              and coalesce(produto, 'leite') = 'leite'`;
+          const destinado: { total: string | null }[] = await tx`
+            select sum(quantidade) as total from destinacoes_leite
+            where fazenda_id = ${data.fazendaId} and data = ${data.data}`;
+          const disponivel = Number(producao[0]?.total ?? 0) - Number(destinado[0]?.total ?? 0);
+          if (leite > disponivel + 0.001) {
+            const livre = Math.max(0, Math.round(disponivel * 10) / 10);
+            throw new Error(
+              `Nesse dia só há ${livre.toLocaleString("pt-BR")} L de leite sem destino. Registre a ordenha do dia antes ou ajuste o leite usado.`,
+            );
+          }
+        }
+        const criadas: { id: string }[] = await tx`
+          insert into producao_leite (fazenda_id, data, litros, produto, observacoes)
+          values (${data.fazendaId}, ${data.data}, ${data.quantidade}, ${data.produto},
+                  ${data.observacoes?.trim() || null})
+          returning *`;
+        const producao = criadas[0]!;
+        if (leite > 0) {
+          await tx`
+            insert into destinacoes_leite (fazenda_id, data, destino, quantidade, observacoes, producao_id)
+            values (${data.fazendaId}, ${data.data}, 'derivados', ${leite},
+                    ${rotuloProduto(data.produto)}, ${producao.id})`;
+        }
+        // Insumos (coalho, sal, embalagem...) viram despesa ligada à
+        // fabricação: excluir a fabricação apaga a despesa junto.
+        const custo = Math.round(Number(data.custoInsumos ?? 0) * 100) / 100;
+        if (custo > 0) {
+          await tx`
+            insert into financeiro_lancamentos
+              (fazenda_id, tipo, descricao, valor, data, categoria, producao_id)
+            values (${data.fazendaId}, 'despesa',
+                    ${`Insumos — fabricação de ${rotuloProduto(data.produto).toLowerCase()}`},
+                    ${custo}, ${data.data}, 'outro', ${producao.id})`;
+        }
+        return producao;
+      });
+
+      return { data: { id: linha.id }, error: null };
+    } catch (erro) {
+      return {
+        data: null,
+        error: {
+          message: erro instanceof Error ? erro.message : "Erro ao registrar a fabricação.",
+        },
       };
     }
   });
@@ -1107,7 +1241,10 @@ export const registrarVenda = createServerFn({ method: "POST" })
       }
       const unidade = data.unidade ?? "litro";
       const valorTotal = Math.round(data.quantidade * data.precoUnitario * 100) / 100;
-      const descricao = `Venda de ${produto}${data.comprador ? ` — ${data.comprador}` : ""}`;
+      const derivado = DERIVADOS_VALIDOS.has(produto);
+      const nomeProduto = derivado ? rotuloProduto(produto).toLowerCase() : produto;
+      const descricao = `Venda de ${nomeProduto}${data.comprador ? ` — ${data.comprador}` : ""}`;
+      const categoria = derivado ? "venda_derivados" : `venda_${produto}`;
       const status = data.pago ? "recebido" : "a_receber";
       const formaPagamento = data.pago ? (data.formaPagamento ?? "dinheiro") : "dinheiro";
       const parcelas = data.pago && formaPagamento === "cartao" ? (data.parcelas ?? 1) : null;
@@ -1115,17 +1252,19 @@ export const registrarVenda = createServerFn({ method: "POST" })
       const venda = await sql.begin(async (tx) => {
         const financeiros: { id: string }[] = await tx`
           insert into financeiro_lancamentos (fazenda_id, tipo, descricao, valor, data, categoria, status, forma_pagamento, parcelas)
-          values (${data.fazendaId}, 'receita', ${descricao}, ${valorTotal}, ${data.data}, ${`venda_${produto}`}, ${status}, ${formaPagamento}, ${parcelas})
+          values (${data.fazendaId}, 'receita', ${descricao}, ${valorTotal}, ${data.data}, ${categoria}, ${status}, ${formaPagamento}, ${parcelas})
           returning id`;
         const financeiroId = financeiros[0]!.id;
 
         const vendas: any[] = await tx`
           insert into vendas (
-            fazenda_id, produto, quantidade, unidade, preco_unitario, valor_total, comprador, data, financeiro_id, animal_id
+            fazenda_id, produto, quantidade, unidade, preco_unitario, valor_total, comprador, data, financeiro_id, animal_id,
+            animais_ids, status_anterior
           )
           values (
             ${data.fazendaId}, ${produto}, ${data.quantidade}, ${unidade}, ${data.precoUnitario},
-            ${valorTotal}, ${data.comprador ?? null}, ${data.data}, ${financeiroId}, ${data.animalId ?? null}
+            ${valorTotal}, ${data.comprador ?? null}, ${data.data}, ${financeiroId}, ${data.animalId ?? null},
+            ${data.animalId ? [data.animalId] : null}, ${data.animalId ? "engorda" : null}
           )
           returning *`;
 
@@ -1183,6 +1322,182 @@ export const marcarLancamentosRecebidos = createServerFn({ method: "POST" })
       return {
         data: null,
         error: { message: erro instanceof Error ? erro.message : "Erro ao marcar como recebido." },
+      };
+    }
+  });
+
+// ---------------------------------------------------------------------------
+// Venda de um animal do rebanho e estorno de vendas
+// ---------------------------------------------------------------------------
+
+/**
+ * Vende um animal de qualquer situação (vaca, bezerro, ovelha, engorda...):
+ * receita no Financeiro + registro da venda + animal "vendido", tudo junto.
+ * Guarda a situação de antes pra um estorno devolver o animal igual.
+ */
+export const venderAnimal = createServerFn({ method: "POST" })
+  .inputValidator(
+    (dados: {
+      token: string | null;
+      fazendaId: string;
+      animalId: string;
+      valorTotal: number;
+      data: string;
+      comprador?: string | null;
+      pago?: boolean;
+      formaPagamento?: string;
+      parcelas?: number | null;
+      pesoKg?: number | null;
+    }) => dados,
+  )
+  .handler(async ({ data }) => {
+    try {
+      const { conexao } = await import("./pg.server");
+      const sql = await conexao();
+      const userId = await fazendaDoUsuario(sql, data.token, data.fazendaId);
+      if (!userId) {
+        return { data: null, error: { message: "Não autenticado ou fazenda inválida." } };
+      }
+      if (!(data.valorTotal > 0)) {
+        return { data: null, error: { message: "Informe o valor da venda." } };
+      }
+
+      const resultado = await sql.begin(async (tx) => {
+        const linhas: {
+          id: string;
+          nome: string | null;
+          brinco: string | null;
+          categoria: string | null;
+          especie: string | null;
+          status: string | null;
+          lote: string | null;
+        }[] = await tx`
+          select id, nome, brinco, categoria, especie, status, lote from animais
+          where id = ${data.animalId} and fazenda_id = ${data.fazendaId}
+          for update`;
+        const animal = linhas[0];
+        if (!animal) throw new Error("Animal não encontrado.");
+        if (animal.status === "vendido" || animal.status === "morto") {
+          throw new Error("Esse animal já saiu do rebanho.");
+        }
+
+        const produto = especieDoAnimal(animal) === "ovino" ? "ovino" : "boi";
+        const valorTotal = Math.round(data.valorTotal * 100) / 100;
+        const comprador = data.comprador?.trim() || null;
+        const status = data.pago ? "recebido" : "a_receber";
+        const formaPagamento = data.pago ? (data.formaPagamento ?? "dinheiro") : "dinheiro";
+        const parcelas = data.pago && formaPagamento === "cartao" ? (data.parcelas ?? 1) : null;
+        const nome = `${animal.nome ?? "animal"}${animal.brinco ? ` (${animal.brinco})` : ""}`;
+        const descricao = `Venda de ${nome}${comprador ? ` — ${comprador}` : ""}`;
+
+        const financeiros: { id: string }[] = await tx`
+          insert into financeiro_lancamentos
+            (fazenda_id, tipo, descricao, valor, data, categoria, status, forma_pagamento, parcelas, lote)
+          values (${data.fazendaId}, 'receita', ${descricao}, ${valorTotal}, ${data.data},
+                  ${`venda_${produto}`}, ${status}, ${formaPagamento}, ${parcelas}, ${animal.lote})
+          returning id`;
+
+        const vendas: { id: string }[] = await tx`
+          insert into vendas (
+            fazenda_id, produto, quantidade, unidade, preco_unitario, valor_total, comprador, data,
+            financeiro_id, animal_id, animais_ids, status_anterior
+          )
+          values (
+            ${data.fazendaId}, ${produto}, 1, 'cabeça', ${valorTotal}, ${valorTotal}, ${comprador},
+            ${data.data}, ${financeiros[0]!.id}, ${animal.id}, ${[animal.id]}, ${animal.status}
+          )
+          returning id`;
+
+        const peso = Number(data.pesoKg ?? 0);
+        if (peso > 0) {
+          await tx`
+            insert into manejos (fazenda_id, animal_id, tipo, data, valor, descricao)
+            values (${data.fazendaId}, ${animal.id}, 'pesagem', ${data.data}, ${peso}, 'Peso na venda')`;
+        }
+        await tx`
+          update animais set status = 'vendido',
+            peso_kg = case when ${peso} > 0 then ${peso} else peso_kg end
+          where id = ${animal.id}`;
+
+        return { vendaId: vendas[0]!.id };
+      });
+
+      return { data: resultado, error: null };
+    } catch (erro) {
+      return {
+        data: null,
+        error: { message: erro instanceof Error ? erro.message : "Erro ao registrar a venda." },
+      };
+    }
+  });
+
+/**
+ * Desfaz uma venda (leite, derivado, animal ou lote): apaga a venda e a
+ * receita dela no Financeiro e devolve os animais à situação de antes.
+ */
+export const estornarVenda = createServerFn({ method: "POST" })
+  .inputValidator((dados: { token: string | null; fazendaId: string; vendaId: string }) => dados)
+  .handler(async ({ data }) => {
+    try {
+      const { conexao } = await import("./pg.server");
+      const sql = await conexao();
+      const userId = await fazendaDoUsuario(sql, data.token, data.fazendaId);
+      if (!userId) {
+        return { data: null, error: { message: "Não autenticado ou fazenda inválida." } };
+      }
+
+      const resultado = await sql.begin(async (tx) => {
+        const linhas: {
+          id: string;
+          produto: string;
+          lote: string | null;
+          animal_id: string | null;
+          animais_ids: string[] | null;
+          status_anterior: string | null;
+          financeiro_id: string | null;
+        }[] = await tx`
+          select id, produto, lote, animal_id, animais_ids, status_anterior, financeiro_id
+          from vendas where id = ${data.vendaId} and fazenda_id = ${data.fazendaId}
+          for update`;
+        const venda = linhas[0];
+        if (!venda) throw new Error("Venda não encontrada.");
+
+        let ids = venda.animais_ids ?? (venda.animal_id ? [venda.animal_id] : []);
+        if (ids.length === 0 && venda.lote) {
+          // Venda de lote feita antes de guardarmos a lista de animais: volta
+          // quem do lote está vendido e não tem venda própria.
+          const doLote: { id: string }[] = await tx`
+            select a.id from animais a
+            where a.fazenda_id = ${data.fazendaId} and a.lote = ${venda.lote}
+              and a.status = 'vendido'
+              and not exists (
+                select 1 from vendas v where v.animal_id = a.id and v.id <> ${venda.id}
+              )`;
+          ids = doLote.map((a) => a.id);
+        }
+        const voltaPara =
+          venda.status_anterior ?? (["boi", "ovino"].includes(venda.produto) ? "engorda" : "ativo");
+        let animaisDevolvidos = 0;
+        if (ids.length > 0) {
+          const devolvidos: { id: string }[] = await tx`
+            update animais set status = ${voltaPara}, updated_at = now()
+            where id = any(${ids}) and fazenda_id = ${data.fazendaId} and status = 'vendido'
+            returning id`;
+          animaisDevolvidos = devolvidos.length;
+        }
+
+        await tx`delete from vendas where id = ${venda.id}`;
+        if (venda.financeiro_id) {
+          await tx`delete from financeiro_lancamentos where id = ${venda.financeiro_id}`;
+        }
+        return { animaisDevolvidos };
+      });
+
+      return { data: resultado, error: null };
+    } catch (erro) {
+      return {
+        data: null,
+        error: { message: erro instanceof Error ? erro.message : "Erro ao estornar a venda." },
       };
     }
   });
@@ -1339,6 +1654,9 @@ export const registrarVendaLote = createServerFn({ method: "POST" })
           update animais set status = 'vendido'
           where id = any(${idsLote}) and fazenda_id = ${data.fazendaId} and status = 'engorda'
           returning id`;
+        await tx`
+          update vendas set animais_ids = ${vendidos.map((v) => v.id)}, status_anterior = 'engorda'
+          where id = ${vendas[0].id}`;
 
         return { venda: vendas[0], qtdAnimais: vendidos.length, pesoTotal, arrobas, valorTotal };
       });

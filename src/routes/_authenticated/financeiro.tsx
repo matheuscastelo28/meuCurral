@@ -1,7 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Ban, CircleCheck, FileText, Plus, Wallet } from "lucide-react";
+import { Ban, CircleCheck, FileText, Pencil, Plus, Trash2, Undo2, Wallet } from "lucide-react";
 import { toast } from "sonner";
 import { db } from "@/lib/local-db";
 import { AppShell } from "@/components/AppShell";
@@ -172,6 +172,124 @@ function Financeiro() {
       if (error) throw error;
       return data;
     },
+  });
+
+  // Lançamentos que nasceram em outra tela: venda (só sai por estorno) e
+  // alimentação do lote (edita-se lá no Confinamento).
+  const origens = useQuery({
+    queryKey: ["financeiro-origens", fazenda?.id],
+    enabled: !!fazenda?.id,
+    queryFn: async () => {
+      const [vendas, alimentacao] = await Promise.all([
+        db
+          .from("vendas")
+          .select("id, financeiro_id, produto, animal_id, lote")
+          .eq("fazenda_id", fazenda!.id),
+        db.from("alimentacao_lote").select("despesa_id").eq("fazenda_id", fazenda!.id),
+      ]);
+      if (vendas.error) throw vendas.error;
+      if (alimentacao.error) throw alimentacao.error;
+      const vendaPorLancamento = new Map<
+        string,
+        { id: string; produto: string; animal_id: string | null; lote: string | null }
+      >();
+      for (const v of vendas.data ?? []) {
+        if (v.financeiro_id) vendaPorLancamento.set(String(v.financeiro_id), v);
+      }
+      const daAlimentacao = new Set(
+        (alimentacao.data ?? [])
+          .map((a) => a.despesa_id)
+          .filter(Boolean)
+          .map(String),
+      );
+      return { vendaPorLancamento, daAlimentacao };
+    },
+  });
+
+  function invalidarFinanceiro() {
+    for (const chave of [
+      "financeiro",
+      "financeiro-origens",
+      "vendas",
+      "animais",
+      "animais-contagem",
+      "animais-engorda",
+      "inicio-resumo",
+      "despesas-lote",
+      "indices-engorda",
+      "pesagens-engorda",
+      "derivados-vendas",
+      "relatorio",
+    ]) {
+      queryClient.invalidateQueries({ queryKey: [chave] });
+    }
+  }
+
+  const [acaoLancamento, setAcaoLancamento] = useState<"estorno" | "exclusao" | "edicao" | null>(
+    null,
+  );
+  const [edDescricao, setEdDescricao] = useState("");
+  const [edValor, setEdValor] = useState("");
+  const [edData, setEdData] = useState("");
+  const [edCategoria, setEdCategoria] = useState("");
+
+  const estornarVenda = useMutation({
+    mutationFn: async (vendaId: string) => {
+      const { data, error } = await db.financeiro.estornarVenda({
+        fazendaId: fazenda!.id,
+        vendaId,
+      });
+      if (error) throw new Error(error.message);
+      return data?.animaisDevolvidos ?? 0;
+    },
+    onSuccess: (devolvidos) => {
+      toast.success(
+        devolvidos > 0
+          ? `Venda estornada. ${devolvidos} ${devolvidos === 1 ? "animal voltou" : "animais voltaram"} para o rebanho.`
+          : "Venda estornada.",
+      );
+      setAcaoLancamento(null);
+      setLancamentoDetalhe(null);
+      invalidarFinanceiro();
+    },
+    onError: (e: Error) => toast.error(e.message || "Não conseguimos estornar agora."),
+  });
+
+  const salvarEdicao = useMutation({
+    mutationFn: async (id: string) => {
+      if (!edDescricao.trim()) throw new Error("Informe a descrição.");
+      if (!(Number(edValor) > 0)) throw new Error("Informe um valor maior que zero.");
+      const { error } = await db
+        .from("financeiro_lancamentos")
+        .update({
+          descricao: edDescricao.trim(),
+          valor: Number(edValor),
+          data: edData,
+          categoria: edCategoria || null,
+        } as never)
+        .eq("id", id);
+      if (error) throw new Error(error.message);
+    },
+    onSuccess: () => {
+      toast.success("Lançamento atualizado.");
+      setAcaoLancamento(null);
+      invalidarFinanceiro();
+    },
+    onError: (e: Error) => toast.error(e.message || "Não conseguimos salvar agora."),
+  });
+
+  const excluirLancamento = useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await db.from("financeiro_lancamentos").delete().eq("id", id);
+      if (error) throw new Error(error.message);
+    },
+    onSuccess: () => {
+      toast.success("Lançamento excluído.");
+      setAcaoLancamento(null);
+      setLancamentoDetalhe(null);
+      invalidarFinanceiro();
+    },
+    onError: (e: Error) => toast.error(e.message || "Não conseguimos excluir agora."),
   });
 
   const marcarRecebido = useMutation({
@@ -565,7 +683,6 @@ function Financeiro() {
   return (
     <AppShell
       titulo="Financeiro"
-      descricao="Entradas e saídas da fazenda, sem planilha."
       acao={
         <div className="flex flex-wrap gap-2">
           <Button variant="outline" asChild>
@@ -594,7 +711,6 @@ function Financeiro() {
         <div className="mb-5 grid gap-4 md:grid-cols-2">
           <section className="rounded-xl border border-border bg-card p-4">
             <h2 className="text-base font-semibold">Para onde foi o dinheiro</h2>
-            <p className="text-xs text-muted-foreground">Despesas já pagas, por categoria.</p>
             <ul className="mt-3 space-y-2.5">
               {despesasPorCategoria.map(({ cat, valor, rotulo, cor }) => (
                 <li key={cat}>
@@ -630,7 +746,6 @@ function Financeiro() {
 
           <section className="flex flex-col rounded-xl border border-border bg-card p-4">
             <h2 className="text-base font-semibold">Despesas por categoria</h2>
-            <p className="text-xs text-muted-foreground">Fatia de cada categoria no total pago.</p>
             <div className="relative mx-auto mt-2 w-full max-w-[260px] flex-1">
               <ChartContainer
                 config={Object.fromEntries(
@@ -1136,7 +1251,15 @@ function Financeiro() {
       )}
 
       {/* ----- Dialog: detalhe do lançamento simples ----- */}
-      <Dialog open={!!lancamentoSelecionado} onOpenChange={(v) => !v && setLancamentoDetalhe(null)}>
+      <Dialog
+        open={!!lancamentoSelecionado}
+        onOpenChange={(v) => {
+          if (!v) {
+            setLancamentoDetalhe(null);
+            setAcaoLancamento(null);
+          }
+        }}
+      >
         <DialogContent>
           {lancamentoSelecionado ? (
             <>
@@ -1173,18 +1296,214 @@ function Financeiro() {
                   : ""}
               </p>
 
-              {lancamentoSelecionado.status === "a_receber" ? (
-                <DialogFooter className="mt-3">
-                  <Button
-                    type="button"
-                    disabled={marcarRecebido.isPending}
-                    onClick={() => marcarRecebido.mutate([lancamentoSelecionado.id])}
-                  >
-                    <CircleCheck className="size-4" aria-hidden="true" />
-                    Marcar como recebido
-                  </Button>
-                </DialogFooter>
-              ) : null}
+              {(() => {
+                const venda = origens.data?.vendaPorLancamento.get(lancamentoSelecionado.id);
+                const daAlimentacao = origens.data?.daAlimentacao.has(lancamentoSelecionado.id);
+                // Custo que nasceu de uma fabricação de derivado ou de um
+                // registro de reprodução: muda-se lá (excluir o registro apaga
+                // a despesa junto).
+                const doRegistro = lancamentoSelecionado.producao_id
+                  ? "da fabricação de derivado (aba Leite)"
+                  : lancamentoSelecionado.reproducao_id
+                    ? "do registro de reprodução"
+                    : null;
+                const lista =
+                  lancamentoSelecionado.tipo === "despesa"
+                    ? CATEGORIAS_DESPESA
+                    : CATEGORIAS_RECEITA;
+
+                if (acaoLancamento === "edicao") {
+                  return (
+                    <form
+                      className="mt-2 grid grid-cols-2 gap-3"
+                      onSubmit={(e) => {
+                        e.preventDefault();
+                        salvarEdicao.mutate(lancamentoSelecionado.id);
+                      }}
+                    >
+                      <div className="col-span-2 space-y-1.5">
+                        <Label htmlFor="ed-descricao">Descrição</Label>
+                        <Input
+                          id="ed-descricao"
+                          value={edDescricao}
+                          onChange={(e) => setEdDescricao(e.target.value)}
+                          required
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label htmlFor="ed-valor">Valor (R$)</Label>
+                        <Input
+                          id="ed-valor"
+                          type="number"
+                          step="0.01"
+                          min="0.01"
+                          value={edValor}
+                          onChange={(e) => setEdValor(e.target.value)}
+                          required
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label htmlFor="ed-data">Data</Label>
+                        <Input
+                          id="ed-data"
+                          type="date"
+                          value={edData}
+                          onChange={(e) => setEdData(e.target.value)}
+                          required
+                        />
+                      </div>
+                      <div className="col-span-2 space-y-1.5">
+                        <Label htmlFor="ed-categoria">Categoria</Label>
+                        <select
+                          id="ed-categoria"
+                          value={edCategoria}
+                          onChange={(e) => setEdCategoria(e.target.value)}
+                          className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+                        >
+                          <option value="">Sem categoria</option>
+                          {lista.map((c) => (
+                            <option key={c.valor} value={c.valor}>
+                              {c.rotulo}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      <DialogFooter className="col-span-2">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          onClick={() => setAcaoLancamento(null)}
+                        >
+                          Cancelar
+                        </Button>
+                        <Button type="submit" disabled={salvarEdicao.isPending}>
+                          {salvarEdicao.isPending ? "Salvando..." : "Salvar"}
+                        </Button>
+                      </DialogFooter>
+                    </form>
+                  );
+                }
+
+                if (acaoLancamento === "estorno" && venda) {
+                  return (
+                    <div className="mt-2 rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm">
+                      <p className="font-semibold">Estornar esta venda?</p>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        A venda e esta receita saem do sistema
+                        {venda.animal_id || venda.lote
+                          ? " e os animais voltam para o rebanho na situação de antes"
+                          : ""}
+                        . Use quando foi registrada por engano.
+                      </p>
+                      <div className="mt-3 flex gap-2">
+                        <Button
+                          size="sm"
+                          variant="destructive"
+                          disabled={estornarVenda.isPending}
+                          onClick={() => estornarVenda.mutate(venda.id)}
+                        >
+                          Estornar venda
+                        </Button>
+                        <Button size="sm" variant="ghost" onClick={() => setAcaoLancamento(null)}>
+                          Cancelar
+                        </Button>
+                      </div>
+                    </div>
+                  );
+                }
+
+                if (acaoLancamento === "exclusao") {
+                  return (
+                    <div className="mt-2 rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm">
+                      <p className="font-semibold">Excluir este lançamento?</p>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        Some do Financeiro, do Início e do relatório. Não dá para desfazer.
+                      </p>
+                      <div className="mt-3 flex gap-2">
+                        <Button
+                          size="sm"
+                          variant="destructive"
+                          disabled={excluirLancamento.isPending}
+                          onClick={() => excluirLancamento.mutate(lancamentoSelecionado.id)}
+                        >
+                          Excluir
+                        </Button>
+                        <Button size="sm" variant="ghost" onClick={() => setAcaoLancamento(null)}>
+                          Cancelar
+                        </Button>
+                      </div>
+                    </div>
+                  );
+                }
+
+                return (
+                  <>
+                    {venda ? (
+                      <p className="text-xs text-muted-foreground">
+                        Veio de uma venda registrada no sistema. Para corrigir, estorne e registre
+                        de novo.
+                      </p>
+                    ) : daAlimentacao ? (
+                      <p className="text-xs text-muted-foreground">
+                        Gerado pela alimentação do lote. Para mudar, edite a alimentação em
+                        Confinamento.
+                      </p>
+                    ) : doRegistro ? (
+                      <p className="text-xs text-muted-foreground">
+                        Custo {doRegistro}. Para mudar, exclua o registro lá e registre de novo.
+                      </p>
+                    ) : null}
+                    <DialogFooter className="mt-3 flex-wrap gap-2">
+                      {venda ? (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          onClick={() => setAcaoLancamento("estorno")}
+                        >
+                          <Undo2 className="size-4" aria-hidden="true" />
+                          Estornar venda
+                        </Button>
+                      ) : !daAlimentacao && !doRegistro ? (
+                        <>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            className="text-destructive hover:text-destructive"
+                            onClick={() => setAcaoLancamento("exclusao")}
+                          >
+                            <Trash2 className="size-4" aria-hidden="true" />
+                            Excluir
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            onClick={() => {
+                              setEdDescricao(lancamentoSelecionado.descricao ?? "");
+                              setEdValor(String(lancamentoSelecionado.valor ?? ""));
+                              setEdData(dataISO(lancamentoSelecionado.data));
+                              setEdCategoria(lancamentoSelecionado.categoria ?? "");
+                              setAcaoLancamento("edicao");
+                            }}
+                          >
+                            <Pencil className="size-4" aria-hidden="true" />
+                            Editar
+                          </Button>
+                        </>
+                      ) : null}
+                      {lancamentoSelecionado.status === "a_receber" ? (
+                        <Button
+                          type="button"
+                          disabled={marcarRecebido.isPending}
+                          onClick={() => marcarRecebido.mutate([lancamentoSelecionado.id])}
+                        >
+                          <CircleCheck className="size-4" aria-hidden="true" />
+                          Marcar como recebido
+                        </Button>
+                      ) : null}
+                    </DialogFooter>
+                  </>
+                );
+              })()}
             </>
           ) : null}
         </DialogContent>

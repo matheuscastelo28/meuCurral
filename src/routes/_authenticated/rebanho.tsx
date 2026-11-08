@@ -1,7 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Beef, Plus, Search, Syringe, Users, X } from "lucide-react";
+import { ArrowLeft, Beef, ChevronRight, Plus, Search, Syringe, Users, X } from "lucide-react";
 import { toast } from "sonner";
 import { db } from "@/lib/local-db";
 import { AppShell } from "@/components/AppShell";
@@ -13,7 +13,6 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { CampoFiltro, CLASSE_SELECT_FILTRO, PainelFiltros } from "@/components/PainelFiltros";
 import { Label } from "@/components/ui/label";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Dialog,
   DialogContent,
@@ -23,9 +22,11 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { useLimitePlano } from "@/hooks/use-fazenda";
+import { DialogVenderAnimal, type AnimalParaVenda } from "@/components/DialogVenderAnimal";
 import { dataCurta, dataISO, hojeISO, idadeTexto, pesoTexto } from "@/lib/formato";
 import { usePreferencias } from "@/hooks/use-preferencias";
-import { rotuloCategoria, rotuloSexo, rotuloStatus } from "@/lib/rotulos";
+import { moeda as formatarMoeda } from "@/lib/formato";
+import { textoLote, rotuloCategoria, rotuloSexo, rotuloStatus } from "@/lib/rotulos";
 import {
   CATEGORIAS,
   CATEGORIAS_BOVINO,
@@ -47,10 +48,17 @@ export const Route = createFileRoute("/_authenticated/rebanho")({
       { name: "robots", content: "noindex" },
     ],
   }),
-  validateSearch: (search: Record<string, unknown>): { editar?: string; sanidade?: boolean } => {
+  validateSearch: (
+    search: Record<string, unknown>,
+  ): { editar?: string; sanidade?: boolean; saidas?: boolean } => {
     const editar = typeof search["editar"] === "string" ? search["editar"] : undefined;
     const sanidade = search["sanidade"] === true || search["sanidade"] === "1" ? true : undefined;
-    return { ...(editar ? { editar } : {}), ...(sanidade ? { sanidade } : {}) };
+    const saidas = search["saidas"] === true || search["saidas"] === "1" ? true : undefined;
+    return {
+      ...(editar ? { editar } : {}),
+      ...(sanidade ? { sanidade } : {}),
+      ...(saidas ? { saidas } : {}),
+    };
   },
   component: Rebanho,
 });
@@ -201,7 +209,7 @@ function Rebanho() {
       : CATEGORIAS;
   const categoriaPadrao = soOvino ? "ovelha" : "vaca";
   const queryClient = useQueryClient();
-  const { editar: editarId, sanidade: sanidadeNaUrl } = Route.useSearch();
+  const { editar: editarId, sanidade: sanidadeNaUrl, saidas: saidasNaUrl } = Route.useSearch();
   const navigate = Route.useNavigate();
   const [sanidadeAberto, setSanidadeAberto] = useState(false);
 
@@ -221,6 +229,7 @@ function Rebanho() {
   const [raca, setRaca] = useState<string>(racasAtual[0]!);
   const [racaCustom, setRacaCustom] = useState("");
   const [editando, setEditando] = useState<any>(null);
+  const [vendendo, setVendendo] = useState<AnimalParaVenda | null>(null);
 
   function selecionarEspecie(nova: Especie) {
     setEspecie(nova);
@@ -231,6 +240,7 @@ function Rebanho() {
   // ---- Cadastro em grupo (2 cards: escolha de campos, depois o laço) ----
   const [grupoEtapa, setGrupoEtapa] = useState<"campos" | "animais" | null>(null);
   const [grupoLote, setGrupoLote] = useState("");
+  const [grupoCompra, setGrupoCompra] = useState("");
   const [camposGrupo, setCamposGrupo] = useState<Record<CampoGrupo, boolean>>(CAMPOS_GRUPO_PADRAO);
   const [animaisGrupo, setAnimaisGrupo] = useState<EntradaAnimalGrupo[]>([]);
   const [entradaAtual, setEntradaAtual] = useState<EntradaAnimalGrupo>(
@@ -251,11 +261,10 @@ function Rebanho() {
     },
   });
 
-  // Rebanho (pertencente à fazenda) e Vendidos são duas listas separadas —
-  // igual ao "Por lote"/"Por animal" da Engorda, cada aba com sua própria
-  // contagem. Vendido some do operacional do dia a dia, mas continua
-  // consultável na própria aba.
-  const [abaRebanho, setAbaRebanho] = useState<"ativo" | "vendido">("ativo");
+  // Rebanho mostra só quem está na fazenda. Vendidos e mortos ficam numa
+  // tela à parte (?saidas=1), aberta por um link discreto no fim da lista:
+  // somem do dia a dia, mas continuam consultáveis.
+  const abaRebanho: "ativo" | "vendido" = saidasNaUrl ? "vendido" : "ativo";
   const [filtroEspecie, setFiltroEspecie] = useState<"todas" | Especie>("todas");
   const [filtroCategoria, setFiltroCategoria] = useState<"todas" | (typeof CATEGORIAS)[number]>(
     "todas",
@@ -369,6 +378,32 @@ function Rebanho() {
     queryClient.invalidateQueries({ queryKey: ["indices-engorda"] });
   }
 
+  // Compra de animal vira despesa "Compra de animais" no Financeiro, com o
+  // lote (assim já entra no custo do lote no Confinamento). Se só a despesa
+  // falhar, o animal fica cadastrado e avisamos — refazer o cadastro
+  // duplicaria o animal.
+  async function registrarCompra(params: {
+    valor: number;
+    descricao: string;
+    lote: string | null;
+    animalId?: string | null;
+  }): Promise<boolean> {
+    if (!(params.valor > 0)) return true;
+    const { error } = await db.from("financeiro_lancamentos").insert({
+      fazenda_id: fazenda!.id,
+      tipo: "despesa",
+      descricao: params.descricao,
+      valor: Math.round(params.valor * 100) / 100,
+      data: hojeISO(),
+      categoria: "compra",
+      lote: params.lote,
+      animal_id: params.animalId ?? null,
+    } as never);
+    queryClient.invalidateQueries({ queryKey: ["financeiro"] });
+    queryClient.invalidateQueries({ queryKey: ["despesas-lote"] });
+    return !error;
+  }
+
   const criar = useMutation({
     mutationFn: async (form: FormData) => {
       const racaFinal = raca === OUTRA_RACA ? racaCustom.trim() : raca;
@@ -388,9 +423,25 @@ function Rebanho() {
       const { data: criados, error } = await db.from("animais").insert(payload as never);
       if (error) throw error;
       await registrarPesagensIniciais(criados ?? []);
+      const valorCompra = Number(form.get("valor_compra") || 0);
+      const compraOk = await registrarCompra({
+        valor: valorCompra,
+        descricao: `Compra de ${payload.nome}${payload.brinco ? ` (${payload.brinco})` : ""}`,
+        lote: payload.lote,
+        animalId: (criados?.[0]?.id as string | undefined) ?? null,
+      });
+      return { compraOk, comCompra: valorCompra > 0 };
     },
-    onSuccess: () => {
-      toast.success("Animal cadastrado.");
+    onSuccess: ({ compraOk, comCompra }) => {
+      if (!compraOk) {
+        toast.error(
+          "Animal cadastrado, mas a compra não entrou no Financeiro. Lance em Financeiro → Novo lançamento.",
+        );
+      } else {
+        toast.success(
+          comCompra ? "Animal cadastrado e compra lançada no Financeiro." : "Animal cadastrado.",
+        );
+      }
       setAberto(false);
       setRaca(racasDaEspecie(especie)[0]!);
       setRacaCustom("");
@@ -425,14 +476,24 @@ function Rebanho() {
         pai: String(form.get("pai") ?? "").trim() || null,
         observacoes: String(form.get("observacoes") ?? "").trim() || null,
       };
+      // "Vendido" não é só uma etiqueta: salva o resto da edição e abre o
+      // registro da venda (valor, comprador), que leva a receita pro
+      // Financeiro e aí sim marca o animal como vendido.
+      const viraVenda = payload.status === "vendido" && editando!.status !== "vendido";
       const { error } = await db
         .from("animais")
-        .update(payload as never)
+        .update((viraVenda ? { ...payload, status: editando!.status } : payload) as never)
         .eq("id", editando!.id);
       if (error) throw error;
+      return viraVenda ? { id: editando!.id as string, ...payload } : null;
     },
-    onSuccess: () => {
-      toast.success("Animal atualizado.");
+    onSuccess: (paraVender) => {
+      if (paraVender) {
+        toast.info("Registre a venda para concluir a saída do animal.");
+        setVendendo(paraVender);
+      } else {
+        toast.success("Animal atualizado.");
+      }
       setEditando(null);
       queryClient.invalidateQueries({ queryKey: ["animais"] });
       queryClient.invalidateQueries({ queryKey: ["animais-contagem"] });
@@ -485,12 +546,23 @@ function Rebanho() {
       const { data: criados, error } = await db.from("animais").insert(payloads as never);
       if (error) throw error;
       await registrarPesagensIniciais(criados ?? []);
-      return payloads.length;
+      const valorCompra = Number(grupoCompra) || 0;
+      const compraOk = await registrarCompra({
+        valor: valorCompra,
+        descricao: `Compra de ${payloads.length} ${payloads.length === 1 ? "animal" : "animais"} — ${textoLote(grupoLote)}`,
+        lote: grupoLote.trim() || null,
+      });
+      return { qtd: payloads.length, compraOk, comCompra: valorCompra > 0 };
     },
-    onSuccess: (qtd) => {
+    onSuccess: ({ qtd, compraOk, comCompra }) => {
       toast.success(
-        `${qtd} ${qtd === 1 ? "animal cadastrado" : "animais cadastrados"} no lote "${grupoLote.trim()}".`,
+        `${qtd} ${qtd === 1 ? "animal cadastrado" : "animais cadastrados"} no lote "${grupoLote.trim()}"${comCompra && compraOk ? " e compra lançada no Financeiro" : ""}.`,
       );
+      if (!compraOk) {
+        toast.error(
+          "A compra do grupo não entrou no Financeiro. Lance em Financeiro → Novo lançamento.",
+        );
+      }
       fecharGrupo();
       queryClient.invalidateQueries({ queryKey: ["animais"] });
       queryClient.invalidateQueries({ queryKey: ["animais-contagem"] });
@@ -511,6 +583,7 @@ function Rebanho() {
       return;
     }
     setGrupoLote("");
+    setGrupoCompra("");
     setCamposGrupo(CAMPOS_GRUPO_PADRAO);
     setAnimaisGrupo([]);
     setEntradaAtual(entradaGrupoVazia(soOvino ? "ovino" : "bovino"));
@@ -614,35 +687,40 @@ function Rebanho() {
 
   return (
     <AppShell
-      titulo="Rebanho"
-      descricao="Todos os animais da fazenda, com brinco, categoria e situação."
+      titulo={abaRebanho === "vendido" ? "Saídas do rebanho" : "Rebanho"}
       acao={
-        <div className="flex flex-wrap gap-2">
-          <Button variant="outline" onClick={() => setSanidadeAberto(true)}>
-            <Syringe className="size-4" aria-hidden="true" />
-            Vacinas e manejo
-          </Button>
-          <Button variant="outline" onClick={novoGrupo}>
-            <Users className="size-4" aria-hidden="true" />
-            Novo grupo
-          </Button>
-          <Button onClick={novoAnimal}>
-            <Plus className="size-4" aria-hidden="true" />
-            Novo animal
-          </Button>
-        </div>
+        abaRebanho === "vendido" ? undefined : (
+          <div className="flex flex-wrap gap-2">
+            <Button variant="outline" onClick={() => setSanidadeAberto(true)}>
+              <Syringe className="size-4" aria-hidden="true" />
+              Vacinas e manejo
+            </Button>
+            <Button variant="outline" onClick={novoGrupo}>
+              <Users className="size-4" aria-hidden="true" />
+              Novo grupo
+            </Button>
+            <Button onClick={novoAnimal}>
+              <Plus className="size-4" aria-hidden="true" />
+              Novo animal
+            </Button>
+          </div>
+        )
       }
     >
-      <Tabs
-        value={abaRebanho}
-        onValueChange={(v) => setAbaRebanho(v as "ativo" | "vendido")}
-        className="mb-4"
-      >
-        <TabsList>
-          <TabsTrigger value="ativo">Rebanho ({porAba.ativo.length})</TabsTrigger>
-          <TabsTrigger value="vendido">Saídas ({porAba.vendido.length})</TabsTrigger>
-        </TabsList>
-      </Tabs>
+      {abaRebanho === "vendido" ? (
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+          <Button variant="ghost" size="sm" asChild className="-ml-2">
+            <Link to="/rebanho">
+              <ArrowLeft className="size-4" aria-hidden="true" />
+              Voltar ao rebanho
+            </Link>
+          </Button>
+          <span className="text-xs text-muted-foreground">
+            {porAba.vendido.length} {porAba.vendido.length === 1 ? "animal" : "animais"} · fora da
+            contagem do rebanho
+          </span>
+        </div>
+      ) : null}
 
       {ocultosPorEspecie > 0 ? (
         <p className="mb-4 rounded-lg bg-muted px-3 py-2 text-xs text-muted-foreground">
@@ -831,6 +909,18 @@ function Rebanho() {
           ))}
         </div>
       )}
+      {abaRebanho === "ativo" && porAba.vendido.length > 0 ? (
+        <div className="mt-6 flex justify-center">
+          <Link
+            to="/rebanho"
+            search={{ saidas: true }}
+            className="inline-flex items-center gap-1 text-xs text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
+          >
+            Animais que saíram do rebanho (vendidos e mortos): {porAba.vendido.length}
+            <ChevronRight className="size-3.5" aria-hidden="true" />
+          </Link>
+        </div>
+      ) : null}
 
       <Dialog open={aberto} onOpenChange={setAberto}>
         <DialogContent className="max-h-[85vh] overflow-y-auto">
@@ -895,6 +985,20 @@ function Rebanho() {
                 <Label htmlFor="peso_kg">Peso (kg)</Label>
                 <Input id="peso_kg" name="peso_kg" type="number" step="0.1" min="0" />
               </div>
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="valor_compra">Valor de compra (R$)</Label>
+              <Input
+                id="valor_compra"
+                name="valor_compra"
+                type="number"
+                step="0.01"
+                min="0"
+                placeholder="Opcional — se comprou o animal"
+              />
+              <p className="text-xs text-muted-foreground">
+                Entra no Financeiro como "Compra de animais", no lote informado.
+              </p>
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="raca">Raça</Label>
@@ -1118,6 +1222,21 @@ function Rebanho() {
                     placeholder="Ex: Pasto 2"
                     required
                   />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="grupo-compra">Valor total da compra (R$)</Label>
+                  <Input
+                    id="grupo-compra"
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value={grupoCompra}
+                    onChange={(e) => setGrupoCompra(e.target.value)}
+                    placeholder="Opcional — se comprou o grupo"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Entra no Financeiro como "Compra de animais" do lote.
+                  </p>
                 </div>
                 <div className="space-y-1.5">
                   <Label>Campos por animal</Label>
@@ -1432,6 +1551,12 @@ function Rebanho() {
       </Dialog>
 
       <DialogManejoSanitario aberto={sanidadeAberto} onFechar={() => setSanidadeAberto(false)} />
+      <DialogVenderAnimal
+        animal={vendendo}
+        fazendaId={fazenda?.id}
+        onFechar={() => setVendendo(null)}
+        moeda={(v) => formatarMoeda(v, prefs.moeda)}
+      />
 
       <UpgradeDialog
         aberto={upgrade}

@@ -45,7 +45,7 @@ export function rotuloTurno(turno: string | null | undefined): string {
 
 export const CATEGORIAS_DESPESA = [
   { valor: "racao", rotulo: "Alimentação / ração" },
-  { valor: "sanidade", rotulo: "Sanidade (vacina, remédio)" },
+  { valor: "sanidade", rotulo: "Sanidade e reprodução (vacina, remédio, sêmen)" },
   { valor: "compra", rotulo: "Compra de animais" },
   { valor: "mao_de_obra", rotulo: "Mão de obra" },
   { valor: "manutencao", rotulo: "Manutenção / combustível" },

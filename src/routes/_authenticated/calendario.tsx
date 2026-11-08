@@ -537,7 +537,6 @@ function Calendario() {
   return (
     <AppShell
       titulo="Agenda"
-      descricao="Compromissos, vacinas e vencimentos da fazenda."
       acao={
         <div className="flex flex-wrap gap-2">
           <Button variant="outline" onClick={() => setSanitarioAberto(true)}>

@@ -19,10 +19,13 @@ import {
   enviarCodigoVerificacao,
   verificarCodigoEmail,
   registrarDestinacaoLeite,
+  registrarFabricacaoDerivado,
   registrarVenda,
   marcarLancamentosRecebidos,
   registrarPesagemLote,
   registrarVendaLote,
+  venderAnimal,
+  estornarVenda,
   criarConta,
   marcarParcelaPaga,
   cancelarConta,
@@ -404,6 +407,18 @@ export const db = {
   },
   auth,
   leite: {
+    /** Fabricação de derivado + leite usado (destinação ligada a ela). */
+    async registrarFabricacao(params: {
+      fazendaId: string;
+      produto: string;
+      data: string;
+      quantidade: number;
+      leiteUsado?: number | null;
+      custoInsumos?: number | null;
+      observacoes?: string | null;
+    }) {
+      return registrarFabricacaoDerivado({ data: { token: tokenSessao(), ...params } });
+    },
     /** Substitui a destinação do dia inteiro pela lista enviada. */
     async registrarDestinacao(params: {
       fazendaId: string;
@@ -481,7 +496,27 @@ export const db = {
       return cancelarAssinatura({ data: { token: tokenSessao() } });
     },
   },
+  rebanho: {
+    /** Venda de um animal de qualquer situação, já com a receita no Financeiro. */
+    async venderAnimal(params: {
+      fazendaId: string;
+      animalId: string;
+      valorTotal: number;
+      data: string;
+      comprador?: string | null;
+      pago?: boolean;
+      formaPagamento?: string;
+      parcelas?: number | null;
+      pesoKg?: number | null;
+    }) {
+      return venderAnimal({ data: { token: tokenSessao(), ...params } });
+    },
+  },
   financeiro: {
+    /** Desfaz uma venda: apaga venda + receita e devolve os animais. */
+    async estornarVenda(params: { fazendaId: string; vendaId: string }) {
+      return estornarVenda({ data: { token: tokenSessao(), ...params } });
+    },
     /** Cria a conta e já gera as parcelas dela numa transação só. */
     async criarConta(params: {
       fazendaId: string;

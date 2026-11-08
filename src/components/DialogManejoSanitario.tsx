@@ -226,15 +226,41 @@ export function DialogManejoSanitario({
                 : "ovinos";
 
       if (custoTotal > 0) {
-        const { error } = await db.from("financeiro_lancamentos").insert({
-          fazenda_id: fazenda.id,
-          tipo: "despesa",
-          descricao: `${descricao} — ${alvoTexto}`,
-          valor: custoTotal,
-          data,
-          categoria: "sanidade",
-          lote: escopo === "lote" ? lote : null,
-        } as never);
+        // O custo vai pro lote de cada animal (pra contar na margem do lote
+        // no Confinamento): aplicação num animal usa o lote dele; no rebanho
+        // todo, o custo é rateado entre os lotes pelo número de animais.
+        const grupos = new Map<string, number>();
+        for (const a of alvos) {
+          const chave = escopo === "lote" ? lote : String(a.lote ?? "").trim();
+          grupos.set(chave, (grupos.get(chave) ?? 0) + 1);
+        }
+        const entradas = Array.from(grupos.entries());
+        const totalCentavos = Math.round(custoTotal * 100);
+        let restante = totalCentavos;
+        const lancamentos = entradas
+          .map(([loteDoGrupo, qtd], i) => {
+            const centavos =
+              i === entradas.length - 1
+                ? restante
+                : Math.round((totalCentavos * qtd) / alvos.length);
+            restante -= centavos;
+            const rotuloGrupo = loteDoGrupo ? textoLote(loteDoGrupo) : "sem lote";
+            return {
+              fazenda_id: fazenda.id,
+              tipo: "despesa",
+              descricao:
+                entradas.length > 1
+                  ? `${descricao} — ${rotuloGrupo} (${qtd} de ${alvos.length} animais)`
+                  : `${descricao} — ${alvoTexto}`,
+              valor: centavos / 100,
+              data,
+              categoria: "sanidade",
+              lote: loteDoGrupo || null,
+              animal_id: escopo === "animal" ? (alvos[0]?.id ?? null) : null,
+            };
+          })
+          .filter((l) => l.valor > 0);
+        const { error } = await db.from("financeiro_lancamentos").insert(lancamentos as never);
         if (error) throw new Error(error.message);
       }
 
@@ -271,6 +297,7 @@ export function DialogManejoSanitario({
         "inicio-resumo",
         "financeiro",
         "despesas-lote",
+        "ficha-custos",
       ]) {
         queryClient.invalidateQueries({ queryKey: [chave] });
       }

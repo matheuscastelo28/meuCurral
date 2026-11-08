@@ -51,11 +51,7 @@ export function SecaoSeguranca() {
   }
 
   return (
-    <CartaoConfig
-      id="seguranca"
-      titulo="Segurança"
-      descricao="Troque sua senha e encerre o acesso em outros aparelhos."
-    >
+    <CartaoConfig id="seguranca" titulo="Segurança">
       <form className="grid gap-3 sm:grid-cols-2" onSubmit={trocarSenha}>
         <div className="space-y-1.5">
           <Label htmlFor="nova-senha">Nova senha</Label>

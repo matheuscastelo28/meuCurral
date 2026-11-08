@@ -605,7 +605,6 @@ function Engorda() {
   return (
     <AppShell
       titulo="Confinamento"
-      descricao="Peso, ganho médio diário, custo e venda do lote em confinamento."
       acao={
         <Button asChild>
           <Link to="/pesagem">
@@ -643,29 +642,7 @@ function Engorda() {
           </button>
         </div>
       ) : null}
-      <ol className="mb-5 grid gap-2 rounded-xl border border-border bg-card p-3 text-xs sm:grid-cols-2 lg:grid-cols-4">
-        {[
-          ["Animais", "No Rebanho, coloque a situação 'Confinamento' e um lote."],
-          ["Pesagem", "A 1ª é a entrada; da 2ª em diante sai o ganho por dia (GMD)."],
-          ["Custos", "Lance compra, alimentação e sanidade no lote."],
-          [
-            "Resultado",
-            `Com o preço da ${soOvino ? "carne (kg)" : "arroba"}, veja a margem e o lucro na venda.`,
-          ],
-        ].map(([titulo, texto], idx) => (
-          <li key={titulo} className="flex gap-2">
-            <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-primary text-[10px] font-bold text-primary-foreground">
-              {idx + 1}
-            </span>
-            <span>
-              <span className="font-semibold">{titulo}: </span>
-              <span className="text-muted-foreground">{texto}</span>
-            </span>
-          </li>
-        ))}
-      </ol>
-
-      <div className="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5 [&>*:last-child:nth-child(odd)]:col-span-2 sm:[&>*:last-child:nth-child(odd)]:col-span-1">
+      <div className="mb-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
         <Kpi icon={Weight} rotulo="Em confinamento" valor={e ? `${e.totalEngorda} cab` : "—"} />
         <Kpi
           icon={Scale}
@@ -692,140 +669,102 @@ function Engorda() {
               : "—"
           }
         />
-        <Kpi
-          icon={TrendingUp}
-          rotulo="Ganho (últimos 30 dias)"
-          valor={e ? `${e.ganho30d.toLocaleString("pt-BR", { maximumFractionDigits: 1 })} kg` : "—"}
-        />
       </div>
 
-      <div className="mb-5 grid gap-5 lg:grid-cols-2">
-        <CartaoConfig
-          id="preco-boi"
-          titulo={soOvino ? "Preço do ovino" : "Preço do boi"}
-          descricao={
-            soOvino
-              ? "Preço por kg de peso vivo. Vale a partir da data de vigência — o histórico continua com o preço antigo."
-              : "Preço por arroba de peso vivo (1 @ = 15 kg vivos). Se o comprador paga por @ de carcaça, informe o valor equivalente por @ viva. Vale a partir da data de vigência."
-          }
-        >
-          {precoVigente ? (
-            <div className="flex items-center gap-3">
-              <span className="flex size-9 items-center justify-center rounded-lg bg-accent text-primary">
-                <Tag className="size-4" aria-hidden="true" />
-              </span>
-              <div>
-                <p className="font-display text-xl font-extrabold">
+      <div className="mb-5 rounded-xl border border-border bg-card p-3" id="preco-boi">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <span className="flex size-9 items-center justify-center rounded-lg bg-accent text-primary">
+              <Tag className="size-4" aria-hidden="true" />
+            </span>
+            <div>
+              <p className="text-xs text-muted-foreground">
+                {soOvino ? "Preço do ovino" : "Preço do boi"} (base da margem)
+              </p>
+              {precoVigente ? (
+                <p className="text-sm font-semibold">
                   {moeda(Number(precoVigente.valor))}/{simboloUnidade}
+                  <span className="ml-2 text-xs font-normal text-muted-foreground">
+                    desde {dataCurta(precoVigente.data_inicio)}
+                    {precoVigente.comprador ? ` · ${precoVigente.comprador}` : ""}
+                  </span>
                 </p>
-                <p className="text-xs text-muted-foreground">
-                  desde {dataCurta(precoVigente.data_inicio)}
-                  {precoVigente.comprador ? ` · ${precoVigente.comprador}` : ""}
-                </p>
-              </div>
+              ) : (
+                <p className="text-sm font-semibold">Cadastre o preço para ver a margem</p>
+              )}
             </div>
-          ) : (
-            <p className="text-sm text-muted-foreground">Nenhum preço cadastrado ainda.</p>
-          )}
-
-          {mostrarFormPreco ? (
-            <form
-              className="mt-4 grid gap-3 sm:grid-cols-3"
-              onSubmit={(ev) => {
-                ev.preventDefault();
-                salvarPreco.mutate();
-              }}
-            >
-              <div className="space-y-1.5">
-                <Label htmlFor="preco-boi-valor">Preço (R$/{simboloUnidade})</Label>
-                <Input
-                  id="preco-boi-valor"
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  value={precoValor}
-                  onChange={(ev) => setPrecoValor(ev.target.value)}
-                  required
-                />
-              </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="preco-boi-comprador">Comprador</Label>
-                <Input
-                  id="preco-boi-comprador"
-                  value={precoComprador}
-                  onChange={(ev) => setPrecoComprador(ev.target.value)}
-                  placeholder="Ex: Frigorífico Y"
-                />
-              </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="preco-boi-data">Vigente a partir de</Label>
-                <Input
-                  id="preco-boi-data"
-                  type="date"
-                  value={precoDataInicio}
-                  onChange={(ev) => setPrecoDataInicio(ev.target.value)}
-                  required
-                />
-              </div>
-              <div className="flex gap-2 sm:col-span-3">
-                <Button type="submit" size="sm" disabled={salvarPreco.isPending}>
-                  Salvar preço
-                </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setMostrarFormPreco(false)}
-                >
-                  Cancelar
-                </Button>
-              </div>
-            </form>
-          ) : (
+          </div>
+          {!mostrarFormPreco ? (
             <Button
               type="button"
               variant="outline"
               size="sm"
-              className="mt-4"
               onClick={() => setMostrarFormPreco(true)}
             >
-              Atualizar preço
+              {precoVigente ? "Atualizar preço" : "Cadastrar preço"}
             </Button>
-          )}
-        </CartaoConfig>
-
-        <CartaoConfig
-          id="lotes-vendidos"
-          titulo="Resultado dos lotes vendidos"
-          descricao="Lucro real de cada lote já vendido: o valor da venda menos tudo o que foi lançado como custo daquele lote (compra, alimentação, sanidade)."
-        >
-          {lotesEncerrados.length === 0 ? (
-            <p className="text-sm text-muted-foreground">
-              Quando você vender um lote pelo botão "Vender lote", o resultado aparece aqui.
-            </p>
-          ) : (
-            <ul className="divide-y divide-border">
-              {lotesEncerrados.slice(0, 6).map((v) => (
-                <li key={v.id} className="flex items-center justify-between gap-3 py-2 text-sm">
-                  <span className="min-w-0">
-                    <span className="block truncate font-medium">{v.lote}</span>
-                    <span className="block text-xs text-muted-foreground">
-                      {dataCurta(v.data)} · venda {moeda(v.receita)} · custo {moeda(v.custo)}
-                    </span>
-                  </span>
-                  <span
-                    className={cn(
-                      "shrink-0 font-semibold",
-                      v.resultado < 0 ? "text-destructive" : "text-success",
-                    )}
-                  >
-                    {moeda(v.resultado)}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          )}
-        </CartaoConfig>
+          ) : null}
+        </div>
+        {mostrarFormPreco ? (
+          <form
+            className="mt-3 grid gap-3 border-t border-border pt-3 sm:grid-cols-3"
+            onSubmit={(ev) => {
+              ev.preventDefault();
+              salvarPreco.mutate();
+            }}
+          >
+            <div className="space-y-1.5">
+              <Label htmlFor="preco-boi-valor">Preço (R$/{simboloUnidade})</Label>
+              <Input
+                id="preco-boi-valor"
+                type="number"
+                step="0.01"
+                min="0"
+                value={precoValor}
+                onChange={(ev) => setPrecoValor(ev.target.value)}
+                required
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="preco-boi-comprador">Comprador</Label>
+              <Input
+                id="preco-boi-comprador"
+                value={precoComprador}
+                onChange={(ev) => setPrecoComprador(ev.target.value)}
+                placeholder="Ex: Frigorífico Y"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="preco-boi-data">Vigente a partir de</Label>
+              <Input
+                id="preco-boi-data"
+                type="date"
+                value={precoDataInicio}
+                onChange={(ev) => setPrecoDataInicio(ev.target.value)}
+                required
+              />
+            </div>
+            <div className="flex gap-2 sm:col-span-3">
+              <Button type="submit" size="sm" disabled={salvarPreco.isPending}>
+                Salvar preço
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setMostrarFormPreco(false)}
+              >
+                Cancelar
+              </Button>
+            </div>
+          </form>
+        ) : null}
+        <p className="mt-2 text-[11px] text-muted-foreground">
+          {soOvino
+            ? "Preço por kg de peso vivo."
+            : "Preço por arroba viva (1 @ = 15 kg vivos). Se o comprador paga por @ de carcaça, informe o valor equivalente por @ viva."}{" "}
+          Vale a partir da data informada; o histórico mantém o preço antigo.
+        </p>
       </div>
 
       <DialogAlimentacaoLote
@@ -875,7 +814,12 @@ function Engorda() {
         <EmptyState
           icon={Weight}
           titulo="Nenhum animal em confinamento"
-          descricao="No Rebanho, mude a situação do animal para 'Confinamento' (ou cadastre já com essa situação) e defina o lote. Ele aparece aqui para pesagem, custos e venda."
+          descricao="No Rebanho, mude a situação do animal para 'Confinamento' e defina o lote. Ele aparece aqui para pesagem, custos e venda."
+          acao={
+            <Button asChild>
+              <Link to="/rebanho">Ir para o Rebanho</Link>
+            </Button>
+          }
         />
       ) : (
         <Tabs value={modo} onValueChange={(v) => setModo(v as "lote" | "animal")}>
@@ -963,6 +907,38 @@ function Engorda() {
                   ) : null}
                 </div>
 
+                <div className="mt-4 flex flex-wrap gap-2">
+                  <Button variant="outline" size="sm" onClick={() => setPesagemLoteAberto(true)}>
+                    <Scale className="size-4" aria-hidden="true" />
+                    Pesar lote
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setAlimentacaoLoteAberto(true)}
+                  >
+                    <Wheat className="size-4" aria-hidden="true" />
+                    Alimentação
+                  </Button>
+                  {loteAtual.nome !== SEM_LOTE ? (
+                    <>
+                      <Button variant="outline" size="sm" onClick={() => setCustoLoteAberto(true)}>
+                        <Coins className="size-4" aria-hidden="true" />
+                        Lançar custo
+                      </Button>
+                      <Button size="sm" onClick={() => setVenderLoteAberto(true)}>
+                        <Coins className="size-4" aria-hidden="true" />
+                        Vender lote
+                      </Button>
+                    </>
+                  ) : (
+                    <p className="w-full text-xs text-muted-foreground">
+                      Esses animais não têm um lote definido — dê um nome de lote a eles no Rebanho
+                      para registrar custo ou vender em conjunto.
+                    </p>
+                  )}
+                </div>
+
                 <div className="mt-4 grid gap-4 lg:grid-cols-2">
                   <div className="rounded-lg bg-muted p-3">
                     <p className="text-sm font-semibold">Curva de peso médio</p>
@@ -1039,239 +1015,224 @@ function Engorda() {
                   </div>
                 </div>
 
-                <div className="mt-4 grid gap-4 lg:grid-cols-2">
-                  <div className="rounded-lg bg-muted p-3">
-                    <p className="text-sm font-semibold">Entrada do lote</p>
-                    <div className="mt-2 space-y-2 text-xs">
-                      <div className="flex items-center justify-between">
-                        <span className="text-muted-foreground">Data de entrada</span>
-                        <span className="font-semibold">
-                          {loteAtual.dataEntrada ? dataCurta(loteAtual.dataEntrada) : "—"}
-                        </span>
-                      </div>
-                      <div className="flex items-center justify-between">
-                        <span className="text-muted-foreground">Peso médio inicial</span>
-                        <span className="font-semibold">
-                          {loteAtual.pesoInicialMedio !== null
-                            ? pesoTexto(loteAtual.pesoInicialMedio, prefs.unidade_peso)
-                            : "—"}
-                        </span>
-                      </div>
-                      <div className="flex items-center justify-between">
-                        <span className="text-muted-foreground">Peso total na entrada</span>
-                        <span className="font-semibold">
-                          {loteAtual.pesoTotalEntrada !== null
-                            ? pesoTexto(loteAtual.pesoTotalEntrada, prefs.unidade_peso)
-                            : "—"}
-                        </span>
-                      </div>
-                      <div className="flex items-center justify-between">
-                        <span className="text-muted-foreground">Custo total da compra</span>
-                        <span className="font-semibold">{moeda(loteAtual.custoCompra)}</span>
-                      </div>
-                      <div className="flex items-center justify-between">
-                        <span className="text-muted-foreground">Preço médio / cabeça</span>
-                        <span className="font-semibold">
-                          {loteAtual.precoMedioPorCabeca !== null
-                            ? moeda(loteAtual.precoMedioPorCabeca)
-                            : "—"}
-                        </span>
-                      </div>
-                    </div>
-                    <p className="mt-2 text-[11px] text-muted-foreground">
-                      Peso/data de entrada vêm da primeira pesagem de cada animal do lote; o custo
-                      da compra entra por "Lançar custo" com a categoria "Compra do lote".
-                    </p>
-                  </div>
-
-                  <div className="rounded-lg bg-muted p-3">
-                    <p className="text-sm font-semibold">Alimentação diária</p>
-                    {ultimaAlimentacao ? (
-                      <div className="mt-2 space-y-2 text-xs">
-                        <p className="text-muted-foreground">
-                          Último registro — {dataCurta(ultimaAlimentacao.data)}
-                          {ultimaAlimentacao.lote === null ? (
-                            <span className="ml-1.5 rounded-full bg-accent px-1.5 py-0.5 text-[10px] font-semibold text-primary">
-                              todo o rebanho
+                <details className="group mt-4 rounded-lg border border-border">
+                  <summary className="cursor-pointer select-none px-3 py-2 text-sm font-semibold">
+                    Entrada, alimentação e previsão de saída
+                    <span className="ml-2 text-xs font-normal text-muted-foreground">
+                      (toque para ver)
+                    </span>
+                  </summary>
+                  <div className="p-3 pt-0">
+                    <div className="mt-2 grid gap-4 lg:grid-cols-2">
+                      <div className="rounded-lg bg-muted p-3">
+                        <p className="text-sm font-semibold">Entrada do lote</p>
+                        <div className="mt-2 space-y-2 text-xs">
+                          <div className="flex items-center justify-between">
+                            <span className="text-muted-foreground">Data de entrada</span>
+                            <span className="font-semibold">
+                              {loteAtual.dataEntrada ? dataCurta(loteAtual.dataEntrada) : "—"}
                             </span>
-                          ) : null}
+                          </div>
+                          <div className="flex items-center justify-between">
+                            <span className="text-muted-foreground">Peso médio inicial</span>
+                            <span className="font-semibold">
+                              {loteAtual.pesoInicialMedio !== null
+                                ? pesoTexto(loteAtual.pesoInicialMedio, prefs.unidade_peso)
+                                : "—"}
+                            </span>
+                          </div>
+                          <div className="flex items-center justify-between">
+                            <span className="text-muted-foreground">Peso total na entrada</span>
+                            <span className="font-semibold">
+                              {loteAtual.pesoTotalEntrada !== null
+                                ? pesoTexto(loteAtual.pesoTotalEntrada, prefs.unidade_peso)
+                                : "—"}
+                            </span>
+                          </div>
+                          <div className="flex items-center justify-between">
+                            <span className="text-muted-foreground">Custo total da compra</span>
+                            <span className="font-semibold">{moeda(loteAtual.custoCompra)}</span>
+                          </div>
+                          <div className="flex items-center justify-between">
+                            <span className="text-muted-foreground">Preço médio / cabeça</span>
+                            <span className="font-semibold">
+                              {loteAtual.precoMedioPorCabeca !== null
+                                ? moeda(loteAtual.precoMedioPorCabeca)
+                                : "—"}
+                            </span>
+                          </div>
+                        </div>
+                        <p className="mt-2 text-[11px] text-muted-foreground">
+                          Peso/data de entrada vêm da primeira pesagem de cada animal do lote; o
+                          custo da compra entra por "Lançar custo" com a categoria "Compra do lote".
                         </p>
-                        <div className="flex items-center justify-between">
-                          <span className="text-muted-foreground">Forragem nativa</span>
-                          <span className="font-semibold">
-                            {ultimaAlimentacao.forragem_kg !== null
-                              ? `${Number(ultimaAlimentacao.forragem_kg).toLocaleString("pt-BR")} kg/dia`
-                              : "—"}
-                          </span>
-                        </div>
-                        <div className="flex items-center justify-between">
-                          <span className="text-muted-foreground">Silagem</span>
-                          <span className="font-semibold">
-                            {ultimaAlimentacao.silagem_kg !== null
-                              ? `${Number(ultimaAlimentacao.silagem_kg).toLocaleString("pt-BR")} kg/dia`
-                              : "—"}
-                          </span>
-                        </div>
-                        <div className="flex items-center justify-between">
-                          <span className="text-muted-foreground">Ração concentrada</span>
-                          <span className="font-semibold">
-                            {ultimaAlimentacao.racao_kg !== null
-                              ? `${Number(ultimaAlimentacao.racao_kg).toLocaleString("pt-BR")} kg/dia`
-                              : "—"}
-                          </span>
-                        </div>
-                        {ultimaAlimentacao.outro_kg !== null ? (
-                          <div className="flex items-center justify-between">
-                            <span className="text-muted-foreground">
-                              {ultimaAlimentacao.outro_descricao || "Outro"}
-                            </span>
-                            <span className="font-semibold">
-                              {Number(ultimaAlimentacao.outro_kg).toLocaleString("pt-BR")} kg/dia
-                            </span>
+                      </div>
+
+                      <div className="rounded-lg bg-muted p-3">
+                        <p className="text-sm font-semibold">Alimentação diária</p>
+                        {ultimaAlimentacao ? (
+                          <div className="mt-2 space-y-2 text-xs">
+                            <p className="text-muted-foreground">
+                              Último registro — {dataCurta(ultimaAlimentacao.data)}
+                              {ultimaAlimentacao.lote === null ? (
+                                <span className="ml-1.5 rounded-full bg-accent px-1.5 py-0.5 text-[10px] font-semibold text-primary">
+                                  todo o rebanho
+                                </span>
+                              ) : null}
+                            </p>
+                            <div className="flex items-center justify-between">
+                              <span className="text-muted-foreground">Forragem nativa</span>
+                              <span className="font-semibold">
+                                {ultimaAlimentacao.forragem_kg !== null
+                                  ? `${Number(ultimaAlimentacao.forragem_kg).toLocaleString("pt-BR")} kg/dia`
+                                  : "—"}
+                              </span>
+                            </div>
+                            <div className="flex items-center justify-between">
+                              <span className="text-muted-foreground">Silagem</span>
+                              <span className="font-semibold">
+                                {ultimaAlimentacao.silagem_kg !== null
+                                  ? `${Number(ultimaAlimentacao.silagem_kg).toLocaleString("pt-BR")} kg/dia`
+                                  : "—"}
+                              </span>
+                            </div>
+                            <div className="flex items-center justify-between">
+                              <span className="text-muted-foreground">Ração concentrada</span>
+                              <span className="font-semibold">
+                                {ultimaAlimentacao.racao_kg !== null
+                                  ? `${Number(ultimaAlimentacao.racao_kg).toLocaleString("pt-BR")} kg/dia`
+                                  : "—"}
+                              </span>
+                            </div>
+                            {ultimaAlimentacao.outro_kg !== null ? (
+                              <div className="flex items-center justify-between">
+                                <span className="text-muted-foreground">
+                                  {ultimaAlimentacao.outro_descricao || "Outro"}
+                                </span>
+                                <span className="font-semibold">
+                                  {Number(ultimaAlimentacao.outro_kg).toLocaleString("pt-BR")}{" "}
+                                  kg/dia
+                                </span>
+                              </div>
+                            ) : null}
+                            {ultimaAlimentacao.custo_dia !== null ? (
+                              <div className="flex items-center justify-between">
+                                <span className="text-muted-foreground">Custo do dia</span>
+                                <span className="font-semibold">
+                                  {moeda(Number(ultimaAlimentacao.custo_dia))}
+                                </span>
+                              </div>
+                            ) : null}
+                          </div>
+                        ) : (
+                          <p className="mt-2 text-xs text-muted-foreground">
+                            Nenhuma alimentação registrada ainda para este lote.
+                          </p>
+                        )}
+
+                        {alimentacaoDoLoteAtual.length > 0 ? (
+                          <div className="mt-3 border-t border-border pt-2">
+                            <p className="text-[11px] font-semibold text-muted-foreground">
+                              Histórico
+                            </p>
+                            <ul className="mt-1.5 max-h-36 space-y-1.5 overflow-y-auto">
+                              {alimentacaoDoLoteAtual.slice(0, 10).map((a) => (
+                                <li
+                                  key={a.id}
+                                  className="flex items-center justify-between gap-2 rounded-md bg-card px-2 py-1.5 text-xs"
+                                >
+                                  <div className="min-w-0">
+                                    <p className="truncate font-medium">
+                                      {dataCurta(a.data)}
+                                      {a.lote === null ? " · todo o rebanho" : ""}
+                                    </p>
+                                    <p className="truncate text-muted-foreground">
+                                      {resumoAlimentacao(a)}
+                                      {a.custo_dia !== null
+                                        ? ` · ${moeda(Number(a.custo_dia))}`
+                                        : ""}
+                                    </p>
+                                  </div>
+                                  <div className="flex shrink-0 gap-0.5">
+                                    <Button
+                                      type="button"
+                                      variant="ghost"
+                                      size="icon"
+                                      className="size-6"
+                                      onClick={() => setAlimentacaoEditando(a)}
+                                      aria-label="Editar registro de alimentação"
+                                    >
+                                      <Pencil className="size-3.5" aria-hidden="true" />
+                                    </Button>
+                                    <Button
+                                      type="button"
+                                      variant="ghost"
+                                      size="icon"
+                                      className="size-6 text-destructive hover:text-destructive"
+                                      onClick={() => setAlimentacaoExcluindo(a)}
+                                      aria-label="Excluir registro de alimentação"
+                                    >
+                                      <Trash2 className="size-3.5" aria-hidden="true" />
+                                    </Button>
+                                  </div>
+                                </li>
+                              ))}
+                            </ul>
                           </div>
                         ) : null}
-                        {ultimaAlimentacao.custo_dia !== null ? (
-                          <div className="flex items-center justify-between">
-                            <span className="text-muted-foreground">Custo do dia</span>
-                            <span className="font-semibold">
-                              {moeda(Number(ultimaAlimentacao.custo_dia))}
-                            </span>
+
+                        <div className="mt-3 space-y-1.5">
+                          <Label htmlFor="peso-meta-abate" className="text-xs">
+                            Peso de abate (meta, kg/cabeça) — pra estimar a saída
+                          </Label>
+                          <Input
+                            id="peso-meta-abate"
+                            type="number"
+                            step="1"
+                            min="0"
+                            className="h-8 bg-card text-xs"
+                            value={pesoMetaAbate}
+                            onChange={(ev) => setPesoMetaAbate(ev.target.value)}
+                            placeholder="Ex: 480"
+                          />
+                        </div>
+                        {projecao ? (
+                          <div className="mt-3 space-y-2 rounded-md bg-card px-3 py-2 text-xs">
+                            <div className="flex items-center justify-between">
+                              <span className="text-muted-foreground">Permanência estimada</span>
+                              <span className="font-semibold">
+                                {projecao.diasRestantes} dia(s) restante(s)
+                              </span>
+                            </div>
+                            <div className="flex items-center justify-between">
+                              <span className="text-muted-foreground">Previsão de saída</span>
+                              <span className="font-semibold">
+                                {dataCurta(projecao.previsaoSaida)}
+                              </span>
+                            </div>
+                            <div className="flex items-center justify-between">
+                              <span className="text-muted-foreground">Custo final projetado</span>
+                              <span className="font-semibold">
+                                {moeda(projecao.custoFinalProjetado)}
+                              </span>
+                            </div>
+                            <div className="flex items-center justify-between">
+                              <span className="text-muted-foreground">Custo final / cabeça</span>
+                              <span className="font-semibold">
+                                {moeda(projecao.custoFinalPorCabeca)}
+                              </span>
+                            </div>
                           </div>
+                        ) : pesoMetaAbate ? (
+                          <p className="mt-3 text-[11px] text-muted-foreground">
+                            Informe uma meta maior que o peso atual e registre ao menos duas
+                            pesagens do lote para calcular a projeção.
+                          </p>
                         ) : null}
                       </div>
-                    ) : (
-                      <p className="mt-2 text-xs text-muted-foreground">
-                        Nenhuma alimentação registrada ainda para este lote.
-                      </p>
-                    )}
-
-                    {alimentacaoDoLoteAtual.length > 0 ? (
-                      <div className="mt-3 border-t border-border pt-2">
-                        <p className="text-[11px] font-semibold text-muted-foreground">Histórico</p>
-                        <ul className="mt-1.5 max-h-36 space-y-1.5 overflow-y-auto">
-                          {alimentacaoDoLoteAtual.slice(0, 10).map((a) => (
-                            <li
-                              key={a.id}
-                              className="flex items-center justify-between gap-2 rounded-md bg-card px-2 py-1.5 text-xs"
-                            >
-                              <div className="min-w-0">
-                                <p className="truncate font-medium">
-                                  {dataCurta(a.data)}
-                                  {a.lote === null ? " · todo o rebanho" : ""}
-                                </p>
-                                <p className="truncate text-muted-foreground">
-                                  {resumoAlimentacao(a)}
-                                  {a.custo_dia !== null ? ` · ${moeda(Number(a.custo_dia))}` : ""}
-                                </p>
-                              </div>
-                              <div className="flex shrink-0 gap-0.5">
-                                <Button
-                                  type="button"
-                                  variant="ghost"
-                                  size="icon"
-                                  className="size-6"
-                                  onClick={() => setAlimentacaoEditando(a)}
-                                  aria-label="Editar registro de alimentação"
-                                >
-                                  <Pencil className="size-3.5" aria-hidden="true" />
-                                </Button>
-                                <Button
-                                  type="button"
-                                  variant="ghost"
-                                  size="icon"
-                                  className="size-6 text-destructive hover:text-destructive"
-                                  onClick={() => setAlimentacaoExcluindo(a)}
-                                  aria-label="Excluir registro de alimentação"
-                                >
-                                  <Trash2 className="size-3.5" aria-hidden="true" />
-                                </Button>
-                              </div>
-                            </li>
-                          ))}
-                        </ul>
-                      </div>
-                    ) : null}
-
-                    <div className="mt-3 space-y-1.5">
-                      <Label htmlFor="peso-meta-abate" className="text-xs">
-                        Peso de abate (meta, kg/cabeça) — pra estimar a saída
-                      </Label>
-                      <Input
-                        id="peso-meta-abate"
-                        type="number"
-                        step="1"
-                        min="0"
-                        className="h-8 bg-card text-xs"
-                        value={pesoMetaAbate}
-                        onChange={(ev) => setPesoMetaAbate(ev.target.value)}
-                        placeholder="Ex: 480"
-                      />
                     </div>
-                    {projecao ? (
-                      <div className="mt-3 space-y-2 rounded-md bg-card px-3 py-2 text-xs">
-                        <div className="flex items-center justify-between">
-                          <span className="text-muted-foreground">Permanência estimada</span>
-                          <span className="font-semibold">
-                            {projecao.diasRestantes} dia(s) restante(s)
-                          </span>
-                        </div>
-                        <div className="flex items-center justify-between">
-                          <span className="text-muted-foreground">Previsão de saída</span>
-                          <span className="font-semibold">{dataCurta(projecao.previsaoSaida)}</span>
-                        </div>
-                        <div className="flex items-center justify-between">
-                          <span className="text-muted-foreground">Custo final projetado</span>
-                          <span className="font-semibold">
-                            {moeda(projecao.custoFinalProjetado)}
-                          </span>
-                        </div>
-                        <div className="flex items-center justify-between">
-                          <span className="text-muted-foreground">Custo final / cabeça</span>
-                          <span className="font-semibold">
-                            {moeda(projecao.custoFinalPorCabeca)}
-                          </span>
-                        </div>
-                      </div>
-                    ) : pesoMetaAbate ? (
-                      <p className="mt-3 text-[11px] text-muted-foreground">
-                        Informe uma meta maior que o peso atual e registre ao menos duas pesagens do
-                        lote para calcular a projeção.
-                      </p>
-                    ) : null}
                   </div>
-                </div>
-
-                <div className="mt-4 flex flex-wrap gap-2">
-                  <Button variant="outline" size="sm" onClick={() => setPesagemLoteAberto(true)}>
-                    <Scale className="size-4" aria-hidden="true" />
-                    Pesar lote
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setAlimentacaoLoteAberto(true)}
-                  >
-                    <Wheat className="size-4" aria-hidden="true" />
-                    Alimentação
-                  </Button>
-                  {loteAtual.nome !== SEM_LOTE ? (
-                    <>
-                      <Button variant="outline" size="sm" onClick={() => setCustoLoteAberto(true)}>
-                        <Coins className="size-4" aria-hidden="true" />
-                        Lançar custo
-                      </Button>
-                      <Button size="sm" onClick={() => setVenderLoteAberto(true)}>
-                        <Coins className="size-4" aria-hidden="true" />
-                        Vender lote
-                      </Button>
-                    </>
-                  ) : (
-                    <p className="w-full text-xs text-muted-foreground">
-                      Esses animais não têm um lote definido — dê um nome de lote a eles no Rebanho
-                      para registrar custo ou vender em conjunto.
-                    </p>
-                  )}
-                </div>
+                </details>
               </div>
             ) : null}
 
@@ -1303,12 +1264,119 @@ function Engorda() {
           </TabsContent>
 
           <TabsContent value="animal" className="space-y-4">
+            <form
+              className="grid gap-3 rounded-xl border border-border bg-card p-4 sm:grid-cols-4"
+              onSubmit={(e) => {
+                e.preventDefault();
+                registrar.mutate({ animalId, peso, data });
+              }}
+            >
+              <div className="space-y-1.5">
+                <Label htmlFor="animal-engorda">Animal</Label>
+                <select
+                  id="animal-engorda"
+                  value={animalId}
+                  onChange={(ev) => setAnimalId(ev.target.value)}
+                  className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+                  required
+                >
+                  <option value="">Selecione</option>
+                  {animaisFiltrados.map((a) => (
+                    <option key={a.id} value={a.id}>
+                      {a.nome}
+                      {a.brinco ? ` (${a.brinco})` : ""}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="data-pesagem">Data</Label>
+                <Input
+                  id="data-pesagem"
+                  type="date"
+                  value={data}
+                  onChange={(ev) => setData(ev.target.value)}
+                  required
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="peso-pesagem">Peso (kg)</Label>
+                <Input
+                  id="peso-pesagem"
+                  type="number"
+                  step="0.1"
+                  min="0"
+                  value={peso}
+                  onChange={(ev) => setPeso(ev.target.value)}
+                  required
+                />
+              </div>
+              <div className="flex items-end">
+                <Button type="submit" className="w-full" disabled={registrar.isPending}>
+                  <Plus className="size-4" aria-hidden="true" />
+                  Registrar pesagem
+                </Button>
+              </div>
+            </form>
+
+            <div className="grid gap-4 lg:grid-cols-2">
+              <div className="rounded-xl border border-border bg-card">
+                <div className="border-b border-border px-4 py-3 text-sm font-semibold">
+                  Animais em confinamento
+                </div>
+                <ul className="divide-y divide-border">
+                  {animaisFiltrados.map((a) => (
+                    <li
+                      key={a.id}
+                      className="flex items-center justify-between gap-3 px-4 py-3 text-sm"
+                    >
+                      <span>
+                        {a.nome}
+                        {a.brinco ? (
+                          <span className="text-muted-foreground"> ({a.brinco})</span>
+                        ) : null}
+                      </span>
+                      <span className="font-semibold">
+                        {pesoTexto(a.peso_kg, prefs.unidade_peso)}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+
+              <div className="rounded-xl border border-border bg-card">
+                <div className="border-b border-border px-4 py-3 text-sm font-semibold">
+                  Últimas pesagens
+                </div>
+                {(pesagens.data?.length ?? 0) === 0 ? (
+                  <p className="px-4 py-3 text-sm text-muted-foreground">
+                    Nenhuma pesagem registrada ainda.
+                  </p>
+                ) : (
+                  <ul className="divide-y divide-border">
+                    {pesagens.data?.map((p) => (
+                      <li
+                        key={p.id}
+                        className="flex items-center justify-between gap-3 px-4 py-3 text-sm"
+                      >
+                        <span>
+                          {dataCurta(p.data)} ·{" "}
+                          <span className="text-muted-foreground">
+                            {(p as { animais?: { nome?: string } }).animais?.nome ?? "Rebanho"}
+                          </span>
+                        </span>
+                        <span className="font-semibold">
+                          {p.valor !== null ? pesoTexto(Number(p.valor), prefs.unidade_peso) : "—"}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            </div>
+
             <div className="rounded-xl border border-border bg-card p-4">
               <p className="text-sm font-medium">Venda avulsa</p>
-              <p className="mt-1 text-xs text-muted-foreground">
-                Pra vender um animal (ou peso avulso) com um preço diferente do vigente — se
-                escolher um animal do lote, ele já fecha como "vendido" automaticamente.
-              </p>
 
               {mostrarFormVendaAvulsa ? (
                 <form
@@ -1470,120 +1538,40 @@ function Engorda() {
                 </Button>
               )}
             </div>
-
-            <form
-              className="grid gap-3 rounded-xl border border-border bg-card p-4 sm:grid-cols-4"
-              onSubmit={(e) => {
-                e.preventDefault();
-                registrar.mutate({ animalId, peso, data });
-              }}
-            >
-              <div className="space-y-1.5">
-                <Label htmlFor="animal-engorda">Animal</Label>
-                <select
-                  id="animal-engorda"
-                  value={animalId}
-                  onChange={(ev) => setAnimalId(ev.target.value)}
-                  className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
-                  required
-                >
-                  <option value="">Selecione</option>
-                  {animaisFiltrados.map((a) => (
-                    <option key={a.id} value={a.id}>
-                      {a.nome}
-                      {a.brinco ? ` (${a.brinco})` : ""}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="data-pesagem">Data</Label>
-                <Input
-                  id="data-pesagem"
-                  type="date"
-                  value={data}
-                  onChange={(ev) => setData(ev.target.value)}
-                  required
-                />
-              </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="peso-pesagem">Peso (kg)</Label>
-                <Input
-                  id="peso-pesagem"
-                  type="number"
-                  step="0.1"
-                  min="0"
-                  value={peso}
-                  onChange={(ev) => setPeso(ev.target.value)}
-                  required
-                />
-              </div>
-              <div className="flex items-end">
-                <Button type="submit" className="w-full" disabled={registrar.isPending}>
-                  <Plus className="size-4" aria-hidden="true" />
-                  Registrar pesagem
-                </Button>
-              </div>
-            </form>
-
-            <div className="grid gap-4 lg:grid-cols-2">
-              <div className="rounded-xl border border-border bg-card">
-                <div className="border-b border-border px-4 py-3 text-sm font-semibold">
-                  Animais em confinamento
-                </div>
-                <ul className="divide-y divide-border">
-                  {animaisFiltrados.map((a) => (
-                    <li
-                      key={a.id}
-                      className="flex items-center justify-between gap-3 px-4 py-3 text-sm"
-                    >
-                      <span>
-                        {a.nome}
-                        {a.brinco ? (
-                          <span className="text-muted-foreground"> ({a.brinco})</span>
-                        ) : null}
-                      </span>
-                      <span className="font-semibold">
-                        {pesoTexto(a.peso_kg, prefs.unidade_peso)}
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-
-              <div className="rounded-xl border border-border bg-card">
-                <div className="border-b border-border px-4 py-3 text-sm font-semibold">
-                  Últimas pesagens
-                </div>
-                {(pesagens.data?.length ?? 0) === 0 ? (
-                  <p className="px-4 py-3 text-sm text-muted-foreground">
-                    Nenhuma pesagem registrada ainda.
-                  </p>
-                ) : (
-                  <ul className="divide-y divide-border">
-                    {pesagens.data?.map((p) => (
-                      <li
-                        key={p.id}
-                        className="flex items-center justify-between gap-3 px-4 py-3 text-sm"
-                      >
-                        <span>
-                          {dataCurta(p.data)} ·{" "}
-                          <span className="text-muted-foreground">
-                            {(p as { animais?: { nome?: string } }).animais?.nome ?? "Rebanho"}
-                          </span>
-                        </span>
-                        <span className="font-semibold">
-                          {p.valor !== null ? pesoTexto(Number(p.valor), prefs.unidade_peso) : "—"}
-                        </span>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </div>
-            </div>
           </TabsContent>
         </Tabs>
       )}
+
+      <div className="mt-5">
+        <CartaoConfig id="lotes-vendidos" titulo="Resultado dos lotes vendidos">
+          {lotesEncerrados.length === 0 ? (
+            <p className="text-sm text-muted-foreground">
+              Quando você vender um lote pelo botão "Vender lote", o resultado aparece aqui.
+            </p>
+          ) : (
+            <ul className="divide-y divide-border">
+              {lotesEncerrados.slice(0, 6).map((v) => (
+                <li key={v.id} className="flex items-center justify-between gap-3 py-2 text-sm">
+                  <span className="min-w-0">
+                    <span className="block truncate font-medium">{v.lote}</span>
+                    <span className="block text-xs text-muted-foreground">
+                      {dataCurta(v.data)} · venda {moeda(v.receita)} · custo {moeda(v.custo)}
+                    </span>
+                  </span>
+                  <span
+                    className={cn(
+                      "shrink-0 font-semibold",
+                      v.resultado < 0 ? "text-destructive" : "text-success",
+                    )}
+                  >
+                    {moeda(v.resultado)}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </CartaoConfig>
+      </div>
     </AppShell>
   );
 }

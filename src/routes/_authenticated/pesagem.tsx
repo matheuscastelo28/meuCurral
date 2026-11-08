@@ -273,7 +273,6 @@ function PesagemRapida() {
   return (
     <AppShell
       titulo="Pesagem rápida"
-      descricao="Digite o brinco, aperte Enter, digite o peso e Enter de novo — já vai pro próximo."
       acao={
         <Button variant="outline" asChild>
           <Link to="/engorda">

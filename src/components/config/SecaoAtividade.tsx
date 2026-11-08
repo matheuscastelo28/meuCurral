@@ -59,11 +59,7 @@ export function SecaoAtividade() {
     : false;
 
   return (
-    <CartaoConfig
-      id="atividade"
-      titulo="Atividade da fazenda"
-      descricao='Define o que aparece no menu — ex: "Leite" some e vira "Confinamento" se for só ovinos.'
-    >
+    <CartaoConfig id="atividade" titulo="Atividade da fazenda">
       <div className="grid gap-3 sm:grid-cols-2">
         {OPCOES.map((op) => {
           const ativo = selecionadas.includes(op.valor);

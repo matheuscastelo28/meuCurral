@@ -214,7 +214,6 @@ function Inicio() {
   return (
     <AppShell
       titulo={`Olá! Sua fazenda hoje`}
-      descricao="Um resumo rápido do que está acontecendo no rebanho."
       acao={
         <Button asChild>
           <Link to="/rebanho">

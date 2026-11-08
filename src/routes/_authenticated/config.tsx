@@ -51,10 +51,7 @@ function Config() {
   }
 
   return (
-    <AppShell
-      titulo="Configurações"
-      descricao="Ajuste a fazenda, sua conta e como o sistema se comporta."
-    >
+    <AppShell titulo="Configurações">
       <nav aria-label="Seções das configurações" className="mb-5 flex flex-wrap gap-2">
         {ATALHOS.map((a) => (
           <a
@@ -76,11 +73,7 @@ function Config() {
         <SecaoPlano />
         <SecaoDados />
 
-        <CartaoConfig
-          id="sobre"
-          titulo="Sobre e privacidade"
-          descricao="Seus dados ficam isolados por fazenda, com regras aplicadas no próprio banco de dados."
-        >
+        <CartaoConfig id="sobre" titulo="Sobre e privacidade">
           <div className="flex flex-wrap items-center gap-3 text-sm">
             <Link to="/termos" className="text-primary underline underline-offset-4">
               Termos de uso

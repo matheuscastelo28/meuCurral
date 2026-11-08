@@ -20,11 +20,7 @@ export function SecaoPerfil() {
   }, [perfil]);
 
   return (
-    <CartaoConfig
-      id="perfil"
-      titulo="Meu perfil"
-      descricao="Como você aparece no sistema e qual é o seu uso principal."
-    >
+    <CartaoConfig id="perfil" titulo="Meu perfil">
       <form
         className="grid gap-3 sm:grid-cols-2"
         onSubmit={(e) => {
@@ -63,7 +59,9 @@ export function SecaoPerfil() {
         </div>
         <div className="sm:col-span-2">
           <Button type="submit" disabled={salvar.isPending}>
-            {salvar.isPending ? <Loader2 className="size-4 animate-spin" aria-hidden="true" /> : null}
+            {salvar.isPending ? (
+              <Loader2 className="size-4 animate-spin" aria-hidden="true" />
+            ) : null}
             Salvar perfil
           </Button>
         </div>

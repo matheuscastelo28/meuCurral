@@ -43,6 +43,7 @@ import { rotuloTurno } from "@/lib/rotulos";
 import { usePreferencias } from "@/hooks/use-preferencias";
 import { PRODUTOS_LEITE, rotuloProduto, unidadeProduto } from "@/lib/produtos-leite";
 import { encontrarPrecoVigente } from "@/lib/precos-produto";
+import { SecaoDerivados } from "@/components/leite/SecaoDerivados";
 
 const CONSUMO_TIPOS = [
   { valor: "bezerros", rotulo: "Bezerros" },
@@ -93,7 +94,6 @@ function Leite() {
   const [data, setData] = useState(hoje);
   const [litros, setLitros] = useState("");
   const [turno, setTurno] = useState("manha");
-  const [produto, setProduto] = useState("leite");
   const [animalId, setAnimalId] = useState("");
   const [loteData, setLoteData] = useState(hoje);
   const [loteSelecionado, setLoteSelecionado] = useState("");
@@ -105,13 +105,9 @@ function Leite() {
     texto: string;
   } | null>(null);
 
+  // Derivados (queijo, manteiga...) têm seção própria lá embaixo; o
+  // formulário de cima é só a ordenha.
   const produtosTrabalhados = fazenda?.produtos_leite?.length ? fazenda.produtos_leite : ["leite"];
-  const opcoesProduto = PRODUTOS_LEITE.filter((p) => produtosTrabalhados.includes(p.valor));
-
-  useEffect(() => {
-    if (!produtosTrabalhados.includes(produto)) setProduto(produtosTrabalhados[0] ?? "leite");
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [fazenda?.id]);
 
   const registros = useQuery({
     queryKey: ["leite", fazenda?.id],
@@ -213,7 +209,7 @@ function Leite() {
           data,
           litros: Number(litros),
           turno,
-          produto,
+          produto: "leite",
         } as never);
         if (error) throw error;
       } else {
@@ -244,6 +240,7 @@ function Leite() {
   });
 
   const leite30d = (ultimos30Dias.data ?? []).filter((r) => r.produto === "leite");
+  const registrosLeite = (registros.data ?? []).filter((r) => (r.produto ?? "leite") === "leite");
   const registrosHoje = leite30d.filter((r) => dataISO(r.data) === hoje);
   const totalHoje = registrosHoje.reduce((s, r) => s + Number(r.litros), 0);
 
@@ -461,6 +458,9 @@ function Leite() {
     derivado?: string | undefined;
     nome?: string | undefined;
     quantidade: string;
+    // Veio de uma fabricação de derivado: não se edita aqui (excluir a
+    // fabricação lá embaixo devolve o leite).
+    fixo?: boolean;
   };
 
   type DescarteEntry = {
@@ -502,6 +502,7 @@ function Leite() {
         derivado: tipo === "derivados" ? (d.observacoes ?? undefined) : undefined,
         nome: tipo === "outros" ? (d.observacoes ?? undefined) : undefined,
         quantidade: String(d.quantidade),
+        fixo: !!d.producao_id,
       });
     }
     setConsumoEntries(consumo);
@@ -516,6 +517,7 @@ function Leite() {
 
   function rotuloConsumoEntry(e: ConsumoEntry) {
     const base = CONSUMO_TIPOS.find((t) => t.valor === e.tipo)?.rotulo ?? e.tipo;
+    if (e.fixo && e.derivado) return `Fabricação de ${rotuloProduto(e.derivado).toLowerCase()}`;
     if (e.tipo === "derivados" && e.derivado) return `${base} — ${rotuloProduto(e.derivado)}`;
     if (e.tipo === "outros" && e.nome) return e.nome;
     return base;
@@ -576,6 +578,7 @@ function Leite() {
       const lista = [
         ...(vendaLitrosHoje > 0 ? [{ destino: "venda", quantidade: vendaLitrosHoje }] : []),
         ...consumoEntries
+          .filter((e) => !e.fixo)
           .map((e) => ({
             destino: e.tipo,
             quantidade: Number(e.quantidade) || 0,
@@ -616,14 +619,10 @@ function Leite() {
   const i = indices.data;
 
   return (
-    <AppShell titulo="Leite" descricao="Registre a ordenha do dia e acompanhe a produção.">
+    <AppShell titulo="Leite">
       <div className="mb-5 rounded-xl border border-border bg-card p-4">
         <h2 className="text-base font-semibold">Registrar produção de leite</h2>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Informe a produção do dia por animal ou por lote.
-        </p>
-
-        <div className="mt-4 flex gap-2">
+        <div className="mt-3 flex gap-2">
           <Button
             type="button"
             size="sm"
@@ -651,7 +650,7 @@ function Leite() {
 
         {modoRegistro === "vaca" ? (
           <form
-            className="mt-4 grid gap-3 sm:grid-cols-5"
+            className="mt-4 grid gap-3 sm:grid-cols-4"
             onSubmit={(e) => {
               e.preventDefault();
               salvar.mutate();
@@ -693,22 +692,7 @@ function Leite() {
               />
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="produto">Produto</Label>
-              <select
-                id="produto"
-                value={produto}
-                onChange={(e) => setProduto(e.target.value)}
-                className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
-              >
-                {opcoesProduto.map((p) => (
-                  <option key={p.valor} value={p.valor}>
-                    {p.rotulo}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="litros">Quantidade ({unidadeProduto(produto)})</Label>
+              <Label htmlFor="litros">Quantidade (L)</Label>
               <Input
                 id="litros"
                 type="number"
@@ -732,13 +716,13 @@ function Leite() {
                 <option value="noite">Noite</option>
               </select>
             </div>
-            <div className="flex items-end sm:col-span-5">
+            <div className="flex items-end sm:col-span-4">
               <Button type="submit" disabled={salvar.isPending}>
                 <Plus className="size-4" aria-hidden="true" />
                 Registrar
               </Button>
             </div>
-            <p className="text-xs text-muted-foreground sm:col-span-5">
+            <p className="text-xs text-muted-foreground sm:col-span-4">
               Total registrado hoje: {totalHoje.toLocaleString("pt-BR")} L
             </p>
           </form>
@@ -912,7 +896,7 @@ function Leite() {
         ) : null}
       </div>
 
-      <div className="mb-5 grid gap-4 lg:grid-cols-2">
+      <div className="mb-5 grid gap-4 lg:grid-cols-2 [&>*]:min-w-0">
         <div className="rounded-xl border border-border bg-card p-4">
           <div className="flex items-baseline justify-between gap-2">
             <h2 className="text-base font-semibold">Produção dos últimos 30 dias</h2>
@@ -949,7 +933,7 @@ function Leite() {
           <div className="border-b border-border px-4 py-3 text-sm font-semibold">
             Últimos registros
           </div>
-          {(registros.data?.length ?? 0) === 0 ? (
+          {registrosLeite.length === 0 ? (
             <div className="p-4">
               <EmptyState
                 icon={Milk}
@@ -959,7 +943,7 @@ function Leite() {
             </div>
           ) : (
             <ul className="max-h-80 divide-y divide-border overflow-y-auto">
-              {registros.data?.map((r) => {
+              {registrosLeite.map((r) => {
                 const nomeVaca = (r as { animais?: { nome?: string } | null }).animais?.nome;
                 const origem = r.lote ? `Lote ${r.lote}` : nomeVaca ? nomeVaca : "Rebanho";
                 return (
@@ -1023,12 +1007,8 @@ function Leite() {
       </AlertDialog>
 
       <h2 className="mb-3 text-base font-semibold">Preço, venda e destino do leite</h2>
-      <div className="mb-5 grid gap-4 lg:grid-cols-2">
-        <CartaoConfig
-          id="preco-leite"
-          titulo="Preço do leite"
-          descricao="Vale para os litros vendidos a partir da data de vigência — o histórico anterior continua usando o preço antigo."
-        >
+      <div className="mb-5 grid gap-4 lg:grid-cols-2 [&>*]:min-w-0">
+        <CartaoConfig id="preco-leite" titulo="Preço do leite">
           {precoVigente ? (
             <div className="flex items-center gap-3">
               <span className="flex size-9 items-center justify-center rounded-lg bg-accent text-primary">
@@ -1115,11 +1095,6 @@ function Leite() {
 
           <div className="mt-5 border-t border-border pt-4">
             <h3 className="text-base font-semibold">Venda</h3>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Venda avulsa: preço digitado na hora, pra uma ocasião específica. Venda para
-              laticínio: usa o preço do leite vigente na data escolhida, sem digitar de novo.
-            </p>
-
             {mostrarFormVenda ? (
               <div className="mt-3">
                 <div className="flex gap-2">
@@ -1456,11 +1431,7 @@ function Leite() {
           </div>
         </CartaoConfig>
 
-        <CartaoConfig
-          id="destinacao-leite"
-          titulo="Destinação de hoje"
-          descricao="Nem todo litro produzido é vendido — a venda vem das vendas já registradas, e o resto você separa em consumo. Só a parte vendida vira receita."
-        >
+        <CartaoConfig id="destinacao-leite" titulo="Destinação de hoje">
           <div className="mb-3 grid grid-cols-2 gap-3 text-sm sm:grid-cols-5">
             <div>
               <p className="text-xs text-muted-foreground">Produzido hoje</p>
@@ -1517,9 +1488,7 @@ function Leite() {
             <div className="flex items-center justify-between gap-3 rounded-lg border border-border px-3 py-2">
               <div>
                 <p className="text-sm font-medium">Venda</p>
-                <p className="text-xs text-muted-foreground">
-                  Somado das vendas já registradas hoje — registre em "Venda", no card de preço.
-                </p>
+                <p className="text-xs text-muted-foreground">Vem das vendas registradas hoje.</p>
               </div>
               <span className="font-display text-sm font-extrabold whitespace-nowrap">
                 {vendaLitrosHoje.toLocaleString("pt-BR")} L
@@ -1530,9 +1499,6 @@ function Leite() {
               <div className="flex items-center justify-between gap-3">
                 <div>
                   <p className="text-sm font-medium">Consumo</p>
-                  <p className="text-xs text-muted-foreground">
-                    Bezerros, consumo familiar, derivados ou outros.
-                  </p>
                 </div>
                 <div className="flex items-center gap-2">
                   <span className="font-display text-sm font-extrabold whitespace-nowrap">
@@ -1560,14 +1526,16 @@ function Leite() {
                         <span className="font-medium whitespace-nowrap">
                           {Number(e.quantidade).toLocaleString("pt-BR")} L
                         </span>
-                        <button
-                          type="button"
-                          className="text-muted-foreground hover:text-destructive"
-                          aria-label="Remover"
-                          onClick={() => removerConsumo(e.id)}
-                        >
-                          ×
-                        </button>
+                        {e.fixo ? null : (
+                          <button
+                            type="button"
+                            className="text-muted-foreground hover:text-destructive"
+                            aria-label="Remover"
+                            onClick={() => removerConsumo(e.id)}
+                          >
+                            ×
+                          </button>
+                        )}
                       </span>
                     </li>
                   ))}
@@ -1655,9 +1623,6 @@ function Leite() {
               <div className="flex items-center justify-between gap-3">
                 <div>
                   <p className="text-sm font-medium">Descarte</p>
-                  <p className="text-xs text-muted-foreground">
-                    Leite com antibiótico, mastite ou outro motivo de descarte.
-                  </p>
                 </div>
                 <div className="flex items-center gap-2">
                   <span className="font-display text-sm font-extrabold whitespace-nowrap">
@@ -1753,6 +1718,14 @@ function Leite() {
           </div>
         </CartaoConfig>
       </div>
+
+      {fazenda ? (
+        <SecaoDerivados
+          fazendaId={fazenda.id}
+          produtosMarcados={produtosTrabalhados}
+          moeda={moeda}
+        />
+      ) : null}
     </AppShell>
   );
 }
