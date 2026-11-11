@@ -1583,16 +1583,16 @@ function Financeiro() {
                       </p>
                     ) : daAlimentacao ? (
                       <p className="text-xs text-muted-foreground">
-                        Gerado pela alimentação do lote. Para mudar, edite a alimentação em
-                        Confinamento.
+                        Gerado pela alimentação do lote. Ao editar, o custo e a data do registro em
+                        Confinamento acompanham. Para excluir, exclua o registro lá.
                       </p>
                     ) : doRegistro ? (
                       <p className="text-xs text-muted-foreground">
-                        Custo {doRegistro}. Para mudar, exclua o registro lá e registre de novo.
+                        Custo {doRegistro}. Para excluir, exclua o registro lá.
                       </p>
                     ) : null}
                     <DialogFooter className="mt-3 flex-wrap gap-2">
-                      {venda || (!daAlimentacao && !doRegistro) ? (
+                      {
                         <>
                           {venda ? (
                             <Button
@@ -1604,7 +1604,7 @@ function Financeiro() {
                               <Undo2 className="size-4" aria-hidden="true" />
                               Estornar venda
                             </Button>
-                          ) : (
+                          ) : daAlimentacao || doRegistro ? null : (
                             <Button
                               type="button"
                               variant="ghost"
@@ -1634,7 +1634,7 @@ function Financeiro() {
                             Editar
                           </Button>
                         </>
-                      ) : null}
+                      }
                       {lancamentoSelecionado.status === "a_receber" ? (
                         <Button
                           type="button"

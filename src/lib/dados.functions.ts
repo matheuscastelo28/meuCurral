@@ -1919,10 +1919,10 @@ function formaValida(forma: string | null | undefined, padrao: string | null) {
 }
 
 /**
- * Edita um lançamento. Se ele nasceu de uma venda, a venda acompanha (valor,
- * preço unitário, data, comprador), então não precisa mais estornar para
- * corrigir um valor ou uma data. Lançamentos gerados por alimentação,
- * derivado ou reprodução continuam sendo editados na origem.
+ * Edita um lançamento de qualquer origem. Se nasceu de uma venda, a venda
+ * acompanha (valor, preço unitário, data, comprador); se nasceu da
+ * alimentação do lote, o custo e a data do registro também mudam lá.
+ * Custos de derivado, reprodução e manejo são editados direto.
  */
 export const editarLancamento = createServerFn({ method: "POST" })
   .inputValidator(
@@ -1961,14 +1961,6 @@ export const editarLancamento = createServerFn({ method: "POST" })
           where id = ${data.id} and fazenda_id = ${data.fazendaId} for update`;
         const lanc = linhas[0];
         if (!lanc) throw new Error("Lançamento não encontrado.");
-        if (lanc.producao_id || lanc.reproducao_id) {
-          throw new Error("Esse custo veio de outro registro. Edite lá.");
-        }
-        const alim: any[] = await tx`
-          select 1 from alimentacao_lote where despesa_id = ${data.id} limit 1`;
-        if (alim.length > 0)
-          throw new Error("Esse custo veio da alimentação. Edite no Confinamento.");
-
         const forma = formaValida(data.formaPagamento, lanc.forma_pagamento ?? "dinheiro");
         const parcelas =
           forma === "cartao" ? Math.max(1, Math.floor(Number(data.parcelas) || 1)) : null;
@@ -1984,6 +1976,12 @@ export const editarLancamento = createServerFn({ method: "POST" })
             categoria = ${data.categoria || null}, forma_pagamento = ${forma},
             parcelas = ${parcelas}, status = ${status}, updated_at = now()
           where id = ${data.id}`;
+
+        // Custo da alimentação do lote: o registro de origem (Confinamento)
+        // acompanha, para o custo do dia e a data nunca divergirem.
+        await tx`
+          update alimentacao_lote set custo_dia = ${valor}, data = ${data.data}, updated_at = now()
+          where despesa_id = ${data.id}`;
 
         const vendas: Linha[] = await tx`
           select id, quantidade from vendas where financeiro_id = ${data.id} for update`;
