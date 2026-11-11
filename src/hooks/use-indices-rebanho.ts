@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { db } from "@/lib/local-db";
 import { dataISO, diasAtrasISO } from "@/lib/formato";
+import { agruparPorAnimal, estadoDaFemea, type RegistroRepro } from "@/lib/reproducao";
 
 export interface IndicesRebanho {
   totalRebanho: number;
@@ -28,9 +29,8 @@ export function useIndicesRebanho(fazendaId: string | undefined, categorias?: re
         db.from("animais").select("id, categoria, status").eq("fazenda_id", fazendaId!),
         db
           .from("reproducao")
-          .select("animal_id, data")
+          .select("animal_id, tipo, data, resultado, created_at")
           .eq("fazenda_id", fazendaId!)
-          .eq("tipo", "parto")
           .order("data", { ascending: false }),
         db
           .from("animais")
@@ -56,11 +56,23 @@ export function useIndicesRebanho(fazendaId: string | undefined, categorias?: re
       const idsValidos = categorias ? new Set(animais.map((a) => a.id)) : null;
       const ativos = animais.filter((a) => a.status !== "vendido" && a.status !== "morto");
       const totalRebanho = ativos.length;
-      const totalPrenhes = animais.filter((a) => a.status === "prenhe").length;
+      // Prenhe = situação "prenhe" OU diagnóstico positivo ainda sem parto
+      // no histórico (vaca em lactação também pode estar prenhe).
+      const reproTodos = (partosRes.data ?? []) as RegistroRepro[];
+      const porAnimal = agruparPorAnimal(reproTodos);
+      const prenhes = new Set(ativos.filter((a) => a.status === "prenhe").map((a) => a.id));
+      for (const a of ativos) {
+        const est = estadoDaFemea(porAnimal.get(a.id) ?? []);
+        if (est.servicoAberto && est.diagnostico === "positivo") prenhes.add(a.id);
+      }
+      const totalPrenhes = prenhes.size;
       const lactantes = animais.filter((a) => a.status === "lactacao").length;
       const vacas = ativos.filter((a) => a.categoria === "vaca").length;
 
-      const partosTodos = partosRes.data ?? [];
+      const partosTodos = reproTodos.filter((r) => r.tipo === "parto") as {
+        animal_id: string;
+        data: string;
+      }[];
       const partos = idsValidos
         ? partosTodos.filter((p) => idsValidos.has(p.animal_id))
         : partosTodos;
