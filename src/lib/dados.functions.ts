@@ -7,6 +7,7 @@
  */
 import { createServerFn } from "@tanstack/react-start";
 import type { Sql } from "./pg.server";
+import type { TransactionSql } from "postgres";
 import { planoDaFazenda } from "./planos";
 import { PRODUTOS_LEITE, rotuloProduto } from "./produtos-leite";
 import { especieDoAnimal } from "./especies";
@@ -1888,6 +1889,299 @@ export const cancelarConta = createServerFn({ method: "POST" })
       return {
         data: null,
         error: { message: erro instanceof Error ? erro.message : "Erro ao cancelar conta." },
+      };
+    }
+  });
+
+// ---------------------------------------------------------------------------
+// Edição do Financeiro: lançamento (com a venda de origem), conta e parcela
+// ---------------------------------------------------------------------------
+
+type Linha = {
+  id: string;
+  tipo: string;
+  status: string;
+  quantidade: string | number;
+  forma_pagamento: string | null;
+  producao_id: string | null;
+  reproducao_id: string | null;
+  valor_total: string | number;
+  conta_id: string;
+  numero: number;
+  valor: string | number;
+};
+
+const FORMAS_VALIDAS = ["dinheiro", "pix", "cartao", "boleto", "transferencia", "cheque", "outro"];
+
+function formaValida(forma: string | null | undefined, padrao: string | null) {
+  if (!forma) return padrao;
+  return FORMAS_VALIDAS.includes(forma) ? forma : padrao;
+}
+
+/**
+ * Edita um lançamento. Se ele nasceu de uma venda, a venda acompanha (valor,
+ * preço unitário, data, comprador), então não precisa mais estornar para
+ * corrigir um valor ou uma data. Lançamentos gerados por alimentação,
+ * derivado ou reprodução continuam sendo editados na origem.
+ */
+export const editarLancamento = createServerFn({ method: "POST" })
+  .inputValidator(
+    (dados: {
+      token: string | null;
+      fazendaId: string;
+      id: string;
+      descricao: string;
+      valor: number;
+      data: string;
+      categoria?: string | null;
+      formaPagamento?: string | null;
+      parcelas?: number | null;
+      status?: "recebido" | "a_receber" | null;
+      comprador?: string | null | undefined;
+    }) => dados,
+  )
+  .handler(async ({ data }) => {
+    try {
+      const { conexao } = await import("./pg.server");
+      const sql = await conexao();
+      const userId = await fazendaDoUsuario(sql, data.token, data.fazendaId);
+      if (!userId) {
+        return { data: null, error: { message: "Não autenticado ou fazenda inválida." } };
+      }
+      const descricao = data.descricao.trim();
+      const valor = Math.round(Number(data.valor) * 100) / 100;
+      if (!descricao) throw new Error("Informe a descrição.");
+      if (!Number.isFinite(valor) || valor <= 0)
+        throw new Error("Informe um valor maior que zero.");
+      if (!data.data) throw new Error("Informe a data.");
+
+      const resultado = await sql.begin(async (tx) => {
+        const linhas: Linha[] = await tx`
+          select * from financeiro_lancamentos
+          where id = ${data.id} and fazenda_id = ${data.fazendaId} for update`;
+        const lanc = linhas[0];
+        if (!lanc) throw new Error("Lançamento não encontrado.");
+        if (lanc.producao_id || lanc.reproducao_id) {
+          throw new Error("Esse custo veio de outro registro. Edite lá.");
+        }
+        const alim: any[] = await tx`
+          select 1 from alimentacao_lote where despesa_id = ${data.id} limit 1`;
+        if (alim.length > 0)
+          throw new Error("Esse custo veio da alimentação. Edite no Confinamento.");
+
+        const forma = formaValida(data.formaPagamento, lanc.forma_pagamento ?? "dinheiro");
+        const parcelas =
+          forma === "cartao" ? Math.max(1, Math.floor(Number(data.parcelas) || 1)) : null;
+        // Só receita alterna entre "a receber" e "recebido"; despesa fica como está.
+        const status =
+          lanc.tipo === "receita" && (data.status === "recebido" || data.status === "a_receber")
+            ? data.status
+            : lanc.status;
+
+        await tx`
+          update financeiro_lancamentos set
+            descricao = ${descricao}, valor = ${valor}, data = ${data.data},
+            categoria = ${data.categoria || null}, forma_pagamento = ${forma},
+            parcelas = ${parcelas}, status = ${status}, updated_at = now()
+          where id = ${data.id}`;
+
+        const vendas: Linha[] = await tx`
+          select id, quantidade from vendas where financeiro_id = ${data.id} for update`;
+        const venda = vendas[0];
+        if (venda) {
+          const qtd = Number(venda.quantidade) || 1;
+          await tx`
+            update vendas set
+              valor_total = ${valor},
+              preco_unitario = ${Math.round((valor / qtd) * 100) / 100},
+              data = ${data.data},
+              updated_at = now()
+            where id = ${venda.id}`;
+          if (data.comprador !== undefined) {
+            await tx`
+              update vendas set comprador = ${data.comprador?.trim() || null}
+              where id = ${venda.id}`;
+          }
+        }
+        return { vendaAtualizada: !!venda };
+      });
+      return { data: resultado, error: null };
+    } catch (erro) {
+      return {
+        data: null,
+        error: { message: erro instanceof Error ? erro.message : "Erro ao editar o lançamento." },
+      };
+    }
+  });
+
+// Recalcula total, saldo e situação da conta a partir das parcelas.
+async function recalcularConta(tx: TransactionSql, contaId: string) {
+  const ps: { valor: string; status: string }[] = await tx`
+    select valor, status from parcelas where conta_id = ${contaId}`;
+  const ativas = ps.filter((p) => p.status !== "cancelado");
+  const total = ativas.reduce((s, p) => s + Number(p.valor), 0);
+  const restante = ativas
+    .filter((p) => p.status === "pendente")
+    .reduce((s, p) => s + Number(p.valor), 0);
+  const algumPago = ativas.some((p) => p.status === "pago");
+  const status = restante <= 0 && algumPago ? "pago" : algumPago ? "parcial" : "pendente";
+  await tx`
+    update contas set valor_total = ${Math.round(total * 100) / 100},
+      valor_restante = ${Math.round(restante * 100) / 100}, status = ${status}, updated_at = now()
+    where id = ${contaId}`;
+}
+
+/**
+ * Edita os dados de uma conta. Mudar o valor total redistribui a diferença
+ * entre as parcelas ainda pendentes (as já pagas não mudam).
+ */
+export const editarConta = createServerFn({ method: "POST" })
+  .inputValidator(
+    (dados: {
+      token: string | null;
+      fazendaId: string;
+      contaId: string;
+      descricao: string;
+      valorTotal: number;
+      dataEmissao: string;
+      categoria?: string | null;
+      pessoa?: string | null;
+      formaPagamento?: string | null;
+      observacoes?: string | null;
+    }) => dados,
+  )
+  .handler(async ({ data }) => {
+    try {
+      const { conexao } = await import("./pg.server");
+      const sql = await conexao();
+      const userId = await fazendaDoUsuario(sql, data.token, data.fazendaId);
+      if (!userId) {
+        return { data: null, error: { message: "Não autenticado ou fazenda inválida." } };
+      }
+      const descricao = data.descricao.trim();
+      const novoTotal = Math.round(Number(data.valorTotal) * 100) / 100;
+      if (!descricao) throw new Error("Informe a descrição.");
+      if (!Number.isFinite(novoTotal) || novoTotal <= 0) {
+        throw new Error("Informe um valor maior que zero.");
+      }
+      if (!data.dataEmissao) throw new Error("Informe a data da conta.");
+
+      await sql.begin(async (tx) => {
+        const cs: Linha[] = await tx`
+          select * from contas where id = ${data.contaId} and fazenda_id = ${data.fazendaId}
+          for update`;
+        const conta = cs[0];
+        if (!conta) throw new Error("Conta não encontrada.");
+        if (conta.status === "cancelado") throw new Error("Conta cancelada não pode ser editada.");
+
+        await tx`
+          update contas set descricao = ${descricao}, data_emissao = ${data.dataEmissao},
+            categoria = ${data.categoria || null}, pessoa = ${data.pessoa?.trim() || null},
+            forma_pagamento = ${formaValida(data.formaPagamento, conta.forma_pagamento)},
+            observacoes = ${data.observacoes?.trim() || null}, updated_at = now()
+          where id = ${data.contaId}`;
+
+        if (Math.abs(novoTotal - Number(conta.valor_total)) >= 0.005) {
+          const ps: Linha[] = await tx`
+            select * from parcelas where conta_id = ${data.contaId} and status <> 'cancelado'
+            order by numero for update`;
+          const pagas = ps.filter((p) => p.status === "pago");
+          const pendentes = ps.filter((p) => p.status === "pendente");
+          const somaPagas = pagas.reduce((s, p) => s + Number(p.valor), 0);
+          const restante = Math.round((novoTotal - somaPagas) * 100) / 100;
+          if (pendentes.length === 0) {
+            throw new Error(
+              "Todas as parcelas já foram pagas. Reabra uma parcela para mudar o valor.",
+            );
+          }
+          if (restante <= 0) {
+            throw new Error(
+              `O valor precisa ser maior que o já pago (${somaPagas.toFixed(2).replace(".", ",")}).`,
+            );
+          }
+          const { gerarParcelas } = await import("./parcelamento");
+          const novas = gerarParcelas(restante, pendentes.length, "2000-01-01", 1);
+          for (let i = 0; i < pendentes.length; i++) {
+            await tx`
+              update parcelas set valor = ${novas[i]!.valor}, updated_at = now()
+              where id = ${pendentes[i]!.id}`;
+          }
+        }
+        await recalcularConta(tx, data.contaId);
+      });
+      return { data: { ok: true }, error: null };
+    } catch (erro) {
+      return {
+        data: null,
+        error: { message: erro instanceof Error ? erro.message : "Erro ao editar a conta." },
+      };
+    }
+  });
+
+/**
+ * Edita uma parcela: vencimento e valor (pendente), data e forma do
+ * pagamento (paga), ou reabre uma parcela paga por engano.
+ */
+export const editarParcela = createServerFn({ method: "POST" })
+  .inputValidator(
+    (dados: {
+      token: string | null;
+      fazendaId: string;
+      parcelaId: string;
+      vencimento?: string | null;
+      valor?: number | null;
+      pagoEm?: string | null;
+      formaPagamento?: string | null;
+      reabrir?: boolean;
+    }) => dados,
+  )
+  .handler(async ({ data }) => {
+    try {
+      const { conexao } = await import("./pg.server");
+      const sql = await conexao();
+      const userId = await fazendaDoUsuario(sql, data.token, data.fazendaId);
+      if (!userId) {
+        return { data: null, error: { message: "Não autenticado ou fazenda inválida." } };
+      }
+      await sql.begin(async (tx) => {
+        const ps: Linha[] = await tx`
+          select * from parcelas where id = ${data.parcelaId} and fazenda_id = ${data.fazendaId}
+          for update`;
+        const p = ps[0];
+        if (!p) throw new Error("Parcela não encontrada.");
+        if (p.status === "cancelado") throw new Error("Parcela cancelada não pode ser editada.");
+
+        if (data.reabrir) {
+          if (p.status !== "pago") throw new Error("Só dá para reabrir uma parcela paga.");
+          await tx`
+            update parcelas set status = 'pendente', pago_em = null, updated_at = now()
+            where id = ${p.id}`;
+        } else if (p.status === "pago") {
+          await tx`
+            update parcelas set pago_em = coalesce(${data.pagoEm ?? null}::date, pago_em),
+              forma_pagamento = ${formaValida(data.formaPagamento, p.forma_pagamento)},
+              updated_at = now()
+            where id = ${p.id}`;
+        } else {
+          const valor =
+            data.valor == null ? Number(p.valor) : Math.round(Number(data.valor) * 100) / 100;
+          if (!Number.isFinite(valor) || valor <= 0) {
+            throw new Error("Informe um valor maior que zero.");
+          }
+          await tx`
+            update parcelas set valor = ${valor},
+              vencimento = coalesce(${data.vencimento ?? null}::date, vencimento),
+              forma_pagamento = ${formaValida(data.formaPagamento, p.forma_pagamento)},
+              updated_at = now()
+            where id = ${p.id}`;
+        }
+        await recalcularConta(tx, p.conta_id);
+      });
+      return { data: { ok: true }, error: null };
+    } catch (erro) {
+      return {
+        data: null,
+        error: { message: erro instanceof Error ? erro.message : "Erro ao editar a parcela." },
       };
     }
   });

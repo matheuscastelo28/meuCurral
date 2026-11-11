@@ -183,7 +183,7 @@ function Financeiro() {
       const [vendas, alimentacao] = await Promise.all([
         db
           .from("vendas")
-          .select("id, financeiro_id, produto, animal_id, lote")
+          .select("id, financeiro_id, produto, animal_id, lote, comprador")
           .eq("fazenda_id", fazenda!.id),
         db.from("alimentacao_lote").select("despesa_id").eq("fazenda_id", fazenda!.id),
       ]);
@@ -191,7 +191,13 @@ function Financeiro() {
       if (alimentacao.error) throw alimentacao.error;
       const vendaPorLancamento = new Map<
         string,
-        { id: string; produto: string; animal_id: string | null; lote: string | null }
+        {
+          id: string;
+          produto: string;
+          animal_id: string | null;
+          lote: string | null;
+          comprador: string | null;
+        }
       >();
       for (const v of vendas.data ?? []) {
         if (v.financeiro_id) vendaPorLancamento.set(String(v.financeiro_id), v);
@@ -232,6 +238,10 @@ function Financeiro() {
   const [edValor, setEdValor] = useState("");
   const [edData, setEdData] = useState("");
   const [edCategoria, setEdCategoria] = useState("");
+  const [edForma, setEdForma] = useState("dinheiro");
+  const [edParcelas, setEdParcelas] = useState("1");
+  const [edRecebido, setEdRecebido] = useState(true);
+  const [edComprador, setEdComprador] = useState("");
 
   const estornarVenda = useMutation({
     mutationFn: async (vendaId: string) => {
@@ -256,18 +266,21 @@ function Financeiro() {
   });
 
   const salvarEdicao = useMutation({
-    mutationFn: async (id: string) => {
+    mutationFn: async (l: { id: string; tipo: string; venda: boolean }) => {
       if (!edDescricao.trim()) throw new Error("Informe a descrição.");
       if (!(Number(edValor) > 0)) throw new Error("Informe um valor maior que zero.");
-      const { error } = await db
-        .from("financeiro_lancamentos")
-        .update({
-          descricao: edDescricao.trim(),
-          valor: Number(edValor),
-          data: edData,
-          categoria: edCategoria || null,
-        } as never)
-        .eq("id", id);
+      const { error } = await db.financeiro.editarLancamento({
+        fazendaId: fazenda!.id,
+        id: l.id,
+        descricao: edDescricao,
+        valor: Number(edValor),
+        data: edData,
+        categoria: edCategoria || null,
+        formaPagamento: edForma,
+        parcelas: edForma === "cartao" ? Number(edParcelas) || 1 : null,
+        status: l.tipo === "receita" ? (edRecebido ? "recebido" : "a_receber") : null,
+        comprador: l.venda ? edComprador : undefined,
+      });
       if (error) throw new Error(error.message);
     },
     onSuccess: () => {
@@ -674,6 +687,74 @@ function Financeiro() {
   });
 
   const contaSelecionada = contasComDados.find((c) => c.id === contaDetalhe) ?? null;
+
+  // ----- Edição de conta e de parcela -----
+  const [editandoConta, setEditandoConta] = useState(false);
+  const [ecDescricao, setEcDescricao] = useState("");
+  const [ecValor, setEcValor] = useState("");
+  const [ecData, setEcData] = useState("");
+  const [ecPessoa, setEcPessoa] = useState("");
+  const [ecCategoria, setEcCategoria] = useState("");
+  const [ecForma, setEcForma] = useState("dinheiro");
+  const [ecObs, setEcObs] = useState("");
+  const [editandoParcela, setEditandoParcela] = useState<ParcelaRow | null>(null);
+  const [epVencimento, setEpVencimento] = useState("");
+  const [epValor, setEpValor] = useState("");
+  const [epPagoEm, setEpPagoEm] = useState("");
+  const [epForma, setEpForma] = useState("dinheiro");
+
+  function invalidarContas() {
+    queryClient.invalidateQueries({ queryKey: ["contas"] });
+    queryClient.invalidateQueries({ queryKey: ["parcelas"] });
+    queryClient.invalidateQueries({ queryKey: ["inicio-resumo"] });
+    queryClient.invalidateQueries({ queryKey: ["relatorio"] });
+  }
+
+  const salvarConta = useMutation({
+    mutationFn: async (contaId: string) => {
+      const { error } = await db.financeiro.editarConta({
+        fazendaId: fazenda!.id,
+        contaId,
+        descricao: ecDescricao,
+        valorTotal: Number(ecValor),
+        dataEmissao: ecData,
+        categoria: ecCategoria || null,
+        pessoa: ecPessoa,
+        formaPagamento: ecForma,
+        observacoes: ecObs,
+      });
+      if (error) throw new Error(error.message);
+    },
+    onSuccess: () => {
+      toast.success("Conta atualizada.");
+      setEditandoConta(false);
+      invalidarContas();
+    },
+    onError: (e: Error) => toast.error(e.message || "Não conseguimos salvar a conta."),
+  });
+
+  const salvarParcela = useMutation({
+    mutationFn: async (reabrir: boolean) => {
+      const p = editandoParcela!;
+      const paga = p.status === "pago";
+      const { error } = await db.financeiro.editarParcela({
+        fazendaId: fazenda!.id,
+        parcelaId: p.id,
+        reabrir,
+        vencimento: paga ? null : epVencimento,
+        valor: paga ? null : Number(epValor),
+        pagoEm: paga ? epPagoEm : null,
+        formaPagamento: epForma,
+      });
+      if (error) throw new Error(error.message);
+    },
+    onSuccess: (_d, reabrir) => {
+      toast.success(reabrir ? "Parcela reaberta." : "Parcela atualizada.");
+      setEditandoParcela(null);
+      invalidarContas();
+    },
+    onError: (e: Error) => toast.error(e.message || "Não conseguimos salvar a parcela."),
+  });
 
   // ----- Detalhe de lançamento simples (mesma funcionalidade de conta) -----
   const [lancamentoDetalhe, setLancamentoDetalhe] = useState<string | null>(null);
@@ -1318,7 +1399,11 @@ function Financeiro() {
                       className="mt-2 grid grid-cols-2 gap-3"
                       onSubmit={(e) => {
                         e.preventDefault();
-                        salvarEdicao.mutate(lancamentoSelecionado.id);
+                        salvarEdicao.mutate({
+                          id: lancamentoSelecionado.id,
+                          tipo: lancamentoSelecionado.tipo,
+                          venda: !!venda,
+                        });
                       }}
                     >
                       <div className="col-span-2 space-y-1.5">
@@ -1368,6 +1453,59 @@ function Financeiro() {
                           ))}
                         </select>
                       </div>
+                      <div className="space-y-1.5">
+                        <Label htmlFor="ed-forma">Forma de pagamento</Label>
+                        <select
+                          id="ed-forma"
+                          value={edForma}
+                          onChange={(e) => setEdForma(e.target.value)}
+                          className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+                        >
+                          {Object.entries(FORMAS_PAGAMENTO).map(([v, label]) => (
+                            <option key={v} value={v}>
+                              {label}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      {edForma === "cartao" ? (
+                        <div className="space-y-1.5">
+                          <Label htmlFor="ed-parcelas">Parcelas no cartão</Label>
+                          <Input
+                            id="ed-parcelas"
+                            type="number"
+                            min="1"
+                            max="24"
+                            value={edParcelas}
+                            onChange={(e) => setEdParcelas(e.target.value)}
+                          />
+                        </div>
+                      ) : null}
+                      {venda ? (
+                        <div className="col-span-2 space-y-1.5">
+                          <Label htmlFor="ed-comprador">Comprador</Label>
+                          <Input
+                            id="ed-comprador"
+                            value={edComprador}
+                            onChange={(e) => setEdComprador(e.target.value)}
+                          />
+                        </div>
+                      ) : null}
+                      {lancamentoSelecionado.tipo === "receita" ? (
+                        <label className="col-span-2 flex items-center gap-2 text-sm">
+                          <input
+                            type="checkbox"
+                            checked={edRecebido}
+                            onChange={(e) => setEdRecebido(e.target.checked)}
+                          />
+                          Já recebi este valor
+                        </label>
+                      ) : null}
+                      {venda ? (
+                        <p className="col-span-2 text-xs text-muted-foreground">
+                          A venda acompanha: valor, data e comprador também mudam nela.
+                        </p>
+                      ) : null}
                       <DialogFooter className="col-span-2">
                         <Button
                           type="button"
@@ -1440,8 +1578,8 @@ function Financeiro() {
                   <>
                     {venda ? (
                       <p className="text-xs text-muted-foreground">
-                        Veio de uma venda registrada no sistema. Para corrigir, estorne e registre
-                        de novo.
+                        Veio de uma venda. Ao editar, a venda acompanha. Estorne só se foi
+                        registrada por engano.
                       </p>
                     ) : daAlimentacao ? (
                       <p className="text-xs text-muted-foreground">
@@ -1454,26 +1592,29 @@ function Financeiro() {
                       </p>
                     ) : null}
                     <DialogFooter className="mt-3 flex-wrap gap-2">
-                      {venda ? (
-                        <Button
-                          type="button"
-                          variant="outline"
-                          onClick={() => setAcaoLancamento("estorno")}
-                        >
-                          <Undo2 className="size-4" aria-hidden="true" />
-                          Estornar venda
-                        </Button>
-                      ) : !daAlimentacao && !doRegistro ? (
+                      {venda || (!daAlimentacao && !doRegistro) ? (
                         <>
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            className="text-destructive hover:text-destructive"
-                            onClick={() => setAcaoLancamento("exclusao")}
-                          >
-                            <Trash2 className="size-4" aria-hidden="true" />
-                            Excluir
-                          </Button>
+                          {venda ? (
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              className="text-destructive hover:text-destructive"
+                              onClick={() => setAcaoLancamento("estorno")}
+                            >
+                              <Undo2 className="size-4" aria-hidden="true" />
+                              Estornar venda
+                            </Button>
+                          ) : (
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              className="text-destructive hover:text-destructive"
+                              onClick={() => setAcaoLancamento("exclusao")}
+                            >
+                              <Trash2 className="size-4" aria-hidden="true" />
+                              Excluir
+                            </Button>
+                          )}
                           <Button
                             type="button"
                             variant="outline"
@@ -1482,6 +1623,10 @@ function Financeiro() {
                               setEdValor(String(lancamentoSelecionado.valor ?? ""));
                               setEdData(dataISO(lancamentoSelecionado.data));
                               setEdCategoria(lancamentoSelecionado.categoria ?? "");
+                              setEdForma(lancamentoSelecionado.forma_pagamento ?? "dinheiro");
+                              setEdParcelas(String(lancamentoSelecionado.parcelas ?? 1));
+                              setEdRecebido(lancamentoSelecionado.status !== "a_receber");
+                              setEdComprador(venda?.comprador ?? "");
                               setAcaoLancamento("edicao");
                             }}
                           >
@@ -1567,6 +1712,25 @@ function Financeiro() {
                       </div>
                       <div className="flex items-center gap-2">
                         <StatusBadge status={statusP} info={STATUS_INFO_PARCELA} />
+                        {statusP !== "cancelado" ? (
+                          <Button
+                            type="button"
+                            size="icon"
+                            variant="ghost"
+                            aria-label={`Editar parcela ${p.numero}`}
+                            onClick={() => {
+                              setEditandoParcela(p);
+                              setEpVencimento(dataISO(p.vencimento));
+                              setEpValor(String(p.valor));
+                              setEpPagoEm(p.pago_em ? dataISO(p.pago_em) : hoje);
+                              setEpForma(
+                                p.forma_pagamento || contaSelecionada.forma_pagamento || "dinheiro",
+                              );
+                            }}
+                          >
+                            <Pencil className="size-4" aria-hidden="true" />
+                          </Button>
+                        ) : null}
                         {statusP === "pendente" || statusP === "atrasado" ? (
                           <Button
                             type="button"
@@ -1590,16 +1754,35 @@ function Financeiro() {
                 })}
               </ul>
 
-              {contaSelecionada.statusExibido !== "cancelado" &&
-              contaSelecionada.statusExibido !== "pago" ? (
-                <DialogFooter className="mt-3">
+              {contaSelecionada.statusExibido !== "cancelado" ? (
+                <DialogFooter className="mt-3 flex-wrap gap-2">
+                  {contaSelecionada.statusExibido !== "pago" ? (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      className="text-destructive hover:text-destructive"
+                      onClick={() => setCancelando(contaSelecionada.id)}
+                    >
+                      <Ban className="size-4" aria-hidden="true" />
+                      Cancelar conta
+                    </Button>
+                  ) : null}
                   <Button
                     type="button"
                     variant="outline"
-                    onClick={() => setCancelando(contaSelecionada.id)}
+                    onClick={() => {
+                      setEcDescricao(contaSelecionada.descricao);
+                      setEcValor(String(contaSelecionada.valor_total));
+                      setEcData(dataISO(contaSelecionada.data_emissao));
+                      setEcPessoa(contaSelecionada.pessoa ?? "");
+                      setEcCategoria(contaSelecionada.categoria ?? "");
+                      setEcForma(contaSelecionada.forma_pagamento || "dinheiro");
+                      setEcObs(contaSelecionada.observacoes ?? "");
+                      setEditandoConta(true);
+                    }}
                   >
-                    <Ban className="size-4" aria-hidden="true" />
-                    Cancelar conta
+                    <Pencil className="size-4" aria-hidden="true" />
+                    Editar conta
                   </Button>
                 </DialogFooter>
               ) : null}
@@ -1659,6 +1842,219 @@ function Financeiro() {
                   </Button>
                   <Button type="submit" disabled={marcarPagaMutation.isPending}>
                     Confirmar
+                  </Button>
+                </DialogFooter>
+              </form>
+            </>
+          ) : null}
+        </DialogContent>
+      </Dialog>
+
+      {/* ----- Dialog: editar conta ----- */}
+      <Dialog
+        open={editandoConta && !!contaSelecionada}
+        onOpenChange={(v) => !v && setEditandoConta(false)}
+      >
+        <DialogContent className="max-h-[85vh] overflow-y-auto">
+          {contaSelecionada ? (
+            <>
+              <DialogHeader>
+                <DialogTitle>Editar conta</DialogTitle>
+                <DialogDescription>
+                  Mudar o valor total ajusta as parcelas que ainda não foram pagas.
+                </DialogDescription>
+              </DialogHeader>
+              <form
+                className="grid grid-cols-2 gap-3"
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  salvarConta.mutate(contaSelecionada.id);
+                }}
+              >
+                <div className="col-span-2 space-y-1.5">
+                  <Label htmlFor="ec-descricao">Descrição</Label>
+                  <Input
+                    id="ec-descricao"
+                    value={ecDescricao}
+                    onChange={(e) => setEcDescricao(e.target.value)}
+                    required
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="ec-valor">Valor total (R$)</Label>
+                  <Input
+                    id="ec-valor"
+                    type="number"
+                    step="0.01"
+                    min="0.01"
+                    value={ecValor}
+                    onChange={(e) => setEcValor(e.target.value)}
+                    required
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="ec-data">Data da conta</Label>
+                  <Input
+                    id="ec-data"
+                    type="date"
+                    value={ecData}
+                    onChange={(e) => setEcData(e.target.value)}
+                    required
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="ec-pessoa">
+                    {contaSelecionada.tipo === "a_receber" ? "Cliente" : "Fornecedor"}
+                  </Label>
+                  <Input
+                    id="ec-pessoa"
+                    value={ecPessoa}
+                    onChange={(e) => setEcPessoa(e.target.value)}
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="ec-forma">Forma de pagamento</Label>
+                  <select
+                    id="ec-forma"
+                    value={ecForma}
+                    onChange={(e) => setEcForma(e.target.value)}
+                    className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+                  >
+                    {Object.entries(FORMAS_PAGAMENTO).map(([v, label]) => (
+                      <option key={v} value={v}>
+                        {label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="col-span-2 space-y-1.5">
+                  <Label htmlFor="ec-categoria">Categoria</Label>
+                  <select
+                    id="ec-categoria"
+                    value={ecCategoria}
+                    onChange={(e) => setEcCategoria(e.target.value)}
+                    className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+                  >
+                    <option value="">Sem categoria</option>
+                    {(contaSelecionada.tipo === "a_pagar"
+                      ? CATEGORIAS_DESPESA
+                      : CATEGORIAS_RECEITA
+                    ).map((c) => (
+                      <option key={c.valor} value={c.valor}>
+                        {c.rotulo}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="col-span-2 space-y-1.5">
+                  <Label htmlFor="ec-obs">Observações</Label>
+                  <Input id="ec-obs" value={ecObs} onChange={(e) => setEcObs(e.target.value)} />
+                </div>
+                <DialogFooter className="col-span-2">
+                  <Button type="button" variant="outline" onClick={() => setEditandoConta(false)}>
+                    Cancelar
+                  </Button>
+                  <Button type="submit" disabled={salvarConta.isPending}>
+                    {salvarConta.isPending ? "Salvando..." : "Salvar"}
+                  </Button>
+                </DialogFooter>
+              </form>
+            </>
+          ) : null}
+        </DialogContent>
+      </Dialog>
+
+      {/* ----- Dialog: editar parcela ----- */}
+      <Dialog open={!!editandoParcela} onOpenChange={(v) => !v && setEditandoParcela(null)}>
+        <DialogContent>
+          {editandoParcela ? (
+            <>
+              <DialogHeader>
+                <DialogTitle>
+                  Parcela {editandoParcela.numero}/{editandoParcela.total_parcelas}
+                </DialogTitle>
+                <DialogDescription>
+                  {editandoParcela.status === "pago"
+                    ? "Corrija a data e a forma do pagamento, ou reabra se foi marcada por engano."
+                    : "Mude o vencimento ou o valor desta parcela."}
+                </DialogDescription>
+              </DialogHeader>
+              <form
+                className="grid grid-cols-2 gap-3"
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  salvarParcela.mutate(false);
+                }}
+              >
+                {editandoParcela.status === "pago" ? (
+                  <div className="space-y-1.5">
+                    <Label htmlFor="ep-pago">Data do pagamento</Label>
+                    <Input
+                      id="ep-pago"
+                      type="date"
+                      value={epPagoEm}
+                      onChange={(e) => setEpPagoEm(e.target.value)}
+                      required
+                    />
+                  </div>
+                ) : (
+                  <>
+                    <div className="space-y-1.5">
+                      <Label htmlFor="ep-venc">Vencimento</Label>
+                      <Input
+                        id="ep-venc"
+                        type="date"
+                        value={epVencimento}
+                        onChange={(e) => setEpVencimento(e.target.value)}
+                        required
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label htmlFor="ep-valor">Valor (R$)</Label>
+                      <Input
+                        id="ep-valor"
+                        type="number"
+                        step="0.01"
+                        min="0.01"
+                        value={epValor}
+                        onChange={(e) => setEpValor(e.target.value)}
+                        required
+                      />
+                    </div>
+                  </>
+                )}
+                <div className="space-y-1.5">
+                  <Label htmlFor="ep-forma">Forma de pagamento</Label>
+                  <select
+                    id="ep-forma"
+                    value={epForma}
+                    onChange={(e) => setEpForma(e.target.value)}
+                    className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+                  >
+                    {Object.entries(FORMAS_PAGAMENTO).map(([v, label]) => (
+                      <option key={v} value={v}>
+                        {label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <DialogFooter className="col-span-2 flex-wrap gap-2">
+                  {editandoParcela.status === "pago" ? (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      disabled={salvarParcela.isPending}
+                      onClick={() => salvarParcela.mutate(true)}
+                    >
+                      <Undo2 className="size-4" aria-hidden="true" />
+                      Reabrir parcela
+                    </Button>
+                  ) : null}
+                  <Button type="button" variant="outline" onClick={() => setEditandoParcela(null)}>
+                    Cancelar
+                  </Button>
+                  <Button type="submit" disabled={salvarParcela.isPending}>
+                    Salvar
                   </Button>
                 </DialogFooter>
               </form>

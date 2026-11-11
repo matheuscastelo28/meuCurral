@@ -29,6 +29,9 @@ import {
   criarConta,
   marcarParcelaPaga,
   cancelarConta,
+  editarLancamento,
+  editarConta,
+  editarParcela,
   type FiltroRemoto,
 } from "@/lib/dados.functions";
 import {
@@ -545,6 +548,47 @@ export const db = {
       formaPagamento?: string | null;
     }) {
       return marcarParcelaPaga({ data: { token: tokenSessao(), ...params } });
+    },
+    /** Edita o lançamento; se veio de uma venda, a venda acompanha. */
+    async editarLancamento(params: {
+      fazendaId: string;
+      id: string;
+      descricao: string;
+      valor: number;
+      data: string;
+      categoria?: string | null;
+      formaPagamento?: string | null;
+      parcelas?: number | null;
+      status?: "recebido" | "a_receber" | null;
+      comprador?: string | null | undefined;
+    }) {
+      return editarLancamento({ data: { token: tokenSessao(), ...params } });
+    },
+    /** Edita a conta; mudar o valor redistribui nas parcelas pendentes. */
+    async editarConta(params: {
+      fazendaId: string;
+      contaId: string;
+      descricao: string;
+      valorTotal: number;
+      dataEmissao: string;
+      categoria?: string | null;
+      pessoa?: string | null;
+      formaPagamento?: string | null;
+      observacoes?: string | null;
+    }) {
+      return editarConta({ data: { token: tokenSessao(), ...params } });
+    },
+    /** Edita vencimento/valor/pagamento de uma parcela, ou a reabre. */
+    async editarParcela(params: {
+      fazendaId: string;
+      parcelaId: string;
+      vencimento?: string | null;
+      valor?: number | null;
+      pagoEm?: string | null;
+      formaPagamento?: string | null;
+      reabrir?: boolean;
+    }) {
+      return editarParcela({ data: { token: tokenSessao(), ...params } });
     },
     /** Cancela a conta e todas as parcelas ainda pendentes dela. */
     async cancelarConta(params: { fazendaId: string; contaId: string }) {
