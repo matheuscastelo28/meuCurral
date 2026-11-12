@@ -1,4 +1,4 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -38,7 +38,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { useFazenda } from "@/hooks/use-fazenda";
-import { dataCurta, dataISO, diasAtrasISO, hojeISO, idadeTexto } from "@/lib/formato";
+import { dataCurta, dataISO, diasAtrasISO, hojeISO, idadeTexto, pesoTexto } from "@/lib/formato";
 import { especieDaCategoria, especieDoAnimal } from "@/lib/especies";
 import { cn } from "@/lib/utils";
 import {
@@ -51,7 +51,7 @@ import {
   statusAposRegistro,
   type RegistroRepro,
 } from "@/lib/reproducao";
-import { racaDaCria } from "@/lib/nascimentos";
+import { montarNascimentos, racaDaCria, type AnimalNascimento } from "@/lib/nascimentos";
 
 export const Route = createFileRoute("/_authenticated/reproducao")({
   head: () => ({
@@ -135,6 +135,10 @@ function Reproducao() {
   const [criaNome, setCriaNome] = useState("");
   const [criaBrinco, setCriaBrinco] = useState("");
   const [criaPeso, setCriaPeso] = useState("");
+  // Outras crias do mesmo parto (gêmeos, trigêmeos...), cadastradas juntas.
+  const [criasExtras, setCriasExtras] = useState<
+    { sexo: "femea" | "macho"; nome: string; brinco: string; peso: string }[]
+  >([]);
   const formRef = useRef<HTMLFormElement>(null);
   const [previsaoParto, setPrevisaoParto] = useState(() =>
     previsaoPartoDe(hojeISO(), diasGestacao),
@@ -154,7 +158,7 @@ function Reproducao() {
       const { data, error } = await db
         .from("animais")
         .select(
-          "id, nome, brinco, categoria, especie, raca, nascimento, mae, pai, sexo, status, lote",
+          "id, nome, brinco, categoria, especie, raca, nascimento, mae, pai, sexo, status, lote, peso_nascimento, parto_id",
         )
         .eq("fazenda_id", fazenda!.id)
         .order("nome");
@@ -416,7 +420,7 @@ function Reproducao() {
       previsaoParto: string | null;
       resultado: string | null;
       custo: number;
-      cria: { sexo: "femea" | "macho"; nome: string; brinco: string; peso: number | null } | null;
+      crias: { sexo: "femea" | "macho"; nome: string; brinco: string; peso: number | null }[];
     }) => {
       const { data: criados, error } = await db.from("reproducao").insert({
         fazenda_id: fazenda!.id,
@@ -463,9 +467,9 @@ function Reproducao() {
 
       // Parto: a cria entra no Rebanho com mãe, pai (touro do último
       // serviço), lote da mãe e data de nascimento.
-      let criaOk: boolean | null = null;
+      let criasCriadas = 0;
       let criaErro = "";
-      if (vars.tipo === "parto" && vars.cria && animal) {
+      if (vars.tipo === "parto" && vars.crias.length > 0 && animal) {
         const historico = (registros.data ?? []).filter(
           (r) => r.animal_id === animal.id,
         ) as RegistroRepro[];
@@ -480,38 +484,41 @@ function Reproducao() {
                 [a.nome, a.brinco].some((t) => (t ?? "").trim().toLowerCase() === chavePai),
             )
           : null;
-        const { data: criadas, error: erroCria } = await db.from("animais").insert({
-          fazenda_id: fazenda!.id,
-          nome: vars.cria.nome.trim() || `Cria de ${nomeMae}`,
-          brinco: vars.cria.brinco.trim() || null,
-          especie: especieVisivel,
-          sexo: vars.cria.sexo,
-          categoria: especieVisivel === "ovino" ? "cordeiro" : "bezerro",
-          status: "ativo",
-          nascimento: vars.data,
-          peso_kg: vars.cria.peso,
-          lote: String(animal.lote ?? "").trim() || null,
-          mae: nomeMae || null,
-          pai,
-          raca: racaDaCria(animal.raca, reprodutor?.raca),
-          parto_id: (criados?.[0]?.id as string | undefined) ?? null,
-          peso_nascimento: vars.cria.peso,
-        } as never);
-        criaOk = !erroCria;
-        criaErro = erroCria?.message ?? "";
-        const criaId = criadas?.[0]?.id as string | undefined;
-        if (criaId && vars.cria.peso) {
-          await db.from("manejos").insert({
+        for (const [i, cria] of vars.crias.entries()) {
+          const { data: criadas, error: erroCria } = await db.from("animais").insert({
             fazenda_id: fazenda!.id,
-            animal_id: criaId,
-            tipo: "pesagem",
-            data: vars.data,
-            valor: vars.cria.peso,
-            descricao: "Peso ao nascer",
+            nome:
+              cria.nome.trim() || `Cria${vars.crias.length > 1 ? ` ${i + 1}` : ""} de ${nomeMae}`,
+            brinco: cria.brinco.trim() || null,
+            especie: especieVisivel,
+            sexo: cria.sexo,
+            categoria: especieVisivel === "ovino" ? "cordeiro" : "bezerro",
+            status: "ativo",
+            nascimento: vars.data,
+            peso_kg: cria.peso,
+            lote: String(animal.lote ?? "").trim() || null,
+            mae: nomeMae || null,
+            pai,
+            raca: racaDaCria(animal.raca, reprodutor?.raca),
+            parto_id: (criados?.[0]?.id as string | undefined) ?? null,
+            peso_nascimento: cria.peso,
           } as never);
+          if (erroCria) criaErro = erroCria.message;
+          else criasCriadas++;
+          const criaId = criadas?.[0]?.id as string | undefined;
+          if (criaId && cria.peso) {
+            await db.from("manejos").insert({
+              fazenda_id: fazenda!.id,
+              animal_id: criaId,
+              tipo: "pesagem",
+              data: vars.data,
+              valor: cria.peso,
+              descricao: "Peso ao nascer",
+            } as never);
+          }
         }
       }
-      return { ...vars, custoOk, novoStatus, criaOk, criaErro };
+      return { ...vars, custoOk, novoStatus, criasCriadas, criaErro };
     },
     onSuccess: (vars) => {
       if (!vars.custoOk) {
@@ -523,8 +530,14 @@ function Reproducao() {
           vars.custo > 0 ? "Registro salvo e custo lançado no Financeiro." : "Registro salvo.",
         );
       }
-      if (vars.criaOk === true) toast.success("Cria cadastrada no Rebanho.");
-      if (vars.criaOk === false) {
+      if (vars.criasCriadas > 0) {
+        toast.success(
+          vars.criasCriadas === 1
+            ? "Cria cadastrada no Rebanho."
+            : `${vars.criasCriadas} crias cadastradas no Rebanho.`,
+        );
+      }
+      if (vars.crias.length > vars.criasCriadas) {
         toast.error(
           vars.criaErro || "O parto foi salvo, mas não conseguimos cadastrar a cria no Rebanho.",
         );
@@ -542,6 +555,7 @@ function Reproducao() {
       setCriaBrinco("");
       setCriaPeso("");
       setCriaSexo("femea");
+      setCriasExtras([]);
       for (const chave of ["animais", "animais-simples", "animais-contagem", "inicio-resumo"]) {
         queryClient.invalidateQueries({ queryKey: [chave] });
       }
@@ -589,8 +603,38 @@ function Reproducao() {
   const historico = registrosFiltrados.filter(
     (r) =>
       (!filtroAnimalHist || r.animal_id === filtroAnimalHist) &&
-      (!filtroTipoHist || filtroTipoHist === "vazias" || r.tipo === filtroTipoHist),
+      (!filtroTipoHist ||
+        filtroTipoHist === "vazias" ||
+        filtroTipoHist === "nascimentos" ||
+        r.tipo === filtroTipoHist),
   );
+
+  // Nascimentos: mesma base da ficha da fêmea (lib/nascimentos), filtrada por
+  // período e (opcionalmente) pela mãe escolhida no filtro de animal.
+  const [periodoNasc, setPeriodoNasc] = useState<"30" | "90" | "365" | "tudo">("90");
+  const nascimentos = useMemo(() => {
+    const todos = (animais.data ?? []) as unknown as (AnimalNascimento & {
+      sexo?: string | null;
+    })[];
+    const femeas = todos.filter((a) => a.sexo === "femea");
+    return montarNascimentos(registrosFiltrados as RegistroRepro[], femeas, todos);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [animais.data, registros.data, especieVisivel]);
+  const nascimentosDoPeriodo = nascimentos.filter(
+    (n) =>
+      (!filtroAnimalHist || n.femeaId === filtroAnimalHist) &&
+      (periodoNasc === "tudo" || n.data >= diasAtrasISO(Number(periodoNasc))),
+  );
+  const resumoNasc = useMemo(() => {
+    const crias = nascimentosDoPeriodo.flatMap((n) => n.crias);
+    const pesos = crias.map((c) => c.pesoKg).filter((p): p is number => p != null);
+    return {
+      total: crias.length,
+      machos: crias.filter((c) => c.sexo === "macho").length,
+      femeas: crias.filter((c) => c.sexo === "femea").length,
+      pesoMedio: pesos.length ? pesos.reduce((a, b) => a + b, 0) / pesos.length : null,
+    };
+  }, [nascimentosDoPeriodo]);
   const animaisDoHistorico = useMemo(() => {
     const vistos = new Map<string, string>();
     for (const r of registrosFiltrados) {
@@ -814,15 +858,23 @@ function Reproducao() {
             previsaoParto: requerPrevisao ? previsaoParto : null,
             resultado: tipo === "diagnostico" ? resultadoDiagnostico : null,
             custo: Number(custo) || 0,
-            cria:
+            crias:
               tipo === "parto" && criaSexo !== "nao"
-                ? {
-                    sexo: criaSexo,
-                    nome: criaNome,
-                    brinco: criaBrinco,
-                    peso: Number(criaPeso) > 0 ? Number(criaPeso) : null,
-                  }
-                : null,
+                ? [
+                    {
+                      sexo: criaSexo,
+                      nome: criaNome,
+                      brinco: criaBrinco,
+                      peso: Number(criaPeso) > 0 ? Number(criaPeso) : null,
+                    },
+                    ...criasExtras.map((c) => ({
+                      sexo: c.sexo,
+                      nome: c.nome,
+                      brinco: c.brinco,
+                      peso: Number(c.peso) > 0 ? Number(c.peso) : null,
+                    })),
+                  ]
+                : [],
           });
         }}
       >
@@ -998,6 +1050,97 @@ function Reproducao() {
                     placeholder="Opcional"
                     onChange={(e) => setCriaPeso(e.target.value)}
                   />
+                </div>
+                {criasExtras.map((c, i) => (
+                  <div
+                    key={i}
+                    className="flex w-full min-w-0 flex-wrap items-end gap-3 border-t border-border pt-3"
+                  >
+                    <div className="min-w-0 space-y-1.5 sm:min-w-[120px] sm:flex-1">
+                      <Label htmlFor={`cria-sexo-${i}`}>Cria {i + 2}</Label>
+                      <select
+                        id={`cria-sexo-${i}`}
+                        value={c.sexo}
+                        onChange={(e) =>
+                          setCriasExtras((l) =>
+                            l.map((x, j) =>
+                              j === i ? { ...x, sexo: e.target.value as "femea" | "macho" } : x,
+                            ),
+                          )
+                        }
+                        className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+                      >
+                        <option value="femea">Fêmea</option>
+                        <option value="macho">Macho</option>
+                      </select>
+                    </div>
+                    <div className="min-w-0 space-y-1.5 sm:min-w-[150px] sm:flex-1">
+                      <Label htmlFor={`cria-nome-${i}`}>Nome</Label>
+                      <Input
+                        id={`cria-nome-${i}`}
+                        value={c.nome}
+                        placeholder="Opcional"
+                        onChange={(e) =>
+                          setCriasExtras((l) =>
+                            l.map((x, j) => (j === i ? { ...x, nome: e.target.value } : x)),
+                          )
+                        }
+                      />
+                    </div>
+                    <div className="min-w-0 space-y-1.5 sm:min-w-[100px] sm:flex-1">
+                      <Label htmlFor={`cria-brinco-${i}`}>Brinco</Label>
+                      <Input
+                        id={`cria-brinco-${i}`}
+                        value={c.brinco}
+                        placeholder="Opcional"
+                        onChange={(e) =>
+                          setCriasExtras((l) =>
+                            l.map((x, j) => (j === i ? { ...x, brinco: e.target.value } : x)),
+                          )
+                        }
+                      />
+                    </div>
+                    <div className="min-w-0 space-y-1.5 sm:min-w-[100px] sm:flex-1">
+                      <Label htmlFor={`cria-peso-${i}`}>Peso (kg)</Label>
+                      <Input
+                        id={`cria-peso-${i}`}
+                        type="number"
+                        step="0.1"
+                        min="0"
+                        value={c.peso}
+                        placeholder="Opcional"
+                        onChange={(e) =>
+                          setCriasExtras((l) =>
+                            l.map((x, j) => (j === i ? { ...x, peso: e.target.value } : x)),
+                          )
+                        }
+                      />
+                    </div>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setCriasExtras((l) => l.filter((_, j) => j !== i))}
+                    >
+                      Remover
+                    </Button>
+                  </div>
+                ))}
+                <div className="w-full">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 px-2 text-xs"
+                    onClick={() =>
+                      setCriasExtras((l) => [
+                        ...l,
+                        { sexo: "femea", nome: "", brinco: "", peso: "" },
+                      ])
+                    }
+                  >
+                    + Outra cria (gêmeos)
+                  </Button>
                 </div>
               </>
             ) : null}
@@ -1229,10 +1372,77 @@ function Reproducao() {
                   </option>
                 ))}
                 <option value="vazias">Vazias ({situacao.vazias.length})</option>
+                <option value="nascimentos">Nascimentos ({nascimentos.length})</option>
               </select>
             </div>
           </div>
-          {filtroTipoHist === "vazias" ? (
+          {filtroTipoHist === "nascimentos" ? (
+            <>
+              <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border px-4 py-2.5 text-sm">
+                <p className="text-muted-foreground">
+                  <span className="font-semibold text-foreground">{resumoNasc.total}</span>{" "}
+                  {resumoNasc.total === 1 ? "nascido" : "nascidos"} · {resumoNasc.machos}{" "}
+                  {resumoNasc.machos === 1 ? "macho" : "machos"} · {resumoNasc.femeas}{" "}
+                  {resumoNasc.femeas === 1 ? "fêmea" : "fêmeas"}
+                  {resumoNasc.pesoMedio != null
+                    ? ` · peso médio ${pesoTexto(resumoNasc.pesoMedio)}`
+                    : ""}
+                </p>
+                <select
+                  aria-label="Período dos nascimentos"
+                  value={periodoNasc}
+                  onChange={(e) => setPeriodoNasc(e.target.value as typeof periodoNasc)}
+                  className="h-8 rounded-md border border-input bg-background px-2 text-sm"
+                >
+                  <option value="30">Últimos 30 dias</option>
+                  <option value="90">Últimos 90 dias</option>
+                  <option value="365">Último ano</option>
+                  <option value="tudo">Tudo</option>
+                </select>
+              </div>
+              {nascimentosDoPeriodo.length === 0 ? (
+                <p className="px-4 py-6 text-sm text-muted-foreground">
+                  Nenhum nascimento nesse período.
+                </p>
+              ) : (
+                <ul className="divide-y divide-border">
+                  {nascimentosDoPeriodo.map((n) => (
+                    <li key={n.partoId ?? `${n.femeaId}-${n.data}`} className="px-4 py-3 text-sm">
+                      <p className="font-medium">
+                        {animais.data?.find((a) => a.id === n.femeaId)?.nome ?? "Fêmea"}{" "}
+                        <span className="font-normal text-muted-foreground">
+                          · {dataCurta(n.data)}
+                        </span>
+                      </p>
+                      {n.crias.length === 0 ? (
+                        <p className="text-xs text-muted-foreground">
+                          Cria não cadastrada no rebanho.
+                        </p>
+                      ) : (
+                        <ul className="mt-0.5 space-y-0.5">
+                          {n.crias.map((c) => (
+                            <li key={c.id} className="text-muted-foreground">
+                              <Link
+                                to="/rebanho/$animalId"
+                                params={{ animalId: c.id }}
+                                className="font-medium text-primary hover:underline"
+                              >
+                                {c.nome}
+                              </Link>{" "}
+                              {c.sexo === "macho" ? "Macho" : c.sexo === "femea" ? "Fêmea" : ""}
+                              {" · "}
+                              {c.pesoKg != null ? pesoTexto(c.pesoKg) : "sem peso"}
+                              {c.raca ? ` · ${c.raca}` : ""}
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </>
+          ) : filtroTipoHist === "vazias" ? (
             <>
               {situacao.vazias.length === 0 ? (
                 <p className="px-4 py-6 text-sm text-muted-foreground">
