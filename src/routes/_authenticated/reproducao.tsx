@@ -51,6 +51,7 @@ import {
   statusAposRegistro,
   type RegistroRepro,
 } from "@/lib/reproducao";
+import { racaDaCria } from "@/lib/nascimentos";
 
 export const Route = createFileRoute("/_authenticated/reproducao")({
   head: () => ({
@@ -152,7 +153,9 @@ function Reproducao() {
     queryFn: async () => {
       const { data, error } = await db
         .from("animais")
-        .select("id, nome, brinco, categoria, especie, nascimento, mae, pai, sexo, status, lote")
+        .select(
+          "id, nome, brinco, categoria, especie, raca, nascimento, mae, pai, sexo, status, lote",
+        )
         .eq("fazenda_id", fazenda!.id)
         .order("nome");
       if (error) throw error;
@@ -468,6 +471,15 @@ function Reproducao() {
         ) as RegistroRepro[];
         const pai = estadoDaFemea(historico).servicoAberto?.touro ?? null;
         const nomeMae = animal.nome || animal.brinco || "";
+        // Raça: a da mãe, a do pai (touro que está no rebanho) ou o cruzamento.
+        const chavePai = pai?.trim().toLowerCase();
+        const reprodutor = chavePai
+          ? (animais.data ?? []).find(
+              (a) =>
+                a.sexo !== "femea" &&
+                [a.nome, a.brinco].some((t) => (t ?? "").trim().toLowerCase() === chavePai),
+            )
+          : null;
         const { data: criadas, error: erroCria } = await db.from("animais").insert({
           fazenda_id: fazenda!.id,
           nome: vars.cria.nome.trim() || `Cria de ${nomeMae}`,
@@ -481,6 +493,9 @@ function Reproducao() {
           lote: String(animal.lote ?? "").trim() || null,
           mae: nomeMae || null,
           pai,
+          raca: racaDaCria(animal.raca, reprodutor?.raca),
+          parto_id: (criados?.[0]?.id as string | undefined) ?? null,
+          peso_nascimento: vars.cria.peso,
         } as never);
         criaOk = !erroCria;
         criaErro = erroCria?.message ?? "";

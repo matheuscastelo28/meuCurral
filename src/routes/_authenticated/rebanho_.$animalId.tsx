@@ -19,6 +19,7 @@ import { Area, AreaChart, CartesianGrid, XAxis, YAxis } from "recharts";
 import { db } from "@/lib/local-db";
 import { AppShell } from "@/components/AppShell";
 import { DialogManejoSanitario } from "@/components/DialogManejoSanitario";
+import { BlocoPartos } from "@/components/rebanho/BlocoPartos";
 import { DialogVenderAnimal, type AnimalParaVenda } from "@/components/DialogVenderAnimal";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -210,6 +211,8 @@ function Ficha() {
     queryClient.invalidateQueries({ queryKey: ["ficha-leite", animalId] });
     queryClient.invalidateQueries({ queryKey: ["ficha-manejos", animalId] });
     queryClient.invalidateQueries({ queryKey: ["ficha-reproducao", animalId] });
+    queryClient.invalidateQueries({ queryKey: ["ficha-partos"] });
+    queryClient.invalidateQueries({ queryKey: ["ficha-crias"] });
     queryClient.invalidateQueries({ queryKey: ["leite"] });
     queryClient.invalidateQueries({ queryKey: ["pesagens-engorda"] });
     queryClient.invalidateQueries({ queryKey: ["animais-engorda"] });
@@ -451,7 +454,9 @@ function Ficha() {
             <LinhaResumo rotulo="Idade" valor={idadeTexto(a.nascimento)} />
             <LinhaResumo rotulo="Peso atual" valor={pesoTexto(a.peso_kg, prefs.unidade_peso)} />
             <LinhaResumo rotulo="Lote" valor={a.lote || "—"} />
+            <LinhaResumo rotulo="Raça" valor={a.raca || "—"} />
             <LinhaResumo rotulo="Mãe" valor={a.mae || "—"} />
+            <LinhaResumo rotulo="Pai" valor={a.pai || "—"} />
             <LinhaResumo rotulo="Entrada no rebanho" valor={dataCurta(a.created_at)} />
             {custos.data?.compra ? (
               <LinhaResumo rotulo="Valor de compra" valor={moeda(custos.data.compra)} />
@@ -468,6 +473,9 @@ function Ficha() {
         </div>
 
         <div className="space-y-4">
+          {a.sexo === "femea" ? (
+            <BlocoPartos femea={a} fazendaId={fazenda?.id} unidadePeso={prefs.unidade_peso} />
+          ) : null}
           <div className="rounded-xl border border-border bg-card p-4">
             <p className="mb-2 text-xs font-semibold text-muted-foreground">Período</p>
             <div className="flex flex-wrap gap-2">

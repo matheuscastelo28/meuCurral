@@ -215,6 +215,15 @@ create table if not exists reproducao (
   updated_at timestamptz not null default now()
 );
 
+-- Cria nascida de um parto registrado em Reprodução: liga ao registro do parto
+-- e guarda o peso ao nascer (o peso atual muda com as pesagens).
+alter table animais add column if not exists parto_id uuid references reproducao(id) on delete set null;
+alter table animais add column if not exists peso_nascimento numeric;
+update animais a set peso_nascimento = m.valor
+from manejos m
+where m.animal_id = a.id and m.tipo = 'pesagem' and m.descricao = 'Peso ao nascer'
+  and a.peso_nascimento is null;
+
 create table if not exists financeiro_lancamentos (
   id uuid primary key default gen_random_uuid(),
   fazenda_id uuid references fazendas(id) on delete cascade,
