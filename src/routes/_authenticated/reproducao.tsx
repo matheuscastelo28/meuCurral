@@ -33,6 +33,7 @@ import {
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
@@ -411,6 +412,68 @@ function Reproducao() {
     nome: string;
   } | null>(null);
 
+  // Cadastra no Rebanho as crias de um parto: mãe, pai (touro do último
+  // serviço), lote da mãe, raça dos pais, peso ao nascer e vínculo ao parto.
+  async function cadastrarCrias(
+    animal: NonNullable<typeof animais.data>[number],
+    dataParto: string,
+    partoId: string | null,
+    crias: { sexo: "femea" | "macho"; nome: string; brinco: string; peso: number | null }[],
+  ) {
+    let criadas = 0;
+    let erro = "";
+    const historico = (registros.data ?? []).filter(
+      (r) => r.animal_id === animal.id,
+    ) as RegistroRepro[];
+    const pai = estadoDaFemea(historico).servicoAberto?.touro ?? null;
+    const nomeMae = animal.nome || animal.brinco || "";
+    // Raça: a da mãe, a do pai (touro que está no rebanho) ou o cruzamento.
+    const chavePai = pai?.trim().toLowerCase();
+    const reprodutor = chavePai
+      ? (animais.data ?? []).find(
+          (a) =>
+            a.sexo !== "femea" &&
+            [a.nome, a.brinco].some((t) => (t ?? "").trim().toLowerCase() === chavePai),
+        )
+      : null;
+    for (const [i, cria] of crias.entries()) {
+      const { data: criadasLinhas, error: erroCria } = await db.from("animais").insert({
+        fazenda_id: fazenda!.id,
+        nome: cria.nome.trim() || `Cria${crias.length > 1 ? ` ${i + 1}` : ""} de ${nomeMae}`,
+        brinco: cria.brinco.trim() || null,
+        especie: especieVisivel,
+        sexo: cria.sexo,
+        categoria: especieVisivel === "ovino" ? "cordeiro" : "bezerro",
+        status: "ativo",
+        nascimento: dataParto,
+        peso_kg: cria.peso,
+        lote: String(animal.lote ?? "").trim() || null,
+        mae: nomeMae || null,
+        pai,
+        raca: racaDaCria(animal.raca, reprodutor?.raca),
+        parto_id: partoId,
+        peso_nascimento: cria.peso,
+      } as never);
+      if (erroCria) {
+        erro = erroCria.message;
+        continue;
+      }
+      criadas++;
+      const criaId = criadasLinhas?.[0]?.id as string | undefined;
+      if (criaId && cria.peso) {
+        await db.from("manejos").insert({
+          fazenda_id: fazenda!.id,
+          animal_id: criaId,
+          tipo: "pesagem",
+          data: dataParto,
+          valor: cria.peso,
+          descricao: "Peso ao nascer",
+        } as never);
+      }
+    }
+    return { criadas, erro };
+  }
+
   const salvar = useMutation({
     mutationFn: async (vars: {
       tipo: string;
@@ -470,53 +533,14 @@ function Reproducao() {
       let criasCriadas = 0;
       let criaErro = "";
       if (vars.tipo === "parto" && vars.crias.length > 0 && animal) {
-        const historico = (registros.data ?? []).filter(
-          (r) => r.animal_id === animal.id,
-        ) as RegistroRepro[];
-        const pai = estadoDaFemea(historico).servicoAberto?.touro ?? null;
-        const nomeMae = animal.nome || animal.brinco || "";
-        // Raça: a da mãe, a do pai (touro que está no rebanho) ou o cruzamento.
-        const chavePai = pai?.trim().toLowerCase();
-        const reprodutor = chavePai
-          ? (animais.data ?? []).find(
-              (a) =>
-                a.sexo !== "femea" &&
-                [a.nome, a.brinco].some((t) => (t ?? "").trim().toLowerCase() === chavePai),
-            )
-          : null;
-        for (const [i, cria] of vars.crias.entries()) {
-          const { data: criadas, error: erroCria } = await db.from("animais").insert({
-            fazenda_id: fazenda!.id,
-            nome:
-              cria.nome.trim() || `Cria${vars.crias.length > 1 ? ` ${i + 1}` : ""} de ${nomeMae}`,
-            brinco: cria.brinco.trim() || null,
-            especie: especieVisivel,
-            sexo: cria.sexo,
-            categoria: especieVisivel === "ovino" ? "cordeiro" : "bezerro",
-            status: "ativo",
-            nascimento: vars.data,
-            peso_kg: cria.peso,
-            lote: String(animal.lote ?? "").trim() || null,
-            mae: nomeMae || null,
-            pai,
-            raca: racaDaCria(animal.raca, reprodutor?.raca),
-            parto_id: (criados?.[0]?.id as string | undefined) ?? null,
-            peso_nascimento: cria.peso,
-          } as never);
-          if (erroCria) criaErro = erroCria.message;
-          else criasCriadas++;
-          const criaId = criadas?.[0]?.id as string | undefined;
-          if (criaId && cria.peso) {
-            await db.from("manejos").insert({
-              fazenda_id: fazenda!.id,
-              animal_id: criaId,
-              tipo: "pesagem",
-              data: vars.data,
-              valor: cria.peso,
-              descricao: "Peso ao nascer",
-            } as never);
-          }
-        }
+        const r = await cadastrarCrias(
+          animal,
+          vars.data,
+          (criados?.[0]?.id as string | undefined) ?? null,
+          vars.crias,
+        );
+        criasCriadas = r.criadas;
+        criaErro = r.erro;
       }
       return { ...vars, custoOk, novoStatus, criasCriadas, criaErro };
     },
@@ -608,6 +632,123 @@ function Reproducao() {
 
   // Nascimentos: mesma base da ficha da fêmea (lib/nascimentos), filtrada por
   // período e (opcionalmente) pela mãe.
+  // Registro de vários partos (de vacas diferentes) numa execução só.
+  type LinhaLote = {
+    animalId: string;
+    sexo: "femea" | "macho";
+    nome: string;
+    brinco: string;
+    peso: string;
+  };
+  const novaLinha = (): LinhaLote => ({
+    animalId: "",
+    sexo: "femea",
+    nome: "",
+    brinco: "",
+    peso: "",
+  });
+  const [loteAberto, setLoteAberto] = useState(false);
+  const [loteData, setLoteData] = useState(hojeISO());
+  const [loteLinhas, setLoteLinhas] = useState<LinhaLote[]>([novaLinha(), novaLinha()]);
+
+  const salvarLote = useMutation({
+    mutationFn: async () => {
+      const preenchidas = loteLinhas.filter(
+        (l) => l.animalId || l.nome.trim() || l.brinco.trim() || l.peso,
+      );
+      if (preenchidas.length === 0) throw new Error("Preencha ao menos uma cria.");
+      if (preenchidas.some((l) => !l.animalId))
+        throw new Error("Escolha a mãe em todas as linhas.");
+      // Mesma mãe em várias linhas = gêmeos no mesmo parto.
+      const porMae = new Map<string, LinhaLote[]>();
+      for (const l of preenchidas) porMae.set(l.animalId, [...(porMae.get(l.animalId) ?? []), l]);
+      let partos = 0;
+      let crias = 0;
+      let falhas = 0;
+      for (const [maeId, linhas] of porMae) {
+        const mae = animais.data?.find((a) => a.id === maeId);
+        if (!mae) continue;
+        const { data: criados, error } = await db.from("reproducao").insert({
+          fazenda_id: fazenda!.id,
+          animal_id: maeId,
+          tipo: "parto",
+          data: loteData,
+        } as never);
+        if (error) {
+          falhas += linhas.length;
+          continue;
+        }
+        partos++;
+        const r = await cadastrarCrias(
+          mae,
+          loteData,
+          (criados?.[0]?.id as string | undefined) ?? null,
+          linhas.map((l) => ({
+            sexo: l.sexo,
+            nome: l.nome,
+            brinco: l.brinco,
+            peso: Number(l.peso) > 0 ? Number(l.peso) : null,
+          })),
+        );
+        crias += r.criadas;
+        falhas += linhas.length - r.criadas;
+      }
+      return { partos, crias, falhas };
+    },
+    onSuccess: (r) => {
+      if (r.falhas > 0) {
+        toast.error(
+          `${r.falhas} ${r.falhas === 1 ? "cria não foi salva" : "crias não foram salvas"}. Confira a lista.`,
+        );
+      }
+      if (r.crias > 0) {
+        toast.success(
+          `${r.partos} ${r.partos === 1 ? "parto" : "partos"} e ${r.crias} ${r.crias === 1 ? "cria registrados" : "crias registrados"}.`,
+        );
+      }
+      setLoteAberto(false);
+      setLoteLinhas([novaLinha(), novaLinha()]);
+      for (const chave of [
+        "animais",
+        "animais-simples",
+        "animais-contagem",
+        "inicio-resumo",
+        "reproducao",
+        "eventos",
+        "indices-rebanho",
+        "ficha-partos",
+        "ficha-crias",
+      ]) {
+        queryClient.invalidateQueries({ queryKey: [chave] });
+      }
+    },
+    onError: (e: Error) => toast.error(e.message || "Não conseguimos registrar agora."),
+  });
+
+  const opcoesMaesLote = useMemo(() => {
+    const previstas = new Map(situacao.partos.map((p) => [p.animalId, p.previsao]));
+    const elegiveis = (animais.data ?? [])
+      .filter((a) => a.status !== "vendido" && a.status !== "morto")
+      .filter((a) => especieDoAnimal(a) === especieVisivel)
+      .filter((a) => a.sexo !== "macho" && a.sexo !== "castrado")
+      .filter((a) => a.categoria !== categoriaReprodutor);
+    const nome = (a: (typeof elegiveis)[number]) => `${a.nome}${a.brinco ? ` (${a.brinco})` : ""}`;
+    return {
+      previstas: elegiveis
+        .filter((a) => previstas.has(a.id))
+        .sort((x, y) => (previstas.get(x.id) ?? "9").localeCompare(previstas.get(y.id) ?? "9"))
+        .map((a) => ({
+          id: a.id,
+          rotulo: `${nome(a)}${previstas.get(a.id) ? ` · prevista ${dataCurta(previstas.get(a.id)!)}` : ""}`,
+        })),
+      outras: elegiveis
+        .filter((a) => !previstas.has(a.id))
+        .sort((x, y) => (x.nome ?? "").localeCompare(y.nome ?? ""))
+        .map((a) => ({ id: a.id, rotulo: nome(a) })),
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [animais.data, situacao, especieVisivel]);
+
   const [aba, setAba] = useState<"acompanhamento" | "nascimentos">("acompanhamento");
   const [filtroMaeNasc, setFiltroMaeNasc] = useState("");
   const [periodoNasc, setPeriodoNasc] = useState<"30" | "90" | "365" | "tudo">("90");
@@ -889,6 +1030,9 @@ function Reproducao() {
                 ))}
               </select>
             </div>
+            <Button type="button" size="sm" variant="outline" onClick={() => setLoteAberto(true)}>
+              Registrar vários
+            </Button>
             <Button
               type="button"
               size="sm"
@@ -1678,6 +1822,156 @@ function Reproducao() {
           )}
         </>
       )}
+
+      <Dialog open={loteAberto} onOpenChange={(v) => !v && setLoteAberto(false)}>
+        <DialogContent className="max-h-[90vh] max-w-3xl overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Registrar vários partos</DialogTitle>
+            <DialogDescription>
+              Uma linha por cria. Repita a mãe para gêmeos. Cada cria entra no Rebanho com a raça
+              dos pais.
+            </DialogDescription>
+          </DialogHeader>
+          <form
+            className="space-y-3"
+            onSubmit={(e) => {
+              e.preventDefault();
+              salvarLote.mutate();
+            }}
+          >
+            <div className="max-w-[200px] space-y-1.5">
+              <Label htmlFor="lote-data">Data dos partos</Label>
+              <Input
+                id="lote-data"
+                type="date"
+                value={loteData}
+                max={hojeISO()}
+                onChange={(e) => setLoteData(e.target.value)}
+                required
+              />
+            </div>
+            <ul className="space-y-2">
+              {loteLinhas.map((l, i) => {
+                const mudar = (parte: Partial<LinhaLote>) =>
+                  setLoteLinhas((ls) => ls.map((x, j) => (j === i ? { ...x, ...parte } : x)));
+                return (
+                  <li
+                    key={i}
+                    className="grid grid-cols-2 items-end gap-2 rounded-lg border border-border p-2 sm:grid-cols-[2.4fr_0.9fr_1fr_0.8fr_0.7fr_auto]"
+                  >
+                    <div className="col-span-2 space-y-1 sm:col-span-1">
+                      <Label htmlFor={`lote-mae-${i}`} className="text-xs">
+                        Mãe
+                      </Label>
+                      <select
+                        id={`lote-mae-${i}`}
+                        value={l.animalId}
+                        onChange={(e) => mudar({ animalId: e.target.value })}
+                        className="h-9 w-full rounded-md border border-input bg-background px-2 text-sm"
+                      >
+                        <option value="">Escolha...</option>
+                        {opcoesMaesLote.previstas.length > 0 ? (
+                          <optgroup label="Partos previstos">
+                            {opcoesMaesLote.previstas.map((m) => (
+                              <option key={m.id} value={m.id}>
+                                {m.rotulo}
+                              </option>
+                            ))}
+                          </optgroup>
+                        ) : null}
+                        <optgroup label="Outras fêmeas">
+                          {opcoesMaesLote.outras.map((m) => (
+                            <option key={m.id} value={m.id}>
+                              {m.rotulo}
+                            </option>
+                          ))}
+                        </optgroup>
+                      </select>
+                    </div>
+                    <div className="space-y-1">
+                      <Label htmlFor={`lote-sexo-${i}`} className="text-xs">
+                        Sexo
+                      </Label>
+                      <select
+                        id={`lote-sexo-${i}`}
+                        value={l.sexo}
+                        onChange={(e) => mudar({ sexo: e.target.value as "femea" | "macho" })}
+                        className="h-9 w-full rounded-md border border-input bg-background px-2 text-sm"
+                      >
+                        <option value="femea">Fêmea</option>
+                        <option value="macho">Macho</option>
+                      </select>
+                    </div>
+                    <div className="space-y-1">
+                      <Label htmlFor={`lote-nome-${i}`} className="text-xs">
+                        Nome
+                      </Label>
+                      <Input
+                        id={`lote-nome-${i}`}
+                        className="h-9"
+                        value={l.nome}
+                        placeholder="Opcional"
+                        onChange={(e) => mudar({ nome: e.target.value })}
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <Label htmlFor={`lote-brinco-${i}`} className="text-xs">
+                        Brinco
+                      </Label>
+                      <Input
+                        id={`lote-brinco-${i}`}
+                        className="h-9"
+                        value={l.brinco}
+                        placeholder="Opcional"
+                        onChange={(e) => mudar({ brinco: e.target.value })}
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <Label htmlFor={`lote-peso-${i}`} className="text-xs">
+                        Peso (kg)
+                      </Label>
+                      <Input
+                        id={`lote-peso-${i}`}
+                        className="h-9"
+                        type="number"
+                        step="0.1"
+                        min="0"
+                        value={l.peso}
+                        onChange={(e) => mudar({ peso: e.target.value })}
+                      />
+                    </div>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      disabled={loteLinhas.length === 1}
+                      onClick={() => setLoteLinhas((ls) => ls.filter((_, j) => j !== i))}
+                    >
+                      Remover
+                    </Button>
+                  </li>
+                );
+              })}
+            </ul>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={() => setLoteLinhas((ls) => [...ls, novaLinha()])}
+            >
+              + Adicionar cria
+            </Button>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setLoteAberto(false)}>
+                Cancelar
+              </Button>
+              <Button type="submit" disabled={salvarLote.isPending}>
+                {salvarLote.isPending ? "Registrando..." : "Registrar nascimentos"}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={!!editando} onOpenChange={(v) => !v && setEditando(null)}>
         <DialogContent>
