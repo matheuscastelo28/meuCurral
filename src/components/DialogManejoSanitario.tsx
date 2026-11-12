@@ -358,14 +358,10 @@ export function DialogManejoSanitario({
       <DialogContent className="max-h-[85vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{evento ? "Registrar o que foi feito" : "Vacinas e manejo"}</DialogTitle>
-          <DialogDescription>
+          <DialogDescription className={evento ? undefined : "sr-only"}>
             {evento
               ? `Lembrete: ${evento.titulo ?? ""}. Confira os dados e registre — o lembrete sai da Agenda como feito.`
-              : modo === "registrar"
-                ? "Vacina, vermífugo ou tratamento aplicado. Fica no histórico de cada animal; o custo vai pro Financeiro e a próxima dose pra Agenda."
-                : modo === "intervalos"
-                  ? "De quanto em quanto tempo cada vacina ou manejo se repete."
-                  : "Crie os lembretes das vacinas obrigatórias e da vermifugação. Quando chegar a data, conclua o lembrete e a aplicação já vem preenchida."}
+              : "Registre aplicações, planeje o calendário sanitário e defina os intervalos de repetição."}
           </DialogDescription>
         </DialogHeader>
         {evento ? null : (
