@@ -369,7 +369,7 @@ export function DialogManejoSanitario({
           </DialogDescription>
         </DialogHeader>
         {evento ? null : (
-          <div className="grid grid-cols-3 gap-1 rounded-lg bg-muted p-1" role="tablist">
+          <div className="grid grid-cols-3 gap-2 rounded-xl bg-muted p-1.5" role="tablist">
             {(
               [
                 ["registrar", "Registrar aplicação"],
@@ -385,8 +385,8 @@ export function DialogManejoSanitario({
                 onClick={() => setModo(valor)}
                 className={
                   modo === valor
-                    ? "rounded-md bg-background px-3 py-1.5 text-sm font-semibold shadow-sm"
-                    : "rounded-md px-3 py-1.5 text-sm text-muted-foreground hover:text-foreground"
+                    ? "rounded-lg bg-primary px-3 py-2.5 text-sm font-bold text-primary-foreground shadow-sm"
+                    : "rounded-lg border border-border bg-background px-3 py-2.5 text-sm font-semibold text-foreground hover:border-primary/50 hover:bg-accent"
                 }
               >
                 {rotulo}

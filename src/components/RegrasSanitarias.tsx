@@ -127,10 +127,6 @@ export function RegrasSanitarias() {
 
   return (
     <div className="space-y-4">
-      <p className="text-sm text-muted-foreground">
-        Depois de registrar uma aplicação, o sistema sugere a próxima dose pelo intervalo abaixo e
-        cria o lembrete na Agenda. Ao cumprir o lembrete, o seguinte é criado sozinho.
-      </p>
       <ul className="divide-y divide-border rounded-lg border border-border">
         {linhas.map((l) => (
           <li key={l.chave} className="px-3 py-2.5">
