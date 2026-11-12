@@ -18,6 +18,9 @@ import { dataCurta, hojeISO } from "@/lib/formato";
 import { especieDoAnimal, especiesDasAtividades } from "@/lib/especies";
 import { textoLote } from "@/lib/rotulos";
 import { PlanejamentoSanitario } from "@/components/PlanejamentoSanitario";
+import { RegrasSanitarias } from "@/components/RegrasSanitarias";
+import { useRegrasSanitarias } from "@/hooks/use-regras-sanitarias";
+import { acharRegra, somarDias, textoIntervalo } from "@/lib/sanidade";
 
 const TIPOS = [
   { valor: "vacina", rotulo: "Vacina", exemplo: "Ex: Aftosa, Brucelose, Clostridiose" },
@@ -31,7 +34,7 @@ const TIPOS = [
 ] as const;
 
 type Escopo = "animal" | "lote" | "rebanho";
-type Modo = "registrar" | "planejar";
+type Modo = "registrar" | "planejar" | "intervalos";
 
 /** Lembrete da Agenda que está sendo cumprido (vacina/tratamento). */
 export type EventoSanitario = {
@@ -54,22 +57,6 @@ function lerTitulo(titulo: string) {
   const produto = (doisPontos >= 0 ? esquerda.slice(doisPontos + 1) : esquerda).trim();
   const tipo = TIPOS.find((t) => t.rotulo.toLowerCase() === rotulo.toLowerCase())?.valor;
   return { tipo, produto, alvo };
-}
-
-/** Intervalo de reforço usual, pra já sugerir a próxima dose. */
-function mesesAteReforco(produto: string): number | null {
-  const p = produto.toLowerCase();
-  if (/raiva|clostrid/.test(p)) return 12;
-  if (/aftosa/.test(p)) return 6;
-  return null;
-}
-
-function somarMeses(iso: string, meses: number) {
-  const [a = 0, m = 1, d = 1] = iso.split("-").map(Number);
-  const data = new Date(a, m - 1 + meses, d);
-  const mm = String(data.getMonth() + 1).padStart(2, "0");
-  const dd = String(data.getDate()).padStart(2, "0");
-  return `${data.getFullYear()}-${mm}-${dd}`;
 }
 
 /**
@@ -109,6 +96,8 @@ export function DialogManejoSanitario({
   const [especie, setEspecie] = useState<"todas" | "bovino" | "ovino">("todas");
   const [custo, setCusto] = useState("");
   const [proxima, setProxima] = useState("");
+  const [proximaTocada, setProximaTocada] = useState(false);
+  const regras = useRegrasSanitarias();
   const [modo, setModo] = useState<Modo>(modoInicial);
 
   useEffect(() => {
@@ -123,7 +112,16 @@ export function DialogManejoSanitario({
     setEspecie("todas");
     setCusto("");
     setProxima("");
+    setProximaTocada(false);
   }, [aberto, animalIdInicial, modoInicial, evento]);
+
+  // A próxima dose sai sugerida pelo intervalo do produto (ver lib/sanidade),
+  // até o produtor mexer na data.
+  const regraAtual = acharRegra(produto, tipo, regras.data ?? []);
+  useEffect(() => {
+    if (proximaTocada) return;
+    setProxima(regraAtual ? somarDias(data, regraAtual.intervalo_dias) : "");
+  }, [proximaTocada, regraAtual, data]);
 
   const animais = useQuery({
     queryKey: ["animais-sanidade", fazenda?.id, fazenda?.atividades?.join(",")],
@@ -155,8 +153,6 @@ export function DialogManejoSanitario({
     const lido = lerTitulo(evento.titulo ?? "");
     setTipo(lido.tipo ?? (evento.tipo === "vacina" ? "vacina" : "tratamento"));
     setProduto(lido.produto);
-    const meses = mesesAteReforco(lido.produto);
-    setProxima(meses ? somarMeses(hojeISO(), meses) : "");
     const alvo = lido.alvo.toLowerCase();
     const loteCitado = (animais.data ?? [])
       .map((a) => String(a.lote ?? "").trim())
@@ -310,15 +306,44 @@ export function DialogManejoSanitario({
   // precisa) registrar a aplicação animal por animal.
   const soConcluir = useMutation({
     mutationFn: async () => {
-      if (!evento) return;
+      if (!evento) return null;
       const { error } = await db
         .from("eventos_agenda")
         .update({ concluido: true })
         .eq("id", evento.id);
       if (error) throw new Error(error.message);
+      // Cumprir o lembrete sem registrar a aplicação também gera o próximo,
+      // se o produto tem intervalo (ex.: vermífugo a cada 2 meses).
+      const lido = lerTitulo(evento.titulo ?? "");
+      const regra = acharRegra(lido.produto, lido.tipo ?? null, regras.data ?? []);
+      if (!regra || !fazenda) return null;
+      const proximaData = somarDias(hojeISO(), regra.intervalo_dias);
+      const { data: existentes } = await db
+        .from("eventos_agenda")
+        .select("id")
+        .eq("fazenda_id", fazenda.id)
+        .eq("titulo", evento.titulo ?? "")
+        .eq("data", proximaData);
+      if ((existentes ?? []).length > 0) return proximaData;
+      const { error: erroNovo } = await db.from("eventos_agenda").insert({
+        fazenda_id: fazenda.id,
+        animal_id: evento.animal_id ?? null,
+        tipo: evento.tipo ?? "tratamento",
+        titulo: evento.titulo,
+        descricao: `Repetição automática (a cada ${textoIntervalo(regra.intervalo_dias)}).`,
+        data: proximaData,
+        concluido: false,
+        cancelado: false,
+      } as never);
+      if (erroNovo) throw new Error(erroNovo.message);
+      return proximaData;
     },
-    onSuccess: () => {
-      toast.success("Marcado como feito.");
+    onSuccess: (proximaData) => {
+      toast.success(
+        proximaData
+          ? `Marcado como feito. Próximo lembrete em ${dataCurta(proximaData)}.`
+          : "Marcado como feito.",
+      );
       queryClient.invalidateQueries({ queryKey: ["eventos"] });
       queryClient.invalidateQueries({ queryKey: ["inicio-resumo"] });
       onFechar();
@@ -338,15 +363,18 @@ export function DialogManejoSanitario({
               ? `Lembrete: ${evento.titulo ?? ""}. Confira os dados e registre — o lembrete sai da Agenda como feito.`
               : modo === "registrar"
                 ? "Vacina, vermífugo ou tratamento aplicado. Fica no histórico de cada animal; o custo vai pro Financeiro e a próxima dose pra Agenda."
-                : "Crie os lembretes das vacinas obrigatórias e da vermifugação. Quando chegar a data, conclua o lembrete e a aplicação já vem preenchida."}
+                : modo === "intervalos"
+                  ? "De quanto em quanto tempo cada vacina ou manejo se repete."
+                  : "Crie os lembretes das vacinas obrigatórias e da vermifugação. Quando chegar a data, conclua o lembrete e a aplicação já vem preenchida."}
           </DialogDescription>
         </DialogHeader>
         {evento ? null : (
-          <div className="grid grid-cols-2 gap-1 rounded-lg bg-muted p-1" role="tablist">
+          <div className="grid grid-cols-3 gap-1 rounded-lg bg-muted p-1" role="tablist">
             {(
               [
                 ["registrar", "Registrar aplicação"],
                 ["planejar", "Planejar calendário"],
+                ["intervalos", "Intervalos"],
               ] as const
             ).map(([valor, rotulo]) => (
               <button
@@ -366,7 +394,9 @@ export function DialogManejoSanitario({
             ))}
           </div>
         )}
-        {modo === "planejar" ? (
+        {modo === "intervalos" ? (
+          <RegrasSanitarias />
+        ) : modo === "planejar" ? (
           <PlanejamentoSanitario aberto={aberto && modo === "planejar"} onFechar={onFechar} />
         ) : (
           <>
@@ -528,8 +558,16 @@ export function DialogManejoSanitario({
                     type="date"
                     value={proxima}
                     min={data}
-                    onChange={(e) => setProxima(e.target.value)}
+                    onChange={(e) => {
+                      setProximaTocada(true);
+                      setProxima(e.target.value);
+                    }}
                   />
+                  {regraAtual && !proximaTocada ? (
+                    <p className="text-xs text-muted-foreground">
+                      Sugerida: repetir a cada {textoIntervalo(regraAtual.intervalo_dias)}.
+                    </p>
+                  ) : null}
                 </div>
               </div>
             </form>

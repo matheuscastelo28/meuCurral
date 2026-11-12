@@ -394,6 +394,19 @@ create index if not exists idx_reproducao_fazenda on reproducao(fazenda_id);
 create index if not exists idx_financeiro_fazenda on financeiro_lancamentos(fazenda_id);
 create index if not exists idx_eventos_fazenda on eventos_agenda(fazenda_id);
 
+-- Intervalos de reforço / manejo periódico da fazenda (ver lib/sanidade).
+-- Sobrepõem os intervalos padrão; intervalo_dias = 0 desliga o padrão.
+create table if not exists regras_sanitarias (
+  id uuid primary key default gen_random_uuid(),
+  fazenda_id uuid references fazendas(id) on delete cascade,
+  produto text not null default '',
+  tipo text,
+  intervalo_dias integer not null,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+create index if not exists idx_regras_sanitarias_fazenda on regras_sanitarias(fazenda_id);
+
 -- Uma conta é a obrigação (o que a fazenda tem a receber ou a pagar);
 -- parcelas são os vencimentos dela. valor_restante some ao longo dos
 -- pagamentos; status 'atrasado' NÃO existe aqui — é sempre calculado a

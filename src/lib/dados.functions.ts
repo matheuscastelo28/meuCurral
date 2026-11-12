@@ -203,6 +203,7 @@ const TABELAS_PERMITIDAS = new Set([
   "contas",
   "parcelas",
   "alimentacao_lote",
+  "regras_sanitarias",
 ]);
 
 // destinacoes_leite e vendas têm regras de negócio (destinação não pode
