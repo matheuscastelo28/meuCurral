@@ -603,14 +603,13 @@ function Reproducao() {
   const historico = registrosFiltrados.filter(
     (r) =>
       (!filtroAnimalHist || r.animal_id === filtroAnimalHist) &&
-      (!filtroTipoHist ||
-        filtroTipoHist === "vazias" ||
-        filtroTipoHist === "nascimentos" ||
-        r.tipo === filtroTipoHist),
+      (!filtroTipoHist || filtroTipoHist === "vazias" || r.tipo === filtroTipoHist),
   );
 
   // Nascimentos: mesma base da ficha da fêmea (lib/nascimentos), filtrada por
-  // período e (opcionalmente) pela mãe escolhida no filtro de animal.
+  // período e (opcionalmente) pela mãe.
+  const [aba, setAba] = useState<"acompanhamento" | "nascimentos">("acompanhamento");
+  const [filtroMaeNasc, setFiltroMaeNasc] = useState("");
   const [periodoNasc, setPeriodoNasc] = useState<"30" | "90" | "365" | "tudo">("90");
   const nascimentos = useMemo(() => {
     const todos = (animais.data ?? []) as unknown as (AnimalNascimento & {
@@ -622,9 +621,16 @@ function Reproducao() {
   }, [animais.data, registros.data, especieVisivel]);
   const nascimentosDoPeriodo = nascimentos.filter(
     (n) =>
-      (!filtroAnimalHist || n.femeaId === filtroAnimalHist) &&
+      (!filtroMaeNasc || n.femeaId === filtroMaeNasc) &&
       (periodoNasc === "tudo" || n.data >= diasAtrasISO(Number(periodoNasc))),
   );
+  const maesNasc = useMemo(() => {
+    const nomes = new Map((animais.data ?? []).map((a) => [a.id, a.nome ?? "Fêmea"]));
+    const ids = [...new Set(nascimentos.map((n) => n.femeaId))];
+    return ids
+      .map((id) => [id, nomes.get(id) ?? "Fêmea"] as [string, string])
+      .sort((x, y) => x[1].localeCompare(y[1]));
+  }, [nascimentos, animais.data]);
   const resumoNasc = useMemo(() => {
     const crias = nascimentosDoPeriodo.flatMap((n) => n.crias);
     const pesos = crias.map((c) => c.pesoKg).filter((p): p is number => p != null);
@@ -782,822 +788,895 @@ function Reproducao() {
 
   return (
     <AppShell titulo="Reprodução">
-      {ambasAtividades ? (
-        <div className="mb-4 inline-flex rounded-lg bg-muted p-1">
-          <button
-            type="button"
-            onClick={() => setVisaoEspecie("bovino")}
-            className={cn(
-              "rounded-md px-3 py-1.5 text-sm font-medium transicao-suave",
-              visaoEspecie === "bovino"
-                ? "bg-background text-foreground shadow-sm"
-                : "text-muted-foreground hover:text-foreground",
-            )}
-          >
-            Bovinos
-          </button>
-          <button
-            type="button"
-            onClick={() => setVisaoEspecie("ovino")}
-            className={cn(
-              "rounded-md px-3 py-1.5 text-sm font-medium transicao-suave",
-              visaoEspecie === "ovino"
-                ? "bg-background text-foreground shadow-sm"
-                : "text-muted-foreground hover:text-foreground",
-            )}
-          >
-            Ovinos
-          </button>
-        </div>
-      ) : null}
-      <div className="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
-        {kpis.map((k) => {
-          const conteudo = (
-            <>
-              <span className="flex size-8 items-center justify-center rounded-lg bg-accent text-primary">
-                <k.icone className="size-4" aria-hidden="true" />
-              </span>
-              <p className="mt-2 text-[11px] text-muted-foreground">{k.rotulo}</p>
-              <p className="font-display text-lg font-extrabold">{k.valor}</p>
-              {k.detalhe ? <p className="text-[11px] text-muted-foreground">{k.detalhe}</p> : null}
-            </>
-          );
-          return k.alvo ? (
+      <div className="mb-4 flex flex-wrap items-center gap-3">
+        {ambasAtividades ? (
+          <div className="inline-flex rounded-lg bg-muted p-1">
             <button
-              key={k.rotulo}
               type="button"
-              onClick={() => irPara(k.alvo!)}
-              className="flex h-full flex-col items-start justify-start rounded-xl border border-border bg-card p-3 text-left transicao-suave hover:border-primary/50"
-              aria-label={`${k.rotulo}: ${k.valor}. Ver lista`}
+              onClick={() => setVisaoEspecie("bovino")}
+              className={cn(
+                "rounded-md px-3 py-1.5 text-sm font-medium transicao-suave",
+                visaoEspecie === "bovino"
+                  ? "bg-background text-foreground shadow-sm"
+                  : "text-muted-foreground hover:text-foreground",
+              )}
             >
-              {conteudo}
+              Bovinos
             </button>
-          ) : (
-            <div key={k.rotulo} className="h-full rounded-xl border border-border bg-card p-3">
-              {conteudo}
-            </div>
-          );
-        })}
+            <button
+              type="button"
+              onClick={() => setVisaoEspecie("ovino")}
+              className={cn(
+                "rounded-md px-3 py-1.5 text-sm font-medium transicao-suave",
+                visaoEspecie === "ovino"
+                  ? "bg-background text-foreground shadow-sm"
+                  : "text-muted-foreground hover:text-foreground",
+              )}
+            >
+              Ovinos
+            </button>
+          </div>
+        ) : null}
+        <div className="inline-flex rounded-lg bg-muted p-1" role="tablist">
+          <button
+            type="button"
+            onClick={() => setAba("acompanhamento")}
+            className={cn(
+              "rounded-md px-3 py-1.5 text-sm font-medium transicao-suave",
+              aba === "acompanhamento"
+                ? "bg-background text-foreground shadow-sm"
+                : "text-muted-foreground hover:text-foreground",
+            )}
+          >
+            Acompanhamento
+          </button>
+          <button
+            type="button"
+            onClick={() => setAba("nascimentos")}
+            className={cn(
+              "rounded-md px-3 py-1.5 text-sm font-medium transicao-suave",
+              aba === "nascimentos"
+                ? "bg-background text-foreground shadow-sm"
+                : "text-muted-foreground hover:text-foreground",
+            )}
+          >
+            Nascimentos
+          </button>
+        </div>
       </div>
-
-      <form
-        ref={formRef}
-        id="form-reproducao"
-        className="mb-5 grid scroll-mt-24 grid-cols-2 items-start gap-3 rounded-xl border border-border bg-card p-4 sm:flex sm:flex-wrap sm:justify-between"
-        onSubmit={(e) => {
-          e.preventDefault();
-          if (requerPrevisao && !touroTextoAtual()) {
-            toast.error(`Informe o ${rotuloReprodutor.toLowerCase()} ou o sêmen usado.`);
-            return;
-          }
-          salvar.mutate({
-            tipo,
-            animalId,
-            data,
-            touro: requerPrevisao ? touroTextoAtual() : "",
-            previsaoParto: requerPrevisao ? previsaoParto : null,
-            resultado: tipo === "diagnostico" ? resultadoDiagnostico : null,
-            custo: Number(custo) || 0,
-            crias:
-              tipo === "parto" && criaSexo !== "nao"
-                ? [
-                    {
-                      sexo: criaSexo,
-                      nome: criaNome,
-                      brinco: criaBrinco,
-                      peso: Number(criaPeso) > 0 ? Number(criaPeso) : null,
-                    },
-                    ...criasExtras.map((c) => ({
-                      sexo: c.sexo,
-                      nome: c.nome,
-                      brinco: c.brinco,
-                      peso: Number(c.peso) > 0 ? Number(c.peso) : null,
-                    })),
-                  ]
-                : [],
-          });
-        }}
-      >
-        <div className="min-w-0 space-y-1.5 sm:min-w-[150px] sm:flex-1">
-          <Label htmlFor="tipo">Tipo</Label>
-          <select
-            id="tipo"
-            value={tipo}
-            onChange={(e) => setTipo(e.target.value)}
-            className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
-          >
-            {TIPOS.map((t) => (
-              <option key={t} value={t}>
-                {TIPO_LABEL[t] ?? t}
-              </option>
+      {aba === "nascimentos" ? (
+        <section className="rounded-xl border border-border bg-card">
+          <div className="grid grid-cols-2 gap-3 border-b border-border p-4 sm:grid-cols-4">
+            {[
+              ["Nascidos", String(resumoNasc.total)],
+              ["Machos", String(resumoNasc.machos)],
+              ["Fêmeas", String(resumoNasc.femeas)],
+              [
+                "Peso médio ao nascer",
+                resumoNasc.pesoMedio != null ? pesoTexto(resumoNasc.pesoMedio) : "—",
+              ],
+            ].map(([rotulo, valor]) => (
+              <div key={rotulo}>
+                <p className="text-[11px] text-muted-foreground">{rotulo}</p>
+                <p className="font-display text-lg font-extrabold">{valor}</p>
+              </div>
             ))}
-          </select>
-        </div>
-        <div className="min-w-0 space-y-1.5 sm:min-w-[150px] sm:flex-1">
-          <Label htmlFor="animal">Animal</Label>
-          <select
-            id="animal"
-            value={animalId}
-            onChange={(e) => setAnimalId(e.target.value)}
-            className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
-            required
-          >
-            <option value="">Selecione</option>
-            {animaisParaSelecao.map((a) => (
-              <option key={a.id} value={a.id}>
-                {a.nome}
-                {a.brinco ? ` (${a.brinco})` : ""}
-              </option>
-            ))}
-          </select>
-          {animalSelecionado ? (
-            <p className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-muted-foreground">
-              {animalSelecionado.nascimento ? (
-                <span>
-                  Nascido em {dataCurta(animalSelecionado.nascimento)} (
-                  {idadeTexto(animalSelecionado.nascimento)})
-                </span>
-              ) : null}
-              {animalSelecionado.mae ? <span>Mãe: {animalSelecionado.mae}</span> : null}
-              {animalSelecionado.pai ? <span>Pai: {animalSelecionado.pai}</span> : null}
-            </p>
-          ) : null}
-        </div>
-        <div className="min-w-0 space-y-1.5 sm:min-w-[150px] sm:flex-1">
-          <Label htmlFor="data-repro">Data</Label>
-          <Input
-            id="data-repro"
-            type="date"
-            value={data}
-            onChange={(e) => setData(e.target.value)}
-            required
-          />
-        </div>
-        {tipo === "diagnostico" ? (
-          <div className="min-w-0 space-y-1.5 sm:min-w-[150px] sm:flex-1">
-            <Label htmlFor="resultado-diagnostico">Resultado</Label>
-            <select
-              id="resultado-diagnostico"
-              value={resultadoDiagnostico}
-              onChange={(e) => setResultadoDiagnostico(e.target.value as "positivo" | "negativo")}
-              className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
-            >
-              <option value="positivo">Prenhe (positivo)</option>
-              <option value="negativo">Vazia (negativo)</option>
-            </select>
           </div>
-        ) : null}
-        {requerPrevisao ? (
-          <div className="min-w-0 space-y-1.5 sm:min-w-[150px] sm:flex-1">
-            <Label htmlFor="touro">
-              {rotuloReprodutor} / sêmen <span className="text-destructive">*</span>
-            </Label>
-            <select
-              id="touro"
-              value={touroId}
-              onChange={(e) => setTouroId(e.target.value)}
-              className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
-              required
-            >
-              <option value="" disabled>
-                Selecione
-              </option>
-              {touros.data?.map((t) => (
-                <option key={t.id} value={t.id}>
-                  {t.nome}
-                  {t.brinco ? ` (${t.brinco})` : ""}
-                </option>
-              ))}
-              <option value="outro">Outro (não cadastrado)</option>
-            </select>
-          </div>
-        ) : null}
-        {requerPrevisao && touroId === "outro" ? (
-          <div className="min-w-0 space-y-1.5 sm:min-w-[150px] sm:flex-1">
-            <Label htmlFor="touro-custom">
-              Nome do {rotuloReprodutor.toLowerCase()}/sêmen{" "}
-              <span className="text-destructive">*</span>
-            </Label>
-            <Input
-              id="touro-custom"
-              value={touroCustom}
-              onChange={(e) => setTouroCustom(e.target.value)}
-              required
-              placeholder={`Ex: ${rotuloReprodutor} emprestado — Fazenda X`}
-            />
-          </div>
-        ) : null}
-        {requerPrevisao ? (
-          <div className="min-w-0 space-y-1.5 sm:min-w-[150px] sm:flex-1">
-            <Label htmlFor="previsao-parto">Previsão de parto</Label>
-            <Input
-              id="previsao-parto"
-              type="date"
-              value={previsaoParto}
-              onChange={(e) => setPrevisaoParto(e.target.value)}
-            />
-            <p className="text-xs text-muted-foreground">
-              Calculada com base em uma gestação média de {diasGestacao} dias
-              {soOvino ? " (ovinos)" : ""}.
-            </p>
-          </div>
-        ) : null}
-        {tipo === "parto" ? (
-          <>
-            <div className="min-w-0 space-y-1.5 sm:min-w-[150px] sm:flex-1">
-              <Label htmlFor="cria-sexo">Cria</Label>
-              <select
-                id="cria-sexo"
-                value={criaSexo}
-                onChange={(e) => setCriaSexo(e.target.value as typeof criaSexo)}
-                className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
-              >
-                <option value="femea">Cadastrar fêmea</option>
-                <option value="macho">Cadastrar macho</option>
-                <option value="nao">Não cadastrar</option>
-              </select>
-            </div>
-            {criaSexo !== "nao" ? (
-              <>
-                <div className="min-w-0 space-y-1.5 sm:min-w-[150px] sm:flex-1">
-                  <Label htmlFor="cria-nome">Nome da cria</Label>
-                  <Input
-                    id="cria-nome"
-                    value={criaNome}
-                    placeholder={
-                      animalSelecionado ? `Cria de ${animalSelecionado.nome}` : "Opcional"
-                    }
-                    onChange={(e) => setCriaNome(e.target.value)}
-                  />
-                </div>
-                <div className="min-w-0 space-y-1.5 sm:min-w-[120px] sm:flex-1">
-                  <Label htmlFor="cria-brinco">Brinco</Label>
-                  <Input
-                    id="cria-brinco"
-                    value={criaBrinco}
-                    placeholder="Opcional"
-                    onChange={(e) => setCriaBrinco(e.target.value)}
-                  />
-                </div>
-                <div className="min-w-0 space-y-1.5 sm:min-w-[120px] sm:flex-1">
-                  <Label htmlFor="cria-peso">Peso ao nascer (kg)</Label>
-                  <Input
-                    id="cria-peso"
-                    type="number"
-                    step="0.1"
-                    min="0"
-                    value={criaPeso}
-                    placeholder="Opcional"
-                    onChange={(e) => setCriaPeso(e.target.value)}
-                  />
-                </div>
-                {criasExtras.map((c, i) => (
-                  <div
-                    key={i}
-                    className="flex w-full min-w-0 flex-wrap items-end gap-3 border-t border-border pt-3"
-                  >
-                    <div className="min-w-0 space-y-1.5 sm:min-w-[120px] sm:flex-1">
-                      <Label htmlFor={`cria-sexo-${i}`}>Cria {i + 2}</Label>
-                      <select
-                        id={`cria-sexo-${i}`}
-                        value={c.sexo}
-                        onChange={(e) =>
-                          setCriasExtras((l) =>
-                            l.map((x, j) =>
-                              j === i ? { ...x, sexo: e.target.value as "femea" | "macho" } : x,
-                            ),
-                          )
-                        }
-                        className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
-                      >
-                        <option value="femea">Fêmea</option>
-                        <option value="macho">Macho</option>
-                      </select>
-                    </div>
-                    <div className="min-w-0 space-y-1.5 sm:min-w-[150px] sm:flex-1">
-                      <Label htmlFor={`cria-nome-${i}`}>Nome</Label>
-                      <Input
-                        id={`cria-nome-${i}`}
-                        value={c.nome}
-                        placeholder="Opcional"
-                        onChange={(e) =>
-                          setCriasExtras((l) =>
-                            l.map((x, j) => (j === i ? { ...x, nome: e.target.value } : x)),
-                          )
-                        }
-                      />
-                    </div>
-                    <div className="min-w-0 space-y-1.5 sm:min-w-[100px] sm:flex-1">
-                      <Label htmlFor={`cria-brinco-${i}`}>Brinco</Label>
-                      <Input
-                        id={`cria-brinco-${i}`}
-                        value={c.brinco}
-                        placeholder="Opcional"
-                        onChange={(e) =>
-                          setCriasExtras((l) =>
-                            l.map((x, j) => (j === i ? { ...x, brinco: e.target.value } : x)),
-                          )
-                        }
-                      />
-                    </div>
-                    <div className="min-w-0 space-y-1.5 sm:min-w-[100px] sm:flex-1">
-                      <Label htmlFor={`cria-peso-${i}`}>Peso (kg)</Label>
-                      <Input
-                        id={`cria-peso-${i}`}
-                        type="number"
-                        step="0.1"
-                        min="0"
-                        value={c.peso}
-                        placeholder="Opcional"
-                        onChange={(e) =>
-                          setCriasExtras((l) =>
-                            l.map((x, j) => (j === i ? { ...x, peso: e.target.value } : x)),
-                          )
-                        }
-                      />
-                    </div>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => setCriasExtras((l) => l.filter((_, j) => j !== i))}
-                    >
-                      Remover
-                    </Button>
-                  </div>
-                ))}
-                <div className="w-full">
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    className="h-7 px-2 text-xs"
-                    onClick={() =>
-                      setCriasExtras((l) => [
-                        ...l,
-                        { sexo: "femea", nome: "", brinco: "", peso: "" },
-                      ])
-                    }
-                  >
-                    + Outra cria (gêmeos)
-                  </Button>
-                </div>
-              </>
-            ) : null}
-          </>
-        ) : null}
-        <div className="min-w-0 space-y-1.5 sm:min-w-[150px] sm:flex-1">
-          <Label htmlFor="custo-reproducao">Custo (R$)</Label>
-          <Input
-            id="custo-reproducao"
-            type="number"
-            step="0.01"
-            min="0"
-            value={custo}
-            placeholder="Opcional"
-            onChange={(e) => setCusto(e.target.value)}
-          />
-          <p className="text-xs text-muted-foreground">Sêmen, inseminador, veterinário.</p>
-        </div>
-        <div className="col-span-2 w-full space-y-1.5 sm:w-auto sm:min-w-[150px]">
-          <Label className="invisible hidden sm:block">Registrar</Label>
-          <Button
-            type="submit"
-            className="w-full"
-            disabled={salvar.isPending || confirmarLactacao !== null}
-          >
-            <Plus className="size-4" aria-hidden="true" />
-            Registrar
-          </Button>
-        </div>
-      </form>
-
-      {confirmarLactacao ? (
-        <p className="mb-3 text-xs text-muted-foreground">
-          Responda a pergunta abaixo antes de registrar outro parto.
-        </p>
-      ) : null}
-
-      {confirmarLactacao ? (
-        <div className="mb-5 rounded-xl border border-border bg-card p-4">
-          <p className="text-sm font-medium">
-            Após este parto, {confirmarLactacao.nome} entrou em lactação?
-          </p>
-          <p className="mt-1 text-xs text-muted-foreground">
-            Se sim, o status do animal muda pra "lactação" e ele passa a aparecer na lista de
-            registro de leite por vaca.
-          </p>
-          <div className="mt-3 flex gap-2">
-            <Button
-              size="sm"
-              disabled={marcarLactacao.isPending}
-              onClick={() => marcarLactacao.mutate(confirmarLactacao.animalId)}
-            >
-              Sim
-            </Button>
-            <Button
-              size="sm"
-              variant="outline"
-              disabled={marcarLactacao.isPending}
-              onClick={() => {
-                const a = animais.data?.find((x) => x.id === confirmarLactacao.animalId);
-                // Pariu e não entrou em lactação: deixa de ser prenhe/seca.
-                if (a && (a.status === "prenhe" || a.status === "seca")) {
-                  void db
-                    .from("animais")
-                    .update({ status: "ativo" } as never)
-                    .eq("id", a.id)
-                    .then(() => queryClient.invalidateQueries({ queryKey: ["animais-simples"] }));
-                }
-                setConfirmarLactacao(null);
-              }}
-            >
-              Não
-            </Button>
-          </div>
-        </div>
-      ) : null}
-
-      <div className="mb-5 grid gap-4 lg:grid-cols-2">
-        <section
-          id="card-diagnostico"
-          className="scroll-mt-24 rounded-xl border border-border bg-card p-4 transition-shadow"
-        >
-          <h2 className="text-base font-semibold">Aguardando diagnóstico</h2>
-          {situacao.aguardandoDiagnostico.length === 0 ? (
-            <p className="mt-3 text-sm text-muted-foreground">Nada pendente.</p>
-          ) : (
-            <ul className="mt-3 max-h-64 divide-y divide-border overflow-y-auto">
-              {situacao.aguardandoDiagnostico.map((a) => (
-                <li
-                  key={a.animalId}
-                  className="flex items-center justify-between gap-3 py-2 text-sm"
-                >
-                  <span className="min-w-0">
-                    <span className="block truncate font-medium">{a.nome}</span>
-                    <span className="block text-xs text-muted-foreground">
-                      serviço em {dataCurta(a.servico)} ·{" "}
-                      {a.pronto ? (
-                        <span className="font-medium text-primary">já pode diagnosticar</span>
-                      ) : (
-                        `a partir de ${dataCurta(a.aPartir)}`
-                      )}
-                    </span>
-                  </span>
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="outline"
-                    className="h-7 shrink-0 px-2 text-xs"
-                    onClick={() => preencher("diagnostico", a.animalId)}
-                  >
-                    Registrar diagnóstico
-                  </Button>
-                </li>
-              ))}
-            </ul>
-          )}
-        </section>
-
-        <section
-          id="card-partos"
-          className="scroll-mt-24 rounded-xl border border-border bg-card p-4 transition-shadow"
-        >
-          <h2 className="text-base font-semibold">Partos previstos</h2>
-          {situacao.partos.length === 0 ? (
-            <p className="mt-3 text-sm text-muted-foreground">Nenhuma gestação em andamento.</p>
-          ) : (
-            <ul className="mt-3 max-h-64 divide-y divide-border overflow-y-auto">
-              {situacao.partos.map((p) => {
-                const passou = !!p.previsao && p.previsao < situacao.hoje;
-                return (
-                  <li
-                    key={p.animalId}
-                    className="flex items-center justify-between gap-3 py-2 text-sm"
-                  >
-                    <span className="min-w-0">
-                      <span className="block truncate font-medium">{p.nome}</span>
-                      <span className="block text-xs text-muted-foreground">
-                        {p.origem}
-                        {p.secarAte && !passou ? ` · secar até ${dataCurta(p.secarAte)}` : ""}
-                      </span>
-                    </span>
-                    <span className="flex shrink-0 flex-col items-end gap-1">
-                      <span
-                        className={cn(
-                          "rounded-full px-2 py-0.5 text-xs font-semibold",
-                          passou ? "bg-destructive/15 text-destructive" : "bg-accent text-primary",
-                        )}
-                      >
-                        {!p.previsao
-                          ? "Sem previsão"
-                          : passou
-                            ? `Previsto ${dataCurta(p.previsao)}`
-                            : dataCurta(p.previsao)}
-                      </span>
-                      <span className="flex gap-1">
-                        {p.secar ? (
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant="outline"
-                            className="h-7 px-2 text-xs"
-                            onClick={() => preencher("secagem", p.animalId)}
-                          >
-                            Secar
-                          </Button>
-                        ) : null}
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant="outline"
-                          className="h-7 px-2 text-xs"
-                          onClick={() => preencher("parto", p.animalId)}
-                        >
-                          Registrar parto
-                        </Button>
-                      </span>
-                    </span>
-                  </li>
-                );
-              })}
-            </ul>
-          )}
-        </section>
-      </div>
-
-      {registrosFiltrados.length === 0 && situacao.vazias.length === 0 ? (
-        <EmptyState
-          icon={Stethoscope}
-          titulo="Nenhum registro reprodutivo"
-          descricao="Registre uma cobertura ou inseminação para calcular a previsão de parto."
-        />
-      ) : (
-        <section
-          id="card-lista"
-          className="scroll-mt-24 rounded-xl border border-border bg-card transition-shadow"
-        >
           <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border px-4 py-3">
-            <h2 className="text-base font-semibold">Histórico</h2>
             <div className="flex flex-wrap gap-2">
               <select
-                aria-label="Filtrar por animal"
-                value={filtroAnimalHist}
-                onChange={(e) => {
-                  setFiltroAnimalHist(e.target.value);
-                  setLimiteHist(30);
-                }}
+                aria-label="Período dos nascimentos"
+                value={periodoNasc}
+                onChange={(e) => setPeriodoNasc(e.target.value as typeof periodoNasc)}
                 className="h-9 rounded-md border border-input bg-background px-2 text-sm"
               >
-                <option value="">Todos os animais</option>
-                {animaisDoHistorico.map(([id, nome]) => (
+                <option value="30">Últimos 30 dias</option>
+                <option value="90">Últimos 90 dias</option>
+                <option value="365">Último ano</option>
+                <option value="tudo">Tudo</option>
+              </select>
+              <select
+                aria-label="Filtrar por mãe"
+                value={filtroMaeNasc}
+                onChange={(e) => setFiltroMaeNasc(e.target.value)}
+                className="h-9 rounded-md border border-input bg-background px-2 text-sm"
+              >
+                <option value="">Todas as mães</option>
+                {maesNasc.map(([id, nome]) => (
                   <option key={id} value={id}>
                     {nome}
                   </option>
                 ))}
               </select>
+            </div>
+            <Button
+              type="button"
+              size="sm"
+              onClick={() => {
+                setAba("acompanhamento");
+                setTimeout(() => preencher("parto", ""), 50);
+              }}
+            >
+              Registrar parto
+            </Button>
+          </div>
+          {nascimentosDoPeriodo.length === 0 ? (
+            <p className="px-4 py-6 text-sm text-muted-foreground">
+              Nenhum nascimento nesse período.
+            </p>
+          ) : (
+            <ul className="divide-y divide-border">
+              {nascimentosDoPeriodo.map((n) => (
+                <li key={n.partoId ?? `${n.femeaId}-${n.data}`} className="px-4 py-3 text-sm">
+                  <p className="font-medium">
+                    {animais.data?.find((a) => a.id === n.femeaId)?.nome ?? "Fêmea"}{" "}
+                    <span className="font-normal text-muted-foreground">· {dataCurta(n.data)}</span>
+                  </p>
+                  {n.crias.length === 0 ? (
+                    <p className="text-xs text-muted-foreground">Cria não cadastrada no rebanho.</p>
+                  ) : (
+                    <ul className="mt-0.5 space-y-0.5">
+                      {n.crias.map((c) => (
+                        <li key={c.id} className="text-muted-foreground">
+                          <Link
+                            to="/rebanho/$animalId"
+                            params={{ animalId: c.id }}
+                            className="font-medium text-primary hover:underline"
+                          >
+                            {c.nome}
+                          </Link>{" "}
+                          {c.sexo === "macho" ? "Macho" : c.sexo === "femea" ? "Fêmea" : ""}
+                          {" · "}
+                          {c.pesoKg != null ? pesoTexto(c.pesoKg) : "sem peso"}
+                          {c.raca ? ` · ${c.raca}` : ""}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+      ) : (
+        <>
+          <div className="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+            {kpis.map((k) => {
+              const conteudo = (
+                <>
+                  <span className="flex size-8 items-center justify-center rounded-lg bg-accent text-primary">
+                    <k.icone className="size-4" aria-hidden="true" />
+                  </span>
+                  <p className="mt-2 text-[11px] text-muted-foreground">{k.rotulo}</p>
+                  <p className="font-display text-lg font-extrabold">{k.valor}</p>
+                  {k.detalhe ? (
+                    <p className="text-[11px] text-muted-foreground">{k.detalhe}</p>
+                  ) : null}
+                </>
+              );
+              return k.alvo ? (
+                <button
+                  key={k.rotulo}
+                  type="button"
+                  onClick={() => irPara(k.alvo!)}
+                  className="flex h-full flex-col items-start justify-start rounded-xl border border-border bg-card p-3 text-left transicao-suave hover:border-primary/50"
+                  aria-label={`${k.rotulo}: ${k.valor}. Ver lista`}
+                >
+                  {conteudo}
+                </button>
+              ) : (
+                <div key={k.rotulo} className="h-full rounded-xl border border-border bg-card p-3">
+                  {conteudo}
+                </div>
+              );
+            })}
+          </div>
+
+          <form
+            ref={formRef}
+            id="form-reproducao"
+            className="mb-5 grid scroll-mt-24 grid-cols-2 items-start gap-3 rounded-xl border border-border bg-card p-4 sm:flex sm:flex-wrap sm:justify-between"
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (requerPrevisao && !touroTextoAtual()) {
+                toast.error(`Informe o ${rotuloReprodutor.toLowerCase()} ou o sêmen usado.`);
+                return;
+              }
+              salvar.mutate({
+                tipo,
+                animalId,
+                data,
+                touro: requerPrevisao ? touroTextoAtual() : "",
+                previsaoParto: requerPrevisao ? previsaoParto : null,
+                resultado: tipo === "diagnostico" ? resultadoDiagnostico : null,
+                custo: Number(custo) || 0,
+                crias:
+                  tipo === "parto" && criaSexo !== "nao"
+                    ? [
+                        {
+                          sexo: criaSexo,
+                          nome: criaNome,
+                          brinco: criaBrinco,
+                          peso: Number(criaPeso) > 0 ? Number(criaPeso) : null,
+                        },
+                        ...criasExtras.map((c) => ({
+                          sexo: c.sexo,
+                          nome: c.nome,
+                          brinco: c.brinco,
+                          peso: Number(c.peso) > 0 ? Number(c.peso) : null,
+                        })),
+                      ]
+                    : [],
+              });
+            }}
+          >
+            <div className="min-w-0 space-y-1.5 sm:min-w-[150px] sm:flex-1">
+              <Label htmlFor="tipo">Tipo</Label>
               <select
-                aria-label="Filtrar por tipo"
-                value={filtroTipoHist}
-                onChange={(e) => {
-                  setFiltroTipoHist(e.target.value);
-                  setLimiteHist(30);
-                }}
-                className="h-9 rounded-md border border-input bg-background px-2 text-sm"
+                id="tipo"
+                value={tipo}
+                onChange={(e) => setTipo(e.target.value)}
+                className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
               >
-                <option value="">Todos os tipos</option>
                 {TIPOS.map((t) => (
                   <option key={t} value={t}>
                     {TIPO_LABEL[t] ?? t}
                   </option>
                 ))}
-                <option value="vazias">Vazias ({situacao.vazias.length})</option>
-                <option value="nascimentos">Nascimentos ({nascimentos.length})</option>
               </select>
             </div>
-          </div>
-          {filtroTipoHist === "nascimentos" ? (
-            <>
-              <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border px-4 py-2.5 text-sm">
-                <p className="text-muted-foreground">
-                  <span className="font-semibold text-foreground">{resumoNasc.total}</span>{" "}
-                  {resumoNasc.total === 1 ? "nascido" : "nascidos"} · {resumoNasc.machos}{" "}
-                  {resumoNasc.machos === 1 ? "macho" : "machos"} · {resumoNasc.femeas}{" "}
-                  {resumoNasc.femeas === 1 ? "fêmea" : "fêmeas"}
-                  {resumoNasc.pesoMedio != null
-                    ? ` · peso médio ${pesoTexto(resumoNasc.pesoMedio)}`
-                    : ""}
+            <div className="min-w-0 space-y-1.5 sm:min-w-[150px] sm:flex-1">
+              <Label htmlFor="animal">Animal</Label>
+              <select
+                id="animal"
+                value={animalId}
+                onChange={(e) => setAnimalId(e.target.value)}
+                className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+                required
+              >
+                <option value="">Selecione</option>
+                {animaisParaSelecao.map((a) => (
+                  <option key={a.id} value={a.id}>
+                    {a.nome}
+                    {a.brinco ? ` (${a.brinco})` : ""}
+                  </option>
+                ))}
+              </select>
+              {animalSelecionado ? (
+                <p className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-muted-foreground">
+                  {animalSelecionado.nascimento ? (
+                    <span>
+                      Nascido em {dataCurta(animalSelecionado.nascimento)} (
+                      {idadeTexto(animalSelecionado.nascimento)})
+                    </span>
+                  ) : null}
+                  {animalSelecionado.mae ? <span>Mãe: {animalSelecionado.mae}</span> : null}
+                  {animalSelecionado.pai ? <span>Pai: {animalSelecionado.pai}</span> : null}
                 </p>
+              ) : null}
+            </div>
+            <div className="min-w-0 space-y-1.5 sm:min-w-[150px] sm:flex-1">
+              <Label htmlFor="data-repro">Data</Label>
+              <Input
+                id="data-repro"
+                type="date"
+                value={data}
+                onChange={(e) => setData(e.target.value)}
+                required
+              />
+            </div>
+            {tipo === "diagnostico" ? (
+              <div className="min-w-0 space-y-1.5 sm:min-w-[150px] sm:flex-1">
+                <Label htmlFor="resultado-diagnostico">Resultado</Label>
                 <select
-                  aria-label="Período dos nascimentos"
-                  value={periodoNasc}
-                  onChange={(e) => setPeriodoNasc(e.target.value as typeof periodoNasc)}
-                  className="h-8 rounded-md border border-input bg-background px-2 text-sm"
+                  id="resultado-diagnostico"
+                  value={resultadoDiagnostico}
+                  onChange={(e) =>
+                    setResultadoDiagnostico(e.target.value as "positivo" | "negativo")
+                  }
+                  className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
                 >
-                  <option value="30">Últimos 30 dias</option>
-                  <option value="90">Últimos 90 dias</option>
-                  <option value="365">Último ano</option>
-                  <option value="tudo">Tudo</option>
+                  <option value="positivo">Prenhe (positivo)</option>
+                  <option value="negativo">Vazia (negativo)</option>
                 </select>
               </div>
-              {nascimentosDoPeriodo.length === 0 ? (
-                <p className="px-4 py-6 text-sm text-muted-foreground">
-                  Nenhum nascimento nesse período.
+            ) : null}
+            {requerPrevisao ? (
+              <div className="min-w-0 space-y-1.5 sm:min-w-[150px] sm:flex-1">
+                <Label htmlFor="touro">
+                  {rotuloReprodutor} / sêmen <span className="text-destructive">*</span>
+                </Label>
+                <select
+                  id="touro"
+                  value={touroId}
+                  onChange={(e) => setTouroId(e.target.value)}
+                  className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+                  required
+                >
+                  <option value="" disabled>
+                    Selecione
+                  </option>
+                  {touros.data?.map((t) => (
+                    <option key={t.id} value={t.id}>
+                      {t.nome}
+                      {t.brinco ? ` (${t.brinco})` : ""}
+                    </option>
+                  ))}
+                  <option value="outro">Outro (não cadastrado)</option>
+                </select>
+              </div>
+            ) : null}
+            {requerPrevisao && touroId === "outro" ? (
+              <div className="min-w-0 space-y-1.5 sm:min-w-[150px] sm:flex-1">
+                <Label htmlFor="touro-custom">
+                  Nome do {rotuloReprodutor.toLowerCase()}/sêmen{" "}
+                  <span className="text-destructive">*</span>
+                </Label>
+                <Input
+                  id="touro-custom"
+                  value={touroCustom}
+                  onChange={(e) => setTouroCustom(e.target.value)}
+                  required
+                  placeholder={`Ex: ${rotuloReprodutor} emprestado — Fazenda X`}
+                />
+              </div>
+            ) : null}
+            {requerPrevisao ? (
+              <div className="min-w-0 space-y-1.5 sm:min-w-[150px] sm:flex-1">
+                <Label htmlFor="previsao-parto">Previsão de parto</Label>
+                <Input
+                  id="previsao-parto"
+                  type="date"
+                  value={previsaoParto}
+                  onChange={(e) => setPrevisaoParto(e.target.value)}
+                />
+                <p className="text-xs text-muted-foreground">
+                  Calculada com base em uma gestação média de {diasGestacao} dias
+                  {soOvino ? " (ovinos)" : ""}.
                 </p>
+              </div>
+            ) : null}
+            {tipo === "parto" ? (
+              <>
+                <div className="min-w-0 space-y-1.5 sm:min-w-[150px] sm:flex-1">
+                  <Label htmlFor="cria-sexo">Cria</Label>
+                  <select
+                    id="cria-sexo"
+                    value={criaSexo}
+                    onChange={(e) => setCriaSexo(e.target.value as typeof criaSexo)}
+                    className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+                  >
+                    <option value="femea">Cadastrar fêmea</option>
+                    <option value="macho">Cadastrar macho</option>
+                    <option value="nao">Não cadastrar</option>
+                  </select>
+                </div>
+                {criaSexo !== "nao" ? (
+                  <>
+                    <div className="min-w-0 space-y-1.5 sm:min-w-[150px] sm:flex-1">
+                      <Label htmlFor="cria-nome">Nome da cria</Label>
+                      <Input
+                        id="cria-nome"
+                        value={criaNome}
+                        placeholder={
+                          animalSelecionado ? `Cria de ${animalSelecionado.nome}` : "Opcional"
+                        }
+                        onChange={(e) => setCriaNome(e.target.value)}
+                      />
+                    </div>
+                    <div className="min-w-0 space-y-1.5 sm:min-w-[120px] sm:flex-1">
+                      <Label htmlFor="cria-brinco">Brinco</Label>
+                      <Input
+                        id="cria-brinco"
+                        value={criaBrinco}
+                        placeholder="Opcional"
+                        onChange={(e) => setCriaBrinco(e.target.value)}
+                      />
+                    </div>
+                    <div className="min-w-0 space-y-1.5 sm:min-w-[120px] sm:flex-1">
+                      <Label htmlFor="cria-peso">Peso ao nascer (kg)</Label>
+                      <Input
+                        id="cria-peso"
+                        type="number"
+                        step="0.1"
+                        min="0"
+                        value={criaPeso}
+                        placeholder="Opcional"
+                        onChange={(e) => setCriaPeso(e.target.value)}
+                      />
+                    </div>
+                    {criasExtras.map((c, i) => (
+                      <div
+                        key={i}
+                        className="flex w-full min-w-0 flex-wrap items-end gap-3 border-t border-border pt-3"
+                      >
+                        <div className="min-w-0 space-y-1.5 sm:min-w-[120px] sm:flex-1">
+                          <Label htmlFor={`cria-sexo-${i}`}>Cria {i + 2}</Label>
+                          <select
+                            id={`cria-sexo-${i}`}
+                            value={c.sexo}
+                            onChange={(e) =>
+                              setCriasExtras((l) =>
+                                l.map((x, j) =>
+                                  j === i ? { ...x, sexo: e.target.value as "femea" | "macho" } : x,
+                                ),
+                              )
+                            }
+                            className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+                          >
+                            <option value="femea">Fêmea</option>
+                            <option value="macho">Macho</option>
+                          </select>
+                        </div>
+                        <div className="min-w-0 space-y-1.5 sm:min-w-[150px] sm:flex-1">
+                          <Label htmlFor={`cria-nome-${i}`}>Nome</Label>
+                          <Input
+                            id={`cria-nome-${i}`}
+                            value={c.nome}
+                            placeholder="Opcional"
+                            onChange={(e) =>
+                              setCriasExtras((l) =>
+                                l.map((x, j) => (j === i ? { ...x, nome: e.target.value } : x)),
+                              )
+                            }
+                          />
+                        </div>
+                        <div className="min-w-0 space-y-1.5 sm:min-w-[100px] sm:flex-1">
+                          <Label htmlFor={`cria-brinco-${i}`}>Brinco</Label>
+                          <Input
+                            id={`cria-brinco-${i}`}
+                            value={c.brinco}
+                            placeholder="Opcional"
+                            onChange={(e) =>
+                              setCriasExtras((l) =>
+                                l.map((x, j) => (j === i ? { ...x, brinco: e.target.value } : x)),
+                              )
+                            }
+                          />
+                        </div>
+                        <div className="min-w-0 space-y-1.5 sm:min-w-[100px] sm:flex-1">
+                          <Label htmlFor={`cria-peso-${i}`}>Peso (kg)</Label>
+                          <Input
+                            id={`cria-peso-${i}`}
+                            type="number"
+                            step="0.1"
+                            min="0"
+                            value={c.peso}
+                            placeholder="Opcional"
+                            onChange={(e) =>
+                              setCriasExtras((l) =>
+                                l.map((x, j) => (j === i ? { ...x, peso: e.target.value } : x)),
+                              )
+                            }
+                          />
+                        </div>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => setCriasExtras((l) => l.filter((_, j) => j !== i))}
+                        >
+                          Remover
+                        </Button>
+                      </div>
+                    ))}
+                    <div className="w-full">
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 px-2 text-xs"
+                        onClick={() =>
+                          setCriasExtras((l) => [
+                            ...l,
+                            { sexo: "femea", nome: "", brinco: "", peso: "" },
+                          ])
+                        }
+                      >
+                        + Outra cria (gêmeos)
+                      </Button>
+                    </div>
+                  </>
+                ) : null}
+              </>
+            ) : null}
+            <div className="min-w-0 space-y-1.5 sm:min-w-[150px] sm:flex-1">
+              <Label htmlFor="custo-reproducao">Custo (R$)</Label>
+              <Input
+                id="custo-reproducao"
+                type="number"
+                step="0.01"
+                min="0"
+                value={custo}
+                placeholder="Opcional"
+                onChange={(e) => setCusto(e.target.value)}
+              />
+              <p className="text-xs text-muted-foreground">Sêmen, inseminador, veterinário.</p>
+            </div>
+            <div className="col-span-2 w-full space-y-1.5 sm:w-auto sm:min-w-[150px]">
+              <Label className="invisible hidden sm:block">Registrar</Label>
+              <Button
+                type="submit"
+                className="w-full"
+                disabled={salvar.isPending || confirmarLactacao !== null}
+              >
+                <Plus className="size-4" aria-hidden="true" />
+                Registrar
+              </Button>
+            </div>
+          </form>
+
+          {confirmarLactacao ? (
+            <p className="mb-3 text-xs text-muted-foreground">
+              Responda a pergunta abaixo antes de registrar outro parto.
+            </p>
+          ) : null}
+
+          {confirmarLactacao ? (
+            <div className="mb-5 rounded-xl border border-border bg-card p-4">
+              <p className="text-sm font-medium">
+                Após este parto, {confirmarLactacao.nome} entrou em lactação?
+              </p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Se sim, o status do animal muda pra "lactação" e ele passa a aparecer na lista de
+                registro de leite por vaca.
+              </p>
+              <div className="mt-3 flex gap-2">
+                <Button
+                  size="sm"
+                  disabled={marcarLactacao.isPending}
+                  onClick={() => marcarLactacao.mutate(confirmarLactacao.animalId)}
+                >
+                  Sim
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={marcarLactacao.isPending}
+                  onClick={() => {
+                    const a = animais.data?.find((x) => x.id === confirmarLactacao.animalId);
+                    // Pariu e não entrou em lactação: deixa de ser prenhe/seca.
+                    if (a && (a.status === "prenhe" || a.status === "seca")) {
+                      void db
+                        .from("animais")
+                        .update({ status: "ativo" } as never)
+                        .eq("id", a.id)
+                        .then(() =>
+                          queryClient.invalidateQueries({ queryKey: ["animais-simples"] }),
+                        );
+                    }
+                    setConfirmarLactacao(null);
+                  }}
+                >
+                  Não
+                </Button>
+              </div>
+            </div>
+          ) : null}
+
+          <div className="mb-5 grid gap-4 lg:grid-cols-2">
+            <section
+              id="card-diagnostico"
+              className="scroll-mt-24 rounded-xl border border-border bg-card p-4 transition-shadow"
+            >
+              <h2 className="text-base font-semibold">Aguardando diagnóstico</h2>
+              {situacao.aguardandoDiagnostico.length === 0 ? (
+                <p className="mt-3 text-sm text-muted-foreground">Nada pendente.</p>
               ) : (
-                <ul className="divide-y divide-border">
-                  {nascimentosDoPeriodo.map((n) => (
-                    <li key={n.partoId ?? `${n.femeaId}-${n.data}`} className="px-4 py-3 text-sm">
-                      <p className="font-medium">
-                        {animais.data?.find((a) => a.id === n.femeaId)?.nome ?? "Fêmea"}{" "}
-                        <span className="font-normal text-muted-foreground">
-                          · {dataCurta(n.data)}
+                <ul className="mt-3 max-h-64 divide-y divide-border overflow-y-auto">
+                  {situacao.aguardandoDiagnostico.map((a) => (
+                    <li
+                      key={a.animalId}
+                      className="flex items-center justify-between gap-3 py-2 text-sm"
+                    >
+                      <span className="min-w-0">
+                        <span className="block truncate font-medium">{a.nome}</span>
+                        <span className="block text-xs text-muted-foreground">
+                          serviço em {dataCurta(a.servico)} ·{" "}
+                          {a.pronto ? (
+                            <span className="font-medium text-primary">já pode diagnosticar</span>
+                          ) : (
+                            `a partir de ${dataCurta(a.aPartir)}`
+                          )}
                         </span>
-                      </p>
-                      {n.crias.length === 0 ? (
-                        <p className="text-xs text-muted-foreground">
-                          Cria não cadastrada no rebanho.
-                        </p>
-                      ) : (
-                        <ul className="mt-0.5 space-y-0.5">
-                          {n.crias.map((c) => (
-                            <li key={c.id} className="text-muted-foreground">
-                              <Link
-                                to="/rebanho/$animalId"
-                                params={{ animalId: c.id }}
-                                className="font-medium text-primary hover:underline"
-                              >
-                                {c.nome}
-                              </Link>{" "}
-                              {c.sexo === "macho" ? "Macho" : c.sexo === "femea" ? "Fêmea" : ""}
-                              {" · "}
-                              {c.pesoKg != null ? pesoTexto(c.pesoKg) : "sem peso"}
-                              {c.raca ? ` · ${c.raca}` : ""}
-                            </li>
-                          ))}
-                        </ul>
-                      )}
+                      </span>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        className="h-7 shrink-0 px-2 text-xs"
+                        onClick={() => preencher("diagnostico", a.animalId)}
+                      >
+                        Registrar diagnóstico
+                      </Button>
                     </li>
                   ))}
                 </ul>
               )}
-            </>
-          ) : filtroTipoHist === "vazias" ? (
-            <>
-              {situacao.vazias.length === 0 ? (
-                <p className="px-4 py-6 text-sm text-muted-foreground">
-                  Nenhuma fêmea vazia esperando serviço.
-                </p>
+            </section>
+
+            <section
+              id="card-partos"
+              className="scroll-mt-24 rounded-xl border border-border bg-card p-4 transition-shadow"
+            >
+              <h2 className="text-base font-semibold">Partos previstos</h2>
+              {situacao.partos.length === 0 ? (
+                <p className="mt-3 text-sm text-muted-foreground">Nenhuma gestação em andamento.</p>
               ) : (
-                <ul className="divide-y divide-border">
-                  {situacao.vazias
-                    .filter((v) => !filtroAnimalHist || v.animalId === filtroAnimalHist)
-                    .map((v) => (
+                <ul className="mt-3 max-h-64 divide-y divide-border overflow-y-auto">
+                  {situacao.partos.map((p) => {
+                    const passou = !!p.previsao && p.previsao < situacao.hoje;
+                    return (
                       <li
-                        key={v.animalId}
-                        className="flex items-center justify-between gap-3 px-4 py-3 text-sm"
+                        key={p.animalId}
+                        className="flex items-center justify-between gap-3 py-2 text-sm"
                       >
                         <span className="min-w-0">
-                          <span className="block truncate font-medium">{v.nome}</span>
+                          <span className="block truncate font-medium">{p.nome}</span>
                           <span className="block text-xs text-muted-foreground">
-                            {v.dias !== null ? `${v.dias} dia${v.dias === 1 ? "" : "s"} · ` : ""}
-                            {v.motivo}
+                            {p.origem}
+                            {p.secarAte && !passou ? ` · secar até ${dataCurta(p.secarAte)}` : ""}
                           </span>
                         </span>
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant="outline"
-                          className="h-7 shrink-0 px-2 text-xs"
-                          onClick={() => preencher("cobertura", v.animalId)}
-                        >
-                          Registrar serviço
-                        </Button>
+                        <span className="flex shrink-0 flex-col items-end gap-1">
+                          <span
+                            className={cn(
+                              "rounded-full px-2 py-0.5 text-xs font-semibold",
+                              passou
+                                ? "bg-destructive/15 text-destructive"
+                                : "bg-accent text-primary",
+                            )}
+                          >
+                            {!p.previsao
+                              ? "Sem previsão"
+                              : passou
+                                ? `Previsto ${dataCurta(p.previsao)}`
+                                : dataCurta(p.previsao)}
+                          </span>
+                          <span className="flex gap-1">
+                            {p.secar ? (
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="outline"
+                                className="h-7 px-2 text-xs"
+                                onClick={() => preencher("secagem", p.animalId)}
+                              >
+                                Secar
+                              </Button>
+                            ) : null}
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              className="h-7 px-2 text-xs"
+                              onClick={() => preencher("parto", p.animalId)}
+                            >
+                              Registrar parto
+                            </Button>
+                          </span>
+                        </span>
                       </li>
-                    ))}
+                    );
+                  })}
                 </ul>
               )}
-            </>
+            </section>
+          </div>
+
+          {registrosFiltrados.length === 0 && situacao.vazias.length === 0 ? (
+            <EmptyState
+              icon={Stethoscope}
+              titulo="Nenhum registro reprodutivo"
+              descricao="Registre uma cobertura ou inseminação para calcular a previsão de parto."
+            />
           ) : (
-            <>
-              {historico.length === 0 ? (
-                <p className="px-4 py-6 text-sm text-muted-foreground">
-                  {registrosFiltrados.length === 0
-                    ? "Nenhum registro reprodutivo ainda."
-                    : "Nenhum registro com esse filtro."}
-                </p>
-              ) : null}
-              <ul className="divide-y divide-border">
-                {historico.slice(0, limiteHist).map((r) => {
-                  const animal = (
-                    r as {
-                      animais?: {
-                        nome?: string;
-                        mae?: string;
-                        pai?: string;
-                        nascimento?: string;
-                      } | null;
-                    }
-                  ).animais;
-                  const genealogia = [
-                    animal?.nascimento ? `nascido em ${dataCurta(animal.nascimento)}` : null,
-                    animal?.mae ? `mãe: ${animal.mae}` : null,
-                    animal?.pai ? `pai: ${animal.pai}` : null,
-                  ].filter(Boolean);
-                  return (
-                    <li
-                      key={r.id}
-                      className="flex items-center justify-between gap-3 px-4 py-3 text-sm"
-                    >
-                      <span className="min-w-0 flex-1">
-                        <span>
-                          <span className="font-medium">{TIPO_LABEL[r.tipo ?? ""] ?? r.tipo}</span>
-                          {r.tipo === "diagnostico" && r.resultado ? (
-                            <span
-                              className={cn(
-                                "ml-1.5 rounded-full px-1.5 py-0.5 text-[11px] font-semibold",
-                                r.resultado === "positivo"
-                                  ? "bg-success/15 text-success"
-                                  : "bg-muted text-muted-foreground",
-                              )}
-                            >
-                              {r.resultado === "positivo" ? "Prenhe" : "Vazia"}
-                            </span>
-                          ) : null}
-                          {" · "}
-                          <span className="text-muted-foreground">{animal?.nome ?? "Rebanho"}</span>
-                        </span>
-                        <span className="block text-xs text-muted-foreground">
-                          {dataCurta(r.data)}
-                          {r.previsao_parto
-                            ? ` · previsão de parto ${dataCurta(r.previsao_parto)}`
-                            : ""}
-                        </span>
-                        {genealogia.length > 0 ? (
-                          <span className="flex items-center gap-1 text-xs text-muted-foreground">
-                            <Users className="size-3 shrink-0" aria-hidden="true" />
-                            {genealogia.join(" · ")}
-                          </span>
-                        ) : null}
-                      </span>
-                      <span className="flex shrink-0 items-center gap-1">
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon"
-                          className="size-7"
-                          aria-label="Editar registro"
-                          onClick={() =>
-                            setEditando({
-                              id: r.id,
-                              tipo: r.tipo ?? "",
-                              animalId: r.animal_id ?? null,
-                              nome: animal?.nome ?? "Rebanho",
-                              data: dataISO(r.data),
-                              touro: r.touro ?? "",
-                              previsao: r.previsao_parto ? dataISO(r.previsao_parto) : "",
-                              resultado: r.resultado ?? "positivo",
-                              resultadoAntes: r.resultado ?? "positivo",
-                            })
-                          }
-                        >
-                          <Pencil className="size-3.5" aria-hidden="true" />
-                        </Button>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon"
-                          className="size-7 hover:text-destructive"
-                          aria-label="Excluir registro"
-                          onClick={() =>
-                            setExcluindo({
-                              id: r.id,
-                              texto: `${TIPO_LABEL[r.tipo ?? ""] ?? r.tipo} · ${animal?.nome ?? "Rebanho"} · ${dataCurta(r.data)}`,
-                            })
-                          }
-                        >
-                          <Trash2 className="size-3.5" aria-hidden="true" />
-                        </Button>
-                      </span>
-                    </li>
-                  );
-                })}
-              </ul>
-              {historico.length > limiteHist ? (
-                <div className="border-t border-border px-4 py-3 text-center">
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => setLimiteHist((n) => n + 30)}
+            <section
+              id="card-lista"
+              className="scroll-mt-24 rounded-xl border border-border bg-card transition-shadow"
+            >
+              <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border px-4 py-3">
+                <h2 className="text-base font-semibold">Histórico</h2>
+                <div className="flex flex-wrap gap-2">
+                  <select
+                    aria-label="Filtrar por animal"
+                    value={filtroAnimalHist}
+                    onChange={(e) => {
+                      setFiltroAnimalHist(e.target.value);
+                      setLimiteHist(30);
+                    }}
+                    className="h-9 rounded-md border border-input bg-background px-2 text-sm"
                   >
-                    Ver mais ({historico.length - limiteHist})
-                  </Button>
+                    <option value="">Todos os animais</option>
+                    {animaisDoHistorico.map(([id, nome]) => (
+                      <option key={id} value={id}>
+                        {nome}
+                      </option>
+                    ))}
+                  </select>
+                  <select
+                    aria-label="Filtrar por tipo"
+                    value={filtroTipoHist}
+                    onChange={(e) => {
+                      setFiltroTipoHist(e.target.value);
+                      setLimiteHist(30);
+                    }}
+                    className="h-9 rounded-md border border-input bg-background px-2 text-sm"
+                  >
+                    <option value="">Todos os tipos</option>
+                    {TIPOS.map((t) => (
+                      <option key={t} value={t}>
+                        {TIPO_LABEL[t] ?? t}
+                      </option>
+                    ))}
+                    <option value="vazias">Vazias ({situacao.vazias.length})</option>
+                  </select>
                 </div>
-              ) : null}
-            </>
+              </div>
+              {filtroTipoHist === "vazias" ? (
+                <>
+                  {situacao.vazias.length === 0 ? (
+                    <p className="px-4 py-6 text-sm text-muted-foreground">
+                      Nenhuma fêmea vazia esperando serviço.
+                    </p>
+                  ) : (
+                    <ul className="divide-y divide-border">
+                      {situacao.vazias
+                        .filter((v) => !filtroAnimalHist || v.animalId === filtroAnimalHist)
+                        .map((v) => (
+                          <li
+                            key={v.animalId}
+                            className="flex items-center justify-between gap-3 px-4 py-3 text-sm"
+                          >
+                            <span className="min-w-0">
+                              <span className="block truncate font-medium">{v.nome}</span>
+                              <span className="block text-xs text-muted-foreground">
+                                {v.dias !== null
+                                  ? `${v.dias} dia${v.dias === 1 ? "" : "s"} · `
+                                  : ""}
+                                {v.motivo}
+                              </span>
+                            </span>
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              className="h-7 shrink-0 px-2 text-xs"
+                              onClick={() => preencher("cobertura", v.animalId)}
+                            >
+                              Registrar serviço
+                            </Button>
+                          </li>
+                        ))}
+                    </ul>
+                  )}
+                </>
+              ) : (
+                <>
+                  {historico.length === 0 ? (
+                    <p className="px-4 py-6 text-sm text-muted-foreground">
+                      {registrosFiltrados.length === 0
+                        ? "Nenhum registro reprodutivo ainda."
+                        : "Nenhum registro com esse filtro."}
+                    </p>
+                  ) : null}
+                  <ul className="divide-y divide-border">
+                    {historico.slice(0, limiteHist).map((r) => {
+                      const animal = (
+                        r as {
+                          animais?: {
+                            nome?: string;
+                            mae?: string;
+                            pai?: string;
+                            nascimento?: string;
+                          } | null;
+                        }
+                      ).animais;
+                      const genealogia = [
+                        animal?.nascimento ? `nascido em ${dataCurta(animal.nascimento)}` : null,
+                        animal?.mae ? `mãe: ${animal.mae}` : null,
+                        animal?.pai ? `pai: ${animal.pai}` : null,
+                      ].filter(Boolean);
+                      return (
+                        <li
+                          key={r.id}
+                          className="flex items-center justify-between gap-3 px-4 py-3 text-sm"
+                        >
+                          <span className="min-w-0 flex-1">
+                            <span>
+                              <span className="font-medium">
+                                {TIPO_LABEL[r.tipo ?? ""] ?? r.tipo}
+                              </span>
+                              {r.tipo === "diagnostico" && r.resultado ? (
+                                <span
+                                  className={cn(
+                                    "ml-1.5 rounded-full px-1.5 py-0.5 text-[11px] font-semibold",
+                                    r.resultado === "positivo"
+                                      ? "bg-success/15 text-success"
+                                      : "bg-muted text-muted-foreground",
+                                  )}
+                                >
+                                  {r.resultado === "positivo" ? "Prenhe" : "Vazia"}
+                                </span>
+                              ) : null}
+                              {" · "}
+                              <span className="text-muted-foreground">
+                                {animal?.nome ?? "Rebanho"}
+                              </span>
+                            </span>
+                            <span className="block text-xs text-muted-foreground">
+                              {dataCurta(r.data)}
+                              {r.previsao_parto
+                                ? ` · previsão de parto ${dataCurta(r.previsao_parto)}`
+                                : ""}
+                            </span>
+                            {genealogia.length > 0 ? (
+                              <span className="flex items-center gap-1 text-xs text-muted-foreground">
+                                <Users className="size-3 shrink-0" aria-hidden="true" />
+                                {genealogia.join(" · ")}
+                              </span>
+                            ) : null}
+                          </span>
+                          <span className="flex shrink-0 items-center gap-1">
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              className="size-7"
+                              aria-label="Editar registro"
+                              onClick={() =>
+                                setEditando({
+                                  id: r.id,
+                                  tipo: r.tipo ?? "",
+                                  animalId: r.animal_id ?? null,
+                                  nome: animal?.nome ?? "Rebanho",
+                                  data: dataISO(r.data),
+                                  touro: r.touro ?? "",
+                                  previsao: r.previsao_parto ? dataISO(r.previsao_parto) : "",
+                                  resultado: r.resultado ?? "positivo",
+                                  resultadoAntes: r.resultado ?? "positivo",
+                                })
+                              }
+                            >
+                              <Pencil className="size-3.5" aria-hidden="true" />
+                            </Button>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              className="size-7 hover:text-destructive"
+                              aria-label="Excluir registro"
+                              onClick={() =>
+                                setExcluindo({
+                                  id: r.id,
+                                  texto: `${TIPO_LABEL[r.tipo ?? ""] ?? r.tipo} · ${animal?.nome ?? "Rebanho"} · ${dataCurta(r.data)}`,
+                                })
+                              }
+                            >
+                              <Trash2 className="size-3.5" aria-hidden="true" />
+                            </Button>
+                          </span>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                  {historico.length > limiteHist ? (
+                    <div className="border-t border-border px-4 py-3 text-center">
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setLimiteHist((n) => n + 30)}
+                      >
+                        Ver mais ({historico.length - limiteHist})
+                      </Button>
+                    </div>
+                  ) : null}
+                </>
+              )}
+            </section>
           )}
-        </section>
+        </>
       )}
 
       <Dialog open={!!editando} onOpenChange={(v) => !v && setEditando(null)}>
