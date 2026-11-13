@@ -24,11 +24,12 @@ const VERSAO = "2.0";
 const ATUALIZACAO = "novembro de 2026";
 const CONTATO = "contato@curralonline.com";
 
-// Dados do controlador: preencher antes de publicar na main.
+// Dados do controlador, conforme o Certificado de Inova Simples (emitido em
+// 10/11/2026). Só dados públicos da empresa: não colocar CPF do titular.
 const CONTROLADOR = {
-  razaoSocial: "[RAZÃO SOCIAL DO CURRAL ONLINE]",
-  cnpj: "[CNPJ]",
-  endereco: "[ENDEREÇO COMPLETO]",
+  razaoSocial: "CURRAL ONLINE TECNOLOGIA E GESTÃO RURAL INOVA SIMPLES (I.S.)",
+  cnpj: "69.195.116/0001-20",
+  endereco: "Avenida Jesus Maria José, 2495, Jardim dos Monólitos, Quixadá/CE, CEP 63909-006",
 };
 
 function Titulo({ id, children }: { id: string; children: ReactNode }) {
