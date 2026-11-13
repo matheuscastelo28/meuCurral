@@ -27,6 +27,7 @@ export function SecaoPreferencias() {
       alerta_vacina: perfil.alerta_vacina ?? true,
       alerta_pesagem: perfil.alerta_pesagem ?? true,
       alerta_parto: perfil.alerta_parto ?? true,
+      estagio_automatico: perfil.estagio_automatico ?? true,
     });
   }, [perfil, soOvino]);
 
@@ -105,6 +106,20 @@ export function SecaoPreferencias() {
             ))}
           </div>
         </fieldset>
+
+        <div className="flex items-start justify-between gap-3 rounded-lg border border-border p-3">
+          <Label htmlFor="estagio_automatico" className="font-normal">
+            Atualizar a categoria pela idade
+            <span className="mt-0.5 block text-xs text-muted-foreground">
+              Bezerro → novilha/garrote → vaca/boi; cordeiro → borrega/borrego → ovelha.
+            </span>
+          </Label>
+          <Switch
+            id="estagio_automatico"
+            checked={valores.estagio_automatico}
+            onCheckedChange={(v) => setValores((atual) => ({ ...atual, estagio_automatico: v }))}
+          />
+        </div>
 
         <Button type="submit" disabled={salvar.isPending}>
           {salvar.isPending ? <Loader2 className="size-4 animate-spin" aria-hidden="true" /> : null}

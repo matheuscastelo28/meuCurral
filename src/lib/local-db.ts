@@ -32,6 +32,7 @@ import {
   editarLancamento,
   editarConta,
   editarParcela,
+  atualizarEstagios,
   type FiltroRemoto,
 } from "@/lib/dados.functions";
 import {
@@ -56,6 +57,7 @@ const PADROES: Record<string, () => Registro> = {
     alerta_vacina: true,
     alerta_pesagem: true,
     alerta_parto: true,
+    estagio_automatico: true,
   }),
   fazendas: () => ({
     cidade: null,
@@ -500,6 +502,10 @@ export const db = {
     },
   },
   rebanho: {
+    /** Avança a categoria (bezerro → novilha → vaca...) pela idade. */
+    async atualizarEstagios(params: { fazendaId: string }) {
+      return atualizarEstagios({ data: { token: tokenSessao(), ...params } });
+    },
     /** Venda de um animal de qualquer situação, já com a receita no Financeiro. */
     async venderAnimal(params: {
       fazendaId: string;

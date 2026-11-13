@@ -5,8 +5,8 @@
  * espécie que já existe no cadastro (não há coluna "espécie" exposta na UI).
  */
 
-export const CATEGORIAS_BOVINO = ["bezerro", "novilha", "vaca", "boi", "touro"] as const;
-export const CATEGORIAS_OVINO = ["cordeiro", "borrega", "ovelha", "carneiro"] as const;
+export const CATEGORIAS_BOVINO = ["bezerro", "novilha", "garrote", "vaca", "boi", "touro"] as const;
+export const CATEGORIAS_OVINO = ["cordeiro", "borrega", "borrego", "ovelha", "carneiro"] as const;
 export const CATEGORIAS = [...CATEGORIAS_BOVINO, ...CATEGORIAS_OVINO, "outro"] as const;
 
 export const OUTRA_RACA = "Outra";

@@ -2184,3 +2184,76 @@ export const editarParcela = createServerFn({ method: "POST" })
       };
     }
   });
+
+// ---------------------------------------------------------------------------
+// Estágio do animal pela idade (bezerro → novilha → vaca ...), ver lib/estagios
+// ---------------------------------------------------------------------------
+
+export const atualizarEstagios = createServerFn({ method: "POST" })
+  .inputValidator((dados: { token: string | null; fazendaId: string }) => dados)
+  .handler(async ({ data }) => {
+    try {
+      const { conexao } = await import("./pg.server");
+      const sql = await conexao();
+      const userId = await fazendaDoUsuario(sql, data.token, data.fazendaId);
+      if (!userId) {
+        return { data: null, error: { message: "Não autenticado ou fazenda inválida." } };
+      }
+      const { proximoEstagio } = await import("./estagios");
+      const { especieDoAnimal } = await import("./especies");
+      const { hojeISO } = await import("./formato");
+
+      const animais: {
+        id: string;
+        nome: string | null;
+        categoria: string | null;
+        especie: string | null;
+        sexo: string | null;
+        nascimento: Date | string | null;
+        ja_pariu: boolean;
+      }[] = await sql`
+        select a.id, a.nome, a.categoria, a.especie, a.sexo, a.nascimento,
+          exists (
+            select 1 from reproducao r where r.animal_id = a.id and r.tipo = 'parto'
+          ) as ja_pariu
+        from animais a
+        where a.fazenda_id = ${data.fazendaId}
+          and a.nascimento is not null
+          and coalesce(a.status, 'ativo') not in ('vendido', 'morto')`;
+
+      const hoje = hojeISO();
+      const alterados: { id: string; nome: string | null; de: string; para: string }[] = [];
+      for (const a of animais) {
+        const nascimento =
+          a.nascimento instanceof Date ? a.nascimento.toISOString().slice(0, 10) : a.nascimento;
+        const para = proximoEstagio(
+          {
+            especie: especieDoAnimal(a),
+            sexo: a.sexo,
+            categoria: a.categoria,
+            nascimento,
+            jaPariu: a.ja_pariu,
+          },
+          hoje,
+        );
+        if (para && a.categoria) alterados.push({ id: a.id, nome: a.nome, de: a.categoria, para });
+      }
+      if (alterados.length > 0) {
+        await sql.begin(async (tx) => {
+          for (const m of alterados) {
+            await tx`
+              update animais set categoria = ${m.para}, updated_at = now()
+              where id = ${m.id} and fazenda_id = ${data.fazendaId}`;
+          }
+        });
+      }
+      return { data: { alterados }, error: null };
+    } catch (erro) {
+      return {
+        data: null,
+        error: {
+          message: erro instanceof Error ? erro.message : "Erro ao atualizar os estágios.",
+        },
+      };
+    }
+  });

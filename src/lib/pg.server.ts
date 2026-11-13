@@ -169,6 +169,9 @@ create table if not exists animais (
 
 alter table animais add column if not exists pai text;
 
+-- Categoria avança sozinha pela idade (bezerro → novilha → vaca...), se ligado.
+alter table perfis add column if not exists estagio_automatico boolean not null default true;
+
 create table if not exists manejos (
   id uuid primary key default gen_random_uuid(),
   fazenda_id uuid references fazendas(id) on delete cascade,

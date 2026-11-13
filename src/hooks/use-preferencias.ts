@@ -8,6 +8,7 @@ export interface Preferencias {
   alerta_vacina: boolean;
   alerta_pesagem: boolean;
   alerta_parto: boolean;
+  estagio_automatico: boolean;
 }
 
 export interface Perfil extends Preferencias {
@@ -24,6 +25,7 @@ export const PREFERENCIAS_PADRAO: Preferencias = {
   alerta_vacina: true,
   alerta_pesagem: true,
   alerta_parto: true,
+  estagio_automatico: true,
 };
 
 export function usePerfil() {
@@ -36,7 +38,7 @@ export function usePerfil() {
       const { data, error } = await db
         .from("perfis")
         .select(
-          "id, nome, email, objetivo, unidade_peso, moeda, inicio_semana, alerta_vacina, alerta_pesagem, alerta_parto",
+          "id, nome, email, objetivo, unidade_peso, moeda, inicio_semana, alerta_vacina, alerta_pesagem, alerta_parto, estagio_automatico",
         )
         .eq("id", user.id)
         .maybeSingle();
@@ -56,6 +58,7 @@ export function usePreferencias(): Preferencias {
     alerta_vacina: data.alerta_vacina ?? true,
     alerta_pesagem: data.alerta_pesagem ?? true,
     alerta_parto: data.alerta_parto ?? true,
+    estagio_automatico: data.estagio_automatico ?? true,
   };
 }
 
