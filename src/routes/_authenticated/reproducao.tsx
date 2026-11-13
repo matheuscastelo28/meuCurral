@@ -958,7 +958,7 @@ function Reproducao() {
             </button>
           </div>
         ) : null}
-        <div className="inline-flex rounded-lg bg-muted p-1" role="tablist">
+        <div className="ml-auto inline-flex rounded-lg bg-muted p-1" role="tablist">
           <button
             type="button"
             onClick={() => setAba("acompanhamento")}
@@ -1030,19 +1030,21 @@ function Reproducao() {
                 ))}
               </select>
             </div>
-            <Button type="button" size="sm" variant="outline" onClick={() => setLoteAberto(true)}>
-              Registrar vários
-            </Button>
-            <Button
-              type="button"
-              size="sm"
-              onClick={() => {
-                setAba("acompanhamento");
-                setTimeout(() => preencher("parto", ""), 50);
-              }}
-            >
-              Registrar parto
-            </Button>
+            <div className="ml-auto flex gap-2">
+              <Button type="button" size="sm" variant="outline" onClick={() => setLoteAberto(true)}>
+                Registrar vários
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                onClick={() => {
+                  setAba("acompanhamento");
+                  setTimeout(() => preencher("parto", ""), 50);
+                }}
+              >
+                Registrar parto
+              </Button>
+            </div>
           </div>
           {nascimentosDoPeriodo.length === 0 ? (
             <p className="px-4 py-6 text-sm text-muted-foreground">
