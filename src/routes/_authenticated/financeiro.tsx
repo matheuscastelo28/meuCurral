@@ -28,7 +28,8 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { useFazenda } from "@/hooks/use-fazenda";
+import { useFazenda, useLimitePlano } from "@/hooks/use-fazenda";
+import { planoMinimoDo } from "@/lib/planos";
 import { dataCurta, dataISO, hojeISO, moeda as formatarMoeda } from "@/lib/formato";
 import { usePreferencias } from "@/hooks/use-preferencias";
 import {
@@ -150,6 +151,8 @@ function Financeiro() {
   const prefs = usePreferencias();
   const moeda = (v: number | null | undefined) => formatarMoeda(v, prefs.moeda);
   const { data: fazenda } = useFazenda();
+  const { plano } = useLimitePlano();
+  const completo = plano.recursos.financeiroCompleto;
   const queryClient = useQueryClient();
   const hoje = hojeISO();
   const { conta: contaIdNaUrl, novo: novoNaUrl } = Route.useSearch();
@@ -277,7 +280,7 @@ function Financeiro() {
         data: edData,
         categoria: edCategoria || null,
         formaPagamento: edForma,
-        parcelas: edForma === "cartao" ? Number(edParcelas) || 1 : null,
+        parcelas: edForma === "cartao" && completo ? Number(edParcelas) || 1 : null,
         status: l.tipo === "receita" ? (edRecebido ? "recebido" : "a_receber") : null,
         comprador: l.venda ? edComprador : undefined,
       });
@@ -1028,6 +1031,7 @@ function Financeiro() {
                       type="button"
                       size="sm"
                       variant={jaAconteceu ? "outline" : "default"}
+                      disabled={!completo}
                       onClick={() => setJaAconteceu(false)}
                     >
                       {tipo === "receita" ? "A receber" : "A pagar"}
@@ -1078,11 +1082,18 @@ function Financeiro() {
                   type="button"
                   size="sm"
                   variant={parcelado ? "default" : "outline"}
+                  disabled={!completo}
                   onClick={() => setParcelado(true)}
                 >
                   Parcelado
                 </Button>
               </div>
+              {!completo ? (
+                <p className="mt-2 text-xs text-muted-foreground">
+                  Contas a pagar e a receber e parcelamento fazem parte do plano{" "}
+                  {planoMinimoDo("financeiroCompleto").nome}.
+                </p>
+              ) : null}
 
               {parcelado ? (
                 <div className="mt-3 flex flex-wrap items-start gap-3">
@@ -1468,7 +1479,7 @@ function Financeiro() {
                           ))}
                         </select>
                       </div>
-                      {edForma === "cartao" ? (
+                      {edForma === "cartao" && completo ? (
                         <div className="space-y-1.5">
                           <Label htmlFor="ed-parcelas">Parcelas no cartão</Label>
                           <Input

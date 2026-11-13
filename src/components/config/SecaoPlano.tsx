@@ -25,6 +25,7 @@ export function SecaoPlano() {
   const { plano, usados, limite } = useLimitePlano();
   const pct = Number.isFinite(limite) ? Math.min(100, Math.round((usados / limite) * 100)) : 0;
   const [escolhido, setEscolhido] = useState<string | null>(null);
+  const [anual, setAnual] = useState(false);
   const [email, setEmail] = useState("");
   const [confirmarCancelamento, setConfirmarCancelamento] = useState(false);
 
@@ -92,7 +93,11 @@ export function SecaoPlano() {
 
   const iniciar = useMutation({
     mutationFn: async (planoId: string) => {
-      const { data, error } = await db.assinatura.iniciar({ plano: planoId, email });
+      const { data, error } = await db.assinatura.iniciar({
+        plano: planoId,
+        email,
+        periodo: anual ? "anual" : "mensal",
+      });
       if (error) throw new Error(error.message);
       return data!.initPoint;
     },
@@ -116,12 +121,30 @@ export function SecaoPlano() {
     onError: (e: Error) => toast.error(e.message),
   });
 
+  const r = plano.recursos;
   const recursos = [
-    { rotulo: "Cadastro de rebanho, manejo e calendário", tem: true },
-    { rotulo: "Relatórios", tem: plano.relatorios },
-    { rotulo: "Exportação de dados", tem: plano.exportacao },
-    { rotulo: "Vários usuários na mesma fazenda", tem: plano.multiUsuario },
-    { rotulo: "Acesso via API", tem: plano.api },
+    { rotulo: "Rebanho, manejo, agenda e leite", tem: true },
+    { rotulo: "Reprodução completa (histórico de partos por animal)", tem: r.reproducaoCompleta },
+    {
+      rotulo: "Confinamento completo (GMD, conversão, custo/kg, arroba)",
+      tem: r.confinamentoCompleto,
+    },
+    { rotulo: "Indicadores (GMD, DEL, taxa de prenhez)", tem: r.indicadores },
+    {
+      rotulo: "Índices avançados (fêmeas improdutivas, intervalo entre partos)",
+      tem: r.indicesAvancados,
+    },
+    {
+      rotulo: "Financeiro completo (contas, parcelas, custo por lote e animal)",
+      tem: r.financeiroCompleto,
+    },
+    { rotulo: "Relatórios em PDF e Excel com cabeçalho da fazenda", tem: r.relatoriosCompletos },
+    { rotulo: "Alertas por e-mail", tem: r.alertasEmail },
+    { rotulo: "Exportar seus dados", tem: r.exportarDados },
+    {
+      rotulo: `${Number.isFinite(plano.limiteUsuarios) ? plano.limiteUsuarios : "Vários"} ${plano.limiteUsuarios === 1 ? "usuário" : "usuários"} na fazenda`,
+      tem: true,
+    },
   ];
 
   const assinatura = info.data?.assinatura ?? null;
@@ -175,11 +198,12 @@ export function SecaoPlano() {
           >
             <p className="font-semibold">
               {assinatura.status === "ativa" ? "Assinatura ativa" : "Assinatura pausada"} · Plano{" "}
-              {planoAssinatura?.nome} · {valorTexto(assinatura.valor)}/mês
+              {planoAssinatura?.nome} · {valorTexto(assinatura.valor)}
+              {assinatura.periodo === "anual" ? "/ano" : "/mês"}
             </p>
             <p className="mt-1 text-xs text-muted-foreground">
               {assinatura.status === "ativa"
-                ? "Cobrança mensal pelo Mercado Pago. Você pode cancelar quando quiser."
+                ? `Cobrança ${assinatura.periodo === "anual" ? "anual" : "mensal"} pelo Mercado Pago. Você pode cancelar quando quiser.`
                 : "O Mercado Pago não conseguiu cobrar. Atualize o meio de pagamento na sua conta do Mercado Pago."}
             </p>
             {confirmarCancelamento ? (
@@ -248,7 +272,33 @@ export function SecaoPlano() {
               </div>
             ) : null}
 
-            <p className="text-sm font-semibold">Assinar um plano</p>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <p className="text-sm font-semibold">Assinar um plano</p>
+              <div className="inline-flex rounded-lg bg-muted p-1" role="tablist">
+                {(
+                  [
+                    [false, "Mensal"],
+                    [true, "Anual"],
+                  ] as const
+                ).map(([valor, rotulo]) => (
+                  <button
+                    key={rotulo}
+                    type="button"
+                    role="tab"
+                    aria-selected={anual === valor}
+                    onClick={() => setAnual(valor)}
+                    className={cn(
+                      "rounded-md px-3 py-1 text-sm font-medium",
+                      anual === valor
+                        ? "bg-background shadow-sm"
+                        : "text-muted-foreground hover:text-foreground",
+                    )}
+                  >
+                    {rotulo}
+                  </button>
+                ))}
+              </div>
+            </div>
             <div className="mt-3 grid gap-3 sm:grid-cols-2">
               {PLANOS_ASSINAVEIS.map((p) => (
                 <div
@@ -260,9 +310,16 @@ export function SecaoPlano() {
                 >
                   <p className="text-sm font-semibold">{p.nome}</p>
                   <p className="font-display text-2xl font-extrabold">
-                    {valorTexto(p.valorMensal!)}
-                    <span className="text-xs font-normal text-muted-foreground">/mês</span>
+                    {valorTexto(anual && p.valorAnual ? p.valorAnual : p.valorMensal!)}
+                    <span className="text-xs font-normal text-muted-foreground">
+                      {anual && p.valorAnual ? "/ano" : "/mês"}
+                    </span>
                   </p>
+                  {anual && p.valorAnual ? (
+                    <p className="text-xs text-muted-foreground">
+                      equivale a {valorTexto(p.valorAnual / 12)}/mês
+                    </p>
+                  ) : null}
                   <ul className="mt-2 flex-1 space-y-1">
                     {p.beneficios.map((b) => (
                       <li key={b} className="flex gap-1.5 text-xs text-muted-foreground">
@@ -320,8 +377,7 @@ export function SecaoPlano() {
               </p>
             ) : (
               <p className="mt-3 text-xs text-muted-foreground">
-                Pagamento mensal pelo Mercado Pago (cartão de crédito ou saldo). Cancele quando
-                quiser.
+                Pagamento pelo Mercado Pago (cartão de crédito ou saldo). Cancele quando quiser.
               </p>
             )}
           </>

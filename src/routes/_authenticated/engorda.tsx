@@ -43,7 +43,8 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart";
-import { useFazenda } from "@/hooks/use-fazenda";
+import { useFazenda, useLimitePlano } from "@/hooks/use-fazenda";
+import { planoMinimoDo } from "@/lib/planos";
 import { useIndicesEngorda } from "@/hooks/use-indices-engorda";
 import {
   dataCurta,
@@ -94,6 +95,10 @@ export const Route = createFileRoute("/_authenticated/engorda")({
 
 function Engorda() {
   const { data: fazenda } = useFazenda();
+  const { plano } = useLimitePlano();
+  // Confinamento básico: entrada, peso e saída. GMD, arroba e margem são do completo.
+  const completo = plano.recursos.confinamentoCompleto;
+  const nomePlanoCompleto = planoMinimoDo("confinamentoCompleto").nome;
   const prefs = usePreferencias();
   const queryClient = useQueryClient();
   // Fazenda com as duas atividades mostra um alternador Bovino/Ovino que
@@ -653,20 +658,24 @@ function Engorda() {
           icon={Scale}
           rotulo={soOvino ? "Peso total" : "Arrobas totais"}
           valor={
-            e
-              ? `${e.arrobasTotais.toLocaleString("pt-BR", { maximumFractionDigits: 1 })} ${simboloUnidade}`
-              : "—"
+            !completo
+              ? `Plano ${nomePlanoCompleto}`
+              : e
+                ? `${e.arrobasTotais.toLocaleString("pt-BR", { maximumFractionDigits: 1 })} ${simboloUnidade}`
+                : "—"
           }
         />
         <Kpi
           icon={TrendingUp}
           rotulo="GMD médio"
           valor={
-            e
-              ? e.gmdMedio !== null
-                ? `${e.gmdMedio.toLocaleString("pt-BR", { maximumFractionDigits: 2 })} kg/dia`
+            !completo
+              ? `Plano ${nomePlanoCompleto}`
+              : e
+                ? e.gmdMedio !== null
+                  ? `${e.gmdMedio.toLocaleString("pt-BR", { maximumFractionDigits: 2 })} kg/dia`
+                  : "—"
                 : "—"
-              : "—"
           }
         />
       </div>
@@ -855,36 +864,40 @@ function Engorda() {
                     {pesoTexto(lote.pesoMedio, prefs.unidade_peso)}
                   </p>
                   <div className="mt-2 flex flex-wrap gap-2 text-xs">
-                    <span
-                      className={
-                        lote.gmdMedio !== null && lote.gmdMedio >= 0.6
-                          ? "rounded-full bg-success/15 px-2 py-0.5 font-semibold text-success"
-                          : "rounded-full bg-muted px-2 py-0.5 font-semibold text-muted-foreground"
-                      }
-                    >
-                      GMD{" "}
-                      {lote.gmdMedio !== null
-                        ? `${lote.gmdMedio.toLocaleString("pt-BR", { maximumFractionDigits: 2 })} kg/dia`
-                        : "—"}
-                    </span>
+                    {completo ? (
+                      <span
+                        className={
+                          lote.gmdMedio !== null && lote.gmdMedio >= 0.6
+                            ? "rounded-full bg-success/15 px-2 py-0.5 font-semibold text-success"
+                            : "rounded-full bg-muted px-2 py-0.5 font-semibold text-muted-foreground"
+                        }
+                      >
+                        GMD{" "}
+                        {lote.gmdMedio !== null
+                          ? `${lote.gmdMedio.toLocaleString("pt-BR", { maximumFractionDigits: 2 })} kg/dia`
+                          : "—"}
+                      </span>
+                    ) : null}
                   </div>
                   <div className="mt-3 flex items-center justify-between text-xs">
                     <div>
                       <p className="text-muted-foreground">Custo acumulado</p>
                       <p className="font-semibold">{moeda(lote.custoAcumulado)}</p>
                     </div>
-                    <div className="text-right">
-                      <p className="text-muted-foreground">Margem estimada</p>
-                      <p
-                        className={
-                          lote.margemEstimada !== null && lote.margemEstimada < 0
-                            ? "font-semibold text-destructive"
-                            : "font-semibold text-success"
-                        }
-                      >
-                        {lote.margemEstimada !== null ? moeda(lote.margemEstimada) : "—"}
-                      </p>
-                    </div>
+                    {completo ? (
+                      <div className="text-right">
+                        <p className="text-muted-foreground">Margem estimada</p>
+                        <p
+                          className={
+                            lote.margemEstimada !== null && lote.margemEstimada < 0
+                              ? "font-semibold text-destructive"
+                              : "font-semibold text-success"
+                          }
+                        >
+                          {lote.margemEstimada !== null ? moeda(lote.margemEstimada) : "—"}
+                        </p>
+                      </div>
+                    ) : null}
                   </div>
                 </button>
               ))}
@@ -899,7 +912,7 @@ function Engorda() {
                       {loteAtual.qtd} animais em confinamento
                     </p>
                   </div>
-                  {loteAtual.gmdMedio !== null ? (
+                  {completo && loteAtual.gmdMedio !== null ? (
                     <span className="rounded-full bg-success/15 px-2.5 py-1 text-xs font-semibold text-success">
                       GMD {loteAtual.gmdMedio.toLocaleString("pt-BR", { maximumFractionDigits: 2 })}{" "}
                       kg/dia
@@ -975,27 +988,38 @@ function Engorda() {
                         <span className="text-muted-foreground">Custo acumulado</span>
                         <span className="font-semibold">{moeda(loteAtual.custoAcumulado)}</span>
                       </div>
-                      <div className="flex items-center justify-between">
-                        <span className="text-muted-foreground">Receita estimada na venda</span>
-                        <span className="font-semibold">
-                          {precoVigente
-                            ? moeda(loteAtual.arrobasTotais * Number(precoVigente.valor))
-                            : `cadastre o preço do ${soOvino ? "ovino" : "boi"}`}
+                      {completo ? (
+                        <div className="flex items-center justify-between">
+                          <span className="text-muted-foreground">Receita estimada na venda</span>
+                          <span className="font-semibold">
+                            {precoVigente
+                              ? moeda(loteAtual.arrobasTotais * Number(precoVigente.valor))
+                              : `cadastre o preço do ${soOvino ? "ovino" : "boi"}`}
+                          </span>
+                        </div>
+                      ) : null}
+                    </div>
+                    {completo ? (
+                      <div className="mt-3 rounded-md bg-card px-3 py-2 text-xs">
+                        <span className="text-muted-foreground">Margem estimada: </span>
+                        <span
+                          className={
+                            loteAtual.margemEstimada !== null && loteAtual.margemEstimada < 0
+                              ? "font-semibold text-destructive"
+                              : "font-semibold text-success"
+                          }
+                        >
+                          {loteAtual.margemEstimada !== null
+                            ? moeda(loteAtual.margemEstimada)
+                            : "—"}
                         </span>
                       </div>
-                    </div>
-                    <div className="mt-3 rounded-md bg-card px-3 py-2 text-xs">
-                      <span className="text-muted-foreground">Margem estimada: </span>
-                      <span
-                        className={
-                          loteAtual.margemEstimada !== null && loteAtual.margemEstimada < 0
-                            ? "font-semibold text-destructive"
-                            : "font-semibold text-success"
-                        }
-                      >
-                        {loteAtual.margemEstimada !== null ? moeda(loteAtual.margemEstimada) : "—"}
-                      </span>
-                    </div>
+                    ) : (
+                      <p className="mt-3 text-xs text-muted-foreground">
+                        Receita estimada, margem, arroba e GMD fazem parte do plano{" "}
+                        {nomePlanoCompleto}.
+                      </p>
+                    )}
                     {despesasLote.data?.filter((d) => (d.lote?.trim() || "") === loteAtual.nome)
                       .length ? (
                       <ul className="mt-3 max-h-28 space-y-1 overflow-y-auto text-xs">

@@ -35,7 +35,8 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { useFazenda } from "@/hooks/use-fazenda";
+import { useFazenda, useLimitePlano } from "@/hooks/use-fazenda";
+import { planoMinimoDo } from "@/lib/planos";
 import { cn } from "@/lib/utils";
 import { useIndicesRebanho } from "@/hooks/use-indices-rebanho";
 import { dataCurta, dataISO, diasAtrasISO, hojeISO, moeda as formatarMoeda } from "@/lib/formato";
@@ -617,6 +618,10 @@ function Leite() {
   });
 
   const i = indices.data;
+  // DEL e taxa de prenhez são indicadores do plano pago.
+  const { plano } = useLimitePlano();
+  const indicadoresLiberados = plano.recursos.indicadores;
+  const nomePlanoIndicadores = planoMinimoDo("indicadores").nome;
 
   return (
     <AppShell titulo="Leite">
@@ -837,7 +842,15 @@ function Leite() {
         <Kpi
           icon={Percent}
           rotulo="Taxa de prenhes / vacas"
-          valor={i ? (i.vacas > 0 ? `${Math.round((i.totalPrenhes / i.vacas) * 100)}%` : "—") : "—"}
+          valor={
+            !indicadoresLiberados
+              ? `Plano ${nomePlanoIndicadores}`
+              : i
+                ? i.vacas > 0
+                  ? `${Math.round((i.totalPrenhes / i.vacas) * 100)}%`
+                  : "—"
+                : "—"
+          }
         />
       </div>
       <div className="mb-5">
@@ -864,7 +877,15 @@ function Leite() {
             <Kpi
               icon={Milk}
               rotulo="Dias em lactação (média)"
-              valor={i ? (i.delMedio !== null ? `${i.delMedio} dias` : "—") : "—"}
+              valor={
+                !indicadoresLiberados
+                  ? `Plano ${nomePlanoIndicadores}`
+                  : i
+                    ? i.delMedio !== null
+                      ? `${i.delMedio} dias`
+                      : "—"
+                    : "—"
+              }
             />
             <Kpi icon={Beef} rotulo="Total do rebanho" valor={i ? `${i.totalRebanho} cab` : "—"} />
             <Kpi icon={Baby} rotulo="Total de prenhes" valor={i ? `${i.totalPrenhes} cab` : "—"} />

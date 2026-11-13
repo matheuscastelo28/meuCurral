@@ -8,7 +8,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import type { Sql } from "./pg.server";
 import type { TransactionSql } from "postgres";
-import { planoDaFazenda } from "./planos";
+import { planoDaFazenda, planoMinimoDo, planoTemRecurso, type RecursoId } from "./planos";
 import { PRODUTOS_LEITE, rotuloProduto } from "./produtos-leite";
 import { especieDoAnimal } from "./especies";
 
@@ -119,10 +119,26 @@ async function verificarLimiteAnimais(
         and (status is null or status <> all(${STATUS_DE_SAIDA}))`;
     const atuais = contagem[0]?.n ?? 0;
     if (atuais + novos > plano.limiteAnimais) {
-      return `O plano ${plano.nome} permite ${plano.limiteAnimais} cabeças e você já tem ${atuais}. Fale com a gente para liberar mais espaço.`;
+      return `O plano ${plano.nome} permite ${plano.limiteAnimais} cabeças e você já tem ${atuais}. Novos cadastros ficam bloqueados até você assinar um plano maior; seus dados continuam todos disponíveis.`;
     }
   }
   return null;
+}
+
+/**
+ * Plano da fazenda libera o recurso? Devolve a mensagem de bloqueio, ou null
+ * se pode. Contas com acesso total (cadastro anterior aos planos) passam.
+ */
+async function bloqueioDePlano(
+  sql: Sql,
+  fazendaId: string,
+  recurso: RecursoId,
+): Promise<string | null> {
+  const fazendas: { plano: string | null; acesso_total: boolean | null }[] =
+    await sql`select plano, acesso_total from fazendas where id = ${fazendaId}`;
+  const plano = planoDaFazenda(fazendas[0]);
+  if (planoTemRecurso(plano, recurso)) return null;
+  return `Esse recurso faz parte do plano ${planoMinimoDo(recurso).nome}. Seu plano atual (${plano.nome}) não inclui.`;
 }
 
 function contarPorFazenda(linhas: Record<string, unknown>[]): Map<string, number> {
@@ -307,6 +323,18 @@ export const consultar = createServerFn({ method: "POST" })
           entradaSegura = entrada as Record<string, unknown>[];
         }
 
+        if (tabela === "financeiro_lancamentos") {
+          // Parcelamento no cartão faz parte do Financeiro completo.
+          const fazendasParceladas = new Set(
+            entradaSegura
+              .filter((v) => Number(v["parcelas"] ?? 0) > 1)
+              .map((v) => String(v["fazenda_id"])),
+          );
+          for (const fid of fazendasParceladas) {
+            const bloqueio = await bloqueioDePlano(sql, fid, "financeiroCompleto");
+            if (bloqueio) return { data: [], error: { message: bloqueio }, count: 0 };
+          }
+        }
         if (tabela === "animais") {
           const erroBrinco = await verificarBrincosDuplicados(sql, entradaSegura, null);
           if (erroBrinco) return { data: [], error: { message: erroBrinco }, count: 0 };
@@ -342,6 +370,17 @@ export const consultar = createServerFn({ method: "POST" })
           const idsPermitidos = await fazendasDoUsuario();
           if (!idsPermitidos.includes(String(valoresAtualizacao["fazenda_id"]))) {
             return { data: [], error: { message: "Fazenda inválida." }, count: 0 };
+          }
+        }
+        if (
+          tabela === "financeiro_lancamentos" &&
+          Number(valoresAtualizacao["parcelas"] ?? 0) > 1
+        ) {
+          const alvos: { fazenda_id: string }[] =
+            await sql`select distinct fazenda_id from financeiro_lancamentos where ${onde}`;
+          for (const a of alvos) {
+            const bloqueio = await bloqueioDePlano(sql, a.fazenda_id, "financeiroCompleto");
+            if (bloqueio) return { data: [], error: { message: bloqueio }, count: 0 };
           }
         }
         if (
@@ -1715,6 +1754,8 @@ export const criarConta = createServerFn({ method: "POST" })
       if (!userId) {
         return { data: null, error: { message: "Não autenticado ou fazenda inválida." } };
       }
+      const bloqueio = await bloqueioDePlano(sql, data.fazendaId, "financeiroCompleto");
+      if (bloqueio) return { data: null, error: { message: bloqueio } };
       if (!data.descricao.trim()) {
         return { data: null, error: { message: "Informe uma descrição para a conta." } };
       }
@@ -1817,6 +1858,8 @@ export const marcarParcelaPaga = createServerFn({ method: "POST" })
       if (!userId) {
         return { data: null, error: { message: "Não autenticado ou fazenda inválida." } };
       }
+      const bloqueio = await bloqueioDePlano(sql, data.fazendaId, "financeiroCompleto");
+      if (bloqueio) return { data: null, error: { message: bloqueio } };
 
       const resultado = await sql.begin(async (tx) => {
         const parcelas: any[] = await tx`
@@ -1872,6 +1915,8 @@ export const cancelarConta = createServerFn({ method: "POST" })
       if (!userId) {
         return { data: null, error: { message: "Não autenticado ou fazenda inválida." } };
       }
+      const bloqueio = await bloqueioDePlano(sql, data.fazendaId, "financeiroCompleto");
+      if (bloqueio) return { data: null, error: { message: bloqueio } };
 
       const resultado = await sql.begin(async (tx) => {
         const contas: any[] = await tx`
@@ -2057,6 +2102,8 @@ export const editarConta = createServerFn({ method: "POST" })
       if (!userId) {
         return { data: null, error: { message: "Não autenticado ou fazenda inválida." } };
       }
+      const bloqueio = await bloqueioDePlano(sql, data.fazendaId, "financeiroCompleto");
+      if (bloqueio) return { data: null, error: { message: bloqueio } };
       const descricao = data.descricao.trim();
       const novoTotal = Math.round(Number(data.valorTotal) * 100) / 100;
       if (!descricao) throw new Error("Informe a descrição.");
@@ -2142,6 +2189,8 @@ export const editarParcela = createServerFn({ method: "POST" })
       if (!userId) {
         return { data: null, error: { message: "Não autenticado ou fazenda inválida." } };
       }
+      const bloqueio = await bloqueioDePlano(sql, data.fazendaId, "financeiroCompleto");
+      if (bloqueio) return { data: null, error: { message: bloqueio } };
       await sql.begin(async (tx) => {
         const ps: Linha[] = await tx`
           select * from parcelas where id = ${data.parcelaId} and fazenda_id = ${data.fazendaId}

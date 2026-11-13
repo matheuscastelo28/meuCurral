@@ -240,7 +240,7 @@ function Landing() {
         </p>
         <div className="mt-8 grid gap-4 md:grid-cols-2 lg:grid-cols-4">
           {PLANOS.map((plano) => {
-            const destaque = plano.id === "essencial";
+            const destaque = plano.id === "caderno";
             return (
               <article
                 key={plano.id}
@@ -258,6 +258,16 @@ function Landing() {
                 <p className="mt-1 text-xs text-muted-foreground">{plano.resumo}</p>
                 <p className="mt-4 font-display text-3xl font-extrabold">{plano.preco}</p>
                 <p className="text-xs text-muted-foreground">{plano.periodo}</p>
+                {plano.valorAnual ? (
+                  <p className="text-xs text-muted-foreground">
+                    ou{" "}
+                    {plano.valorAnual.toLocaleString("pt-BR", {
+                      style: "currency",
+                      currency: "BRL",
+                    })}{" "}
+                    por ano
+                  </p>
+                ) : null}
                 <ul className="mt-4 space-y-2">
                   {plano.beneficios.map((b) => (
                     <li key={b} className="flex gap-2 text-sm text-muted-foreground">

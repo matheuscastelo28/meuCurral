@@ -38,7 +38,9 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { useFazenda } from "@/hooks/use-fazenda";
+import { useFazenda, useLimitePlano } from "@/hooks/use-fazenda";
+import { planoMinimoDo, type RecursoId } from "@/lib/planos";
+import { RecursoBloqueado } from "@/components/RecursoBloqueado";
 import { dataCurta, dataISO, diasAtrasISO, hojeISO, idadeTexto, pesoTexto } from "@/lib/formato";
 import { especieDaCategoria, especieDoAnimal } from "@/lib/especies";
 import { cn } from "@/lib/utils";
@@ -109,6 +111,8 @@ function previsaoPartoDe(data: string, diasGestacao: number) {
 
 function Reproducao() {
   const { data: fazenda } = useFazenda();
+  const { plano } = useLimitePlano();
+  const reproducaoCompleta = plano.recursos.reproducaoCompleta;
   const temBovino = !!fazenda?.atividades?.includes("bovino");
   const temOvino = !!fazenda?.atividades?.includes("ovino");
   const ambasAtividades = temBovino && temOvino;
@@ -868,6 +872,8 @@ function Reproducao() {
     detalhe?: string;
     /** Card da lista que esse número resume: clicar leva até ela. */
     alvo?: string;
+    /** Recurso do plano que libera este número. */
+    recurso?: RecursoId;
   }[] = [
     {
       icone: Baby,
@@ -893,6 +899,7 @@ function Reproducao() {
     {
       icone: HeartPulse,
       rotulo: "Taxa de prenhez (12 meses)",
+      recurso: "indicadores",
       valor: ind.taxaPrenhezServico !== null ? `${ind.taxaPrenhezServico}%` : "—",
       detalhe:
         ind.servicosComDesfecho > 0
@@ -902,6 +909,7 @@ function Reproducao() {
     {
       icone: Repeat,
       rotulo: "Serviços por concepção",
+      recurso: "indicadores",
       valor:
         ind.servicosPorConcepcao !== null
           ? ind.servicosPorConcepcao.toLocaleString("pt-BR", { maximumFractionDigits: 1 })
@@ -910,6 +918,7 @@ function Reproducao() {
     {
       icone: CalendarClock,
       rotulo: "Intervalo entre partos",
+      recurso: "indicesAvancados",
       valor:
         ind.iep !== null
           ? `${(ind.iep / 30.44).toLocaleString("pt-BR", { maximumFractionDigits: 1 })} meses`
@@ -917,6 +926,12 @@ function Reproducao() {
       detalhe: ind.iep !== null ? `${ind.iep} dias em média` : "precisa de 2 partos da mesma fêmea",
     },
   ];
+
+  const kpisDoPlano = kpis.map((k) =>
+    k.recurso && !plano.recursos[k.recurso]
+      ? { ...k, valor: "—", detalhe: `Plano ${planoMinimoDo(k.recurso).nome}` }
+      : k,
+  );
 
   function irPara(id: string) {
     if (id === "card-lista") {
@@ -998,7 +1013,19 @@ function Reproducao() {
           </button>
         </div>
       </div>
-      {aba === "nascimentos" ? (
+      {aba === "nascimentos" && !reproducaoCompleta ? (
+        <div className="max-w-xl space-y-3">
+          <RecursoBloqueado
+            recurso="A aba de Nascimentos"
+            planoNecessario={planoMinimoDo("reproducaoCompleta").nome}
+          />
+          <Button asChild>
+            <Link to="/config" hash="plano">
+              Ver planos
+            </Link>
+          </Button>
+        </div>
+      ) : aba === "nascimentos" ? (
         <section className="rounded-xl border border-border bg-card">
           <div className="grid grid-cols-2 gap-3 border-b border-border p-4 sm:grid-cols-4">
             {[
@@ -1100,7 +1127,7 @@ function Reproducao() {
       ) : (
         <>
           <div className="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
-            {kpis.map((k) => {
+            {kpisDoPlano.map((k) => {
               const conteudo = (
                 <>
                   <span className="flex size-8 items-center justify-center rounded-lg bg-accent text-primary">

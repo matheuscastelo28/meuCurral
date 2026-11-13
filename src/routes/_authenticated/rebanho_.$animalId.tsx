@@ -43,7 +43,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart";
-import { useFazenda } from "@/hooks/use-fazenda";
+import { useFazenda, useLimitePlano } from "@/hooks/use-fazenda";
 import {
   dataCurta,
   dataISO,
@@ -121,6 +121,7 @@ function Ficha() {
   const [vendendo, setVendendo] = useState<AnimalParaVenda | null>(null);
   const [estornando, setEstornando] = useState<EntradaHistorico | null>(null);
   const { data: fazenda } = useFazenda();
+  const { plano } = useLimitePlano();
 
   const animal = useQuery({
     queryKey: ["animal-ficha", animalId],
@@ -473,7 +474,7 @@ function Ficha() {
         </div>
 
         <div className="space-y-4">
-          {a.sexo === "femea" ? (
+          {a.sexo === "femea" && plano.recursos.reproducaoCompleta ? (
             <BlocoPartos femea={a} fazendaId={fazenda?.id} unidadePeso={prefs.unidade_peso} />
           ) : null}
           <div className="rounded-xl border border-border bg-card p-4">

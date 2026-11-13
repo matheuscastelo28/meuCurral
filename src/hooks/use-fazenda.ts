@@ -14,6 +14,9 @@ export interface Fazenda {
   dono_id: string;
   produtos_leite: string[];
   atividades: Atividade[] | null;
+  proprietario: string | null;
+  dap_caf: string | null;
+  telefone: string | null;
 }
 
 export function useSessao() {
@@ -36,7 +39,7 @@ export function useFazenda() {
       const { data, error } = await db
         .from("fazendas")
         .select(
-          "id, nome, cidade, estado, plano, acesso_total, dono_id, produtos_leite, atividades",
+          "id, nome, cidade, estado, plano, acesso_total, dono_id, produtos_leite, atividades, proprietario, dap_caf, telefone",
         )
         .eq("dono_id", user.id)
         .order("created_at", { ascending: true })

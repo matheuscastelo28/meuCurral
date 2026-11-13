@@ -491,7 +491,7 @@ export const db = {
     minha() {
       return minhaAssinatura({ data: { token: tokenSessao() } });
     },
-    iniciar(params: { plano: string; email: string }) {
+    iniciar(params: { plano: string; email: string; periodo?: "mensal" | "anual" }) {
       return iniciarAssinatura({ data: { token: tokenSessao(), ...params } });
     },
     sincronizar() {

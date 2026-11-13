@@ -46,6 +46,9 @@ export function SecaoFazenda() {
   const [nome, setNome] = useState("");
   const [cidade, setCidade] = useState("");
   const [estado, setEstado] = useState("");
+  const [proprietario, setProprietario] = useState("");
+  const [dapCaf, setDapCaf] = useState("");
+  const [telefone, setTelefone] = useState("");
   const [produtos, setProdutos] = useState<string[]>(["leite"]);
 
   useEffect(() => {
@@ -53,6 +56,9 @@ export function SecaoFazenda() {
     setNome(fazenda.nome ?? "");
     setCidade(fazenda.cidade ?? "");
     setEstado(fazenda.estado ?? "");
+    setProprietario(fazenda.proprietario ?? "");
+    setDapCaf(fazenda.dap_caf ?? "");
+    setTelefone(fazenda.telefone ?? "");
     setProdutos(fazenda.produtos_leite?.length ? fazenda.produtos_leite : ["leite"]);
   }, [fazenda]);
 
@@ -71,6 +77,9 @@ export function SecaoFazenda() {
           nome: nome.trim(),
           cidade: cidade.trim() || null,
           estado: estado || null,
+          proprietario: proprietario.trim() || null,
+          dap_caf: dapCaf.trim() || null,
+          telefone: telefone.trim() || null,
           produtos_leite: produtos,
         } as never)
         .eq("id", fazenda!.id);
@@ -128,6 +137,36 @@ export function SecaoFazenda() {
             ))}
           </select>
         </div>
+        <fieldset className="rounded-lg border border-border p-3 sm:col-span-2">
+          <legend className="px-1 text-sm font-medium">Cabeçalho dos relatórios (opcional)</legend>
+          <p className="mb-3 text-xs text-muted-foreground">
+            Texto digitado por você, que sai no topo dos relatórios em PDF e Excel. Não tem validade
+            oficial.
+          </p>
+          <div className="grid gap-3 sm:grid-cols-3">
+            <div className="space-y-1.5">
+              <Label htmlFor="fazenda-proprietario">Proprietário</Label>
+              <Input
+                id="fazenda-proprietario"
+                value={proprietario}
+                onChange={(e) => setProprietario(e.target.value)}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="fazenda-dap">DAP/CAF</Label>
+              <Input id="fazenda-dap" value={dapCaf} onChange={(e) => setDapCaf(e.target.value)} />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="fazenda-telefone">Telefone</Label>
+              <Input
+                id="fazenda-telefone"
+                type="tel"
+                value={telefone}
+                onChange={(e) => setTelefone(e.target.value)}
+              />
+            </div>
+          </div>
+        </fieldset>
         <fieldset className="rounded-lg border border-border p-3 sm:col-span-2">
           <legend className="px-1 text-sm font-medium">Atividades de leite e derivados</legend>
           <p className="mb-3 text-xs text-muted-foreground">

@@ -186,6 +186,8 @@ export const mercadoPago = {
     email: string;
     valor: number;
     voltarPara: string;
+    /** Cobrança a cada 12 meses em vez de todo mês. */
+    anual?: boolean;
   }) {
     return chamar<Preapproval>("POST", "/preapproval", {
       reason: dados.motivo,
@@ -194,7 +196,7 @@ export const mercadoPago = {
       back_url: dados.voltarPara,
       status: "pending",
       auto_recurring: {
-        frequency: 1,
+        frequency: dados.anual ? 12 : 1,
         frequency_type: "months",
         transaction_amount: dados.valor,
         currency_id: "BRL",

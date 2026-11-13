@@ -472,6 +472,23 @@ create table if not exists assinaturas (
   updated_at timestamptz not null default now()
 );
 create index if not exists idx_assinaturas_fazenda on assinaturas(fazenda_id, created_at);
+
+-- Plano anual (cobrado uma vez por ano) ou mensal.
+alter table assinaturas add column if not exists periodo text not null default 'mensal';
+
+-- O plano Essencial passou a se chamar Caderno.
+update fazendas set plano = 'caderno' where plano = 'essencial';
+update assinaturas set plano = 'caderno' where plano = 'essencial';
+
+-- Cabeçalho do relatório (opcional, texto digitado pelo produtor).
+alter table fazendas add column if not exists proprietario text;
+alter table fazendas add column if not exists dap_caf text;
+alter table fazendas add column if not exists telefone text;
+
+-- Contas criadas até 13/11/2026 (em teste, antes das regras finais dos
+-- planos) ficam livres delas: acesso total, sem limite de cabeças.
+update fazendas set acesso_total = true
+where acesso_total = false and created_at < '2026-11-14T00:00:00-03:00';
 `;
 
 /** Cria as tabelas na primeira vez que o banco é usado. */
