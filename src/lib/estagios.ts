@@ -14,8 +14,10 @@
  * Regras:
  * - Só avança, nunca volta (respeita quem adiantou a categoria à mão). A
  *   exceção é quando o produtor corrige a data de nascimento: aí a
- *   categoria é recalculada (pode voltar, ex.: novilha → bezerro), menos
- *   para quem já é matriz/adulto (vaca, ovelha, boi), que nunca regride.
+ *   categoria é recalculada e pode voltar (cadastro errado: novilha →
+ *   bezerro). Vaca/ovelha só voltam se não há parto registrado e a idade
+ *   corrigida torna o parto impossível (menos de 23 meses bovino, 12 meses
+ *   ovino — o primeiro parto mais precoce viável); boi volta livremente.
  * - Fêmea vira vaca/ovelha ao ter um parto registrado; sem registro de
  *   parto, pela idade de corte (36 meses bovino, 24 meses ovino), quando
  *   já teria parido na prática.
@@ -38,6 +40,9 @@ const TRILHAS: Record<Especie, { femea: Trilha; macho: Trilha }> = {
     macho: { categorias: ["cordeiro", "borrego"], ate: [12, null] },
   },
 };
+
+/** Abaixo desta idade (meses) a fêmea não pode ter parido: matriz volta na correção. */
+const MESES_MINIMOS_PARA_PARIR: Record<Especie, number> = { bovino: 23, ovino: 12 };
 
 export const LIMITES_ESTAGIO = {
   bovino: { bezerroAte: 12, garroteAte: 24, novilhaSemPartoAte: 36 },
@@ -81,6 +86,11 @@ export function proximoEstagio(
   if (a.sexo === "femea" && a.jaPariu) alvo = trilha.categorias.length - 1;
   const ultima = trilha.categorias.length - 1;
   if (alvo > atual) return trilha.categorias[alvo]!;
-  if (opcoes.permitirVoltar && alvo < atual && atual < ultima) return trilha.categorias[alvo]!;
+  if (opcoes.permitirVoltar && alvo < atual) {
+    const ehFemea = a.sexo === "femea";
+    const matrizPodeVoltar =
+      !ehFemea || (!a.jaPariu && meses < MESES_MINIMOS_PARA_PARIR[a.especie]);
+    if (atual < ultima || matrizPodeVoltar) return trilha.categorias[alvo]!;
+  }
   return null;
 }
