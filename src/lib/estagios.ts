@@ -12,7 +12,10 @@
  *   primeira cobertura com 60% do peso adulto (Embrapa Caprinos e Ovinos).
  *
  * Regras:
- * - Só avança, nunca volta (respeita quem adiantou a categoria à mão).
+ * - Só avança, nunca volta (respeita quem adiantou a categoria à mão). A
+ *   exceção é quando o produtor corrige a data de nascimento: aí a
+ *   categoria é recalculada (pode voltar, ex.: novilha → bezerro), menos
+ *   para quem já é matriz/adulto (vaca, ovelha, boi), que nunca regride.
  * - Fêmea vira vaca/ovelha ao ter um parto registrado; sem registro de
  *   parto, pela idade de corte (36 meses bovino, 24 meses ovino), quando
  *   já teria parido na prática.
@@ -63,6 +66,7 @@ export function proximoEstagio(
     jaPariu?: boolean;
   },
   hoje: string,
+  opcoes: { permitirVoltar?: boolean } = {},
 ): string | null {
   if (!a.nascimento || !a.categoria) return null;
   const trilha = TRILHAS[a.especie][a.sexo === "femea" ? "femea" : "macho"];
@@ -75,5 +79,8 @@ export function proximoEstagio(
   if (alvo < 0) alvo = trilha.categorias.length - 1;
   // Fêmea que pariu já é matriz, qualquer que seja a idade.
   if (a.sexo === "femea" && a.jaPariu) alvo = trilha.categorias.length - 1;
-  return alvo > atual ? trilha.categorias[alvo]! : null;
+  const ultima = trilha.categorias.length - 1;
+  if (alvo > atual) return trilha.categorias[alvo]!;
+  if (opcoes.permitirVoltar && alvo < atual && atual < ultima) return trilha.categorias[alvo]!;
+  return null;
 }

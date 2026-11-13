@@ -503,7 +503,11 @@ export const db = {
   },
   rebanho: {
     /** Avança a categoria (bezerro → novilha → vaca...) pela idade. */
-    async atualizarEstagios(params: { fazendaId: string }) {
+    async atualizarEstagios(params: {
+      fazendaId: string;
+      animalIds?: string[] | null;
+      recalcular?: boolean;
+    }) {
       return atualizarEstagios({ data: { token: tokenSessao(), ...params } });
     },
     /** Venda de um animal de qualquer situação, já com a receita no Financeiro. */

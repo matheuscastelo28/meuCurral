@@ -2190,7 +2190,16 @@ export const editarParcela = createServerFn({ method: "POST" })
 // ---------------------------------------------------------------------------
 
 export const atualizarEstagios = createServerFn({ method: "POST" })
-  .inputValidator((dados: { token: string | null; fazendaId: string }) => dados)
+  .inputValidator(
+    (dados: {
+      token: string | null;
+      fazendaId: string;
+      /** Só estes animais (ex.: o que acabou de ser editado). */
+      animalIds?: string[] | null;
+      /** Recalcula do zero (pode voltar) — usado quando a data de nascimento mudou. */
+      recalcular?: boolean;
+    }) => dados,
+  )
   .handler(async ({ data }) => {
     try {
       const { conexao } = await import("./pg.server");
@@ -2219,7 +2228,8 @@ export const atualizarEstagios = createServerFn({ method: "POST" })
         from animais a
         where a.fazenda_id = ${data.fazendaId}
           and a.nascimento is not null
-          and coalesce(a.status, 'ativo') not in ('vendido', 'morto')`;
+          and coalesce(a.status, 'ativo') not in ('vendido', 'morto')
+          ${data.animalIds?.length ? sql`and a.id = any(${data.animalIds})` : sql``}`;
 
       const hoje = hojeISO();
       const alterados: { id: string; nome: string | null; de: string; para: string }[] = [];
@@ -2235,6 +2245,7 @@ export const atualizarEstagios = createServerFn({ method: "POST" })
             jaPariu: a.ja_pariu,
           },
           hoje,
+          { permitirVoltar: !!data.recalcular },
         );
         if (para && a.categoria) alterados.push({ id: a.id, nome: a.nome, de: a.categoria, para });
       }
