@@ -572,6 +572,7 @@ function Reproducao() {
           `Situação do animal atualizada: ${rotulo[vars.novoStatus] ?? vars.novoStatus}.`,
         );
       }
+      setFormAberto(false);
       setTouroId("");
       setTouroCustom("");
       setCusto("");
@@ -749,6 +750,9 @@ function Reproducao() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [animais.data, situacao, especieVisivel]);
 
+  // O formulário de registro fica recolhido: abre pelo botão "Novo registro"
+  // (ou pelos atalhos das listas) e fecha ao salvar.
+  const [formAberto, setFormAberto] = useState(false);
   const [aba, setAba] = useState<"acompanhamento" | "nascimentos">("acompanhamento");
   const [filtroMaeNasc, setFiltroMaeNasc] = useState("");
   const [periodoNasc, setPeriodoNasc] = useState<"30" | "90" | "365" | "tudo">("90");
@@ -847,13 +851,12 @@ function Reproducao() {
 
   // Atalhos das listas: deixa o formulário pronto pro animal e rola até ele.
   function preencher(novoTipo: string, id: string) {
+    setFormAberto(true);
     setTipo(novoTipo);
     setAnimalId(id);
     setData(hojeISO());
     if (novoTipo === "diagnostico") setResultadoDiagnostico("positivo");
-    requestAnimationFrame(() =>
-      formRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }),
-    );
+    setTimeout(() => formRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 60);
   }
 
   const ind = situacao.indices;
@@ -928,7 +931,17 @@ function Reproducao() {
   }
 
   return (
-    <AppShell titulo="Reprodução">
+    <AppShell
+      titulo="Reprodução"
+      acao={
+        aba === "acompanhamento" && !formAberto ? (
+          <Button onClick={() => preencher(tipo, animalId)}>
+            <Plus className="size-4" aria-hidden="true" />
+            Novo registro
+          </Button>
+        ) : undefined
+      }
+    >
       <div className="mb-4 flex flex-wrap items-center gap-3">
         {ambasAtividades ? (
           <div className="inline-flex rounded-lg bg-muted p-1">
@@ -1118,344 +1131,361 @@ function Reproducao() {
             })}
           </div>
 
-          <form
-            ref={formRef}
-            id="form-reproducao"
-            className="mb-5 grid scroll-mt-24 grid-cols-2 items-start gap-3 rounded-xl border border-border bg-card p-4 sm:flex sm:flex-wrap sm:justify-between"
-            onSubmit={(e) => {
-              e.preventDefault();
-              if (requerPrevisao && !touroTextoAtual()) {
-                toast.error(`Informe o ${rotuloReprodutor.toLowerCase()} ou o sêmen usado.`);
-                return;
-              }
-              salvar.mutate({
-                tipo,
-                animalId,
-                data,
-                touro: requerPrevisao ? touroTextoAtual() : "",
-                previsaoParto: requerPrevisao ? previsaoParto : null,
-                resultado: tipo === "diagnostico" ? resultadoDiagnostico : null,
-                custo: Number(custo) || 0,
-                crias:
-                  tipo === "parto" && criaSexo !== "nao"
-                    ? [
-                        {
-                          sexo: criaSexo,
-                          nome: criaNome,
-                          brinco: criaBrinco,
-                          peso: Number(criaPeso) > 0 ? Number(criaPeso) : null,
-                        },
-                        ...criasExtras.map((c) => ({
-                          sexo: c.sexo,
-                          nome: c.nome,
-                          brinco: c.brinco,
-                          peso: Number(c.peso) > 0 ? Number(c.peso) : null,
-                        })),
-                      ]
-                    : [],
-              });
-            }}
-          >
-            <div className="min-w-0 space-y-1.5 sm:min-w-[150px] sm:flex-1">
-              <Label htmlFor="tipo">Tipo</Label>
-              <select
-                id="tipo"
-                value={tipo}
-                onChange={(e) => setTipo(e.target.value)}
-                className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
-              >
-                {TIPOS.map((t) => (
-                  <option key={t} value={t}>
-                    {TIPO_LABEL[t] ?? t}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div className="min-w-0 space-y-1.5 sm:min-w-[150px] sm:flex-1">
-              <Label htmlFor="animal">Animal</Label>
-              <select
-                id="animal"
-                value={animalId}
-                onChange={(e) => setAnimalId(e.target.value)}
-                className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
-                required
-              >
-                <option value="">Selecione</option>
-                {animaisParaSelecao.map((a) => (
-                  <option key={a.id} value={a.id}>
-                    {a.nome}
-                    {a.brinco ? ` (${a.brinco})` : ""}
-                  </option>
-                ))}
-              </select>
-              {animalSelecionado ? (
-                <p className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-muted-foreground">
-                  {animalSelecionado.nascimento ? (
-                    <span>
-                      Nascido em {dataCurta(animalSelecionado.nascimento)} (
-                      {idadeTexto(animalSelecionado.nascimento)})
-                    </span>
-                  ) : null}
-                  {animalSelecionado.mae ? <span>Mãe: {animalSelecionado.mae}</span> : null}
-                  {animalSelecionado.pai ? <span>Pai: {animalSelecionado.pai}</span> : null}
-                </p>
-              ) : null}
-            </div>
-            <div className="min-w-0 space-y-1.5 sm:min-w-[150px] sm:flex-1">
-              <Label htmlFor="data-repro">Data</Label>
-              <Input
-                id="data-repro"
-                type="date"
-                value={data}
-                onChange={(e) => setData(e.target.value)}
-                required
-              />
-            </div>
-            {tipo === "diagnostico" ? (
-              <div className="min-w-0 space-y-1.5 sm:min-w-[150px] sm:flex-1">
-                <Label htmlFor="resultado-diagnostico">Resultado</Label>
-                <select
-                  id="resultado-diagnostico"
-                  value={resultadoDiagnostico}
-                  onChange={(e) =>
-                    setResultadoDiagnostico(e.target.value as "positivo" | "negativo")
+          {formAberto ? (
+            <>
+              <form
+                ref={formRef}
+                id="form-reproducao"
+                className="mb-5 grid scroll-mt-24 grid-cols-2 items-start gap-3 rounded-xl border border-border bg-card p-4 sm:flex sm:flex-wrap sm:justify-between"
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  if (requerPrevisao && !touroTextoAtual()) {
+                    toast.error(`Informe o ${rotuloReprodutor.toLowerCase()} ou o sêmen usado.`);
+                    return;
                   }
-                  className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
-                >
-                  <option value="positivo">Prenhe (positivo)</option>
-                  <option value="negativo">Vazia (negativo)</option>
-                </select>
-              </div>
-            ) : null}
-            {requerPrevisao ? (
-              <div className="min-w-0 space-y-1.5 sm:min-w-[150px] sm:flex-1">
-                <Label htmlFor="touro">
-                  {rotuloReprodutor} / sêmen <span className="text-destructive">*</span>
-                </Label>
-                <select
-                  id="touro"
-                  value={touroId}
-                  onChange={(e) => setTouroId(e.target.value)}
-                  className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
-                  required
-                >
-                  <option value="" disabled>
-                    Selecione
-                  </option>
-                  {touros.data?.map((t) => (
-                    <option key={t.id} value={t.id}>
-                      {t.nome}
-                      {t.brinco ? ` (${t.brinco})` : ""}
-                    </option>
-                  ))}
-                  <option value="outro">Outro (não cadastrado)</option>
-                </select>
-              </div>
-            ) : null}
-            {requerPrevisao && touroId === "outro" ? (
-              <div className="min-w-0 space-y-1.5 sm:min-w-[150px] sm:flex-1">
-                <Label htmlFor="touro-custom">
-                  Nome do {rotuloReprodutor.toLowerCase()}/sêmen{" "}
-                  <span className="text-destructive">*</span>
-                </Label>
-                <Input
-                  id="touro-custom"
-                  value={touroCustom}
-                  onChange={(e) => setTouroCustom(e.target.value)}
-                  required
-                  placeholder={`Ex: ${rotuloReprodutor} emprestado — Fazenda X`}
-                />
-              </div>
-            ) : null}
-            {requerPrevisao ? (
-              <div className="min-w-0 space-y-1.5 sm:min-w-[150px] sm:flex-1">
-                <Label htmlFor="previsao-parto">Previsão de parto</Label>
-                <Input
-                  id="previsao-parto"
-                  type="date"
-                  value={previsaoParto}
-                  onChange={(e) => setPrevisaoParto(e.target.value)}
-                />
-                <p className="text-xs text-muted-foreground">
-                  Calculada com base em uma gestação média de {diasGestacao} dias
-                  {soOvino ? " (ovinos)" : ""}.
-                </p>
-              </div>
-            ) : null}
-            {tipo === "parto" ? (
-              <>
+                  salvar.mutate({
+                    tipo,
+                    animalId,
+                    data,
+                    touro: requerPrevisao ? touroTextoAtual() : "",
+                    previsaoParto: requerPrevisao ? previsaoParto : null,
+                    resultado: tipo === "diagnostico" ? resultadoDiagnostico : null,
+                    custo: Number(custo) || 0,
+                    crias:
+                      tipo === "parto" && criaSexo !== "nao"
+                        ? [
+                            {
+                              sexo: criaSexo,
+                              nome: criaNome,
+                              brinco: criaBrinco,
+                              peso: Number(criaPeso) > 0 ? Number(criaPeso) : null,
+                            },
+                            ...criasExtras.map((c) => ({
+                              sexo: c.sexo,
+                              nome: c.nome,
+                              brinco: c.brinco,
+                              peso: Number(c.peso) > 0 ? Number(c.peso) : null,
+                            })),
+                          ]
+                        : [],
+                  });
+                }}
+              >
                 <div className="min-w-0 space-y-1.5 sm:min-w-[150px] sm:flex-1">
-                  <Label htmlFor="cria-sexo">Cria</Label>
+                  <Label htmlFor="tipo">Tipo</Label>
                   <select
-                    id="cria-sexo"
-                    value={criaSexo}
-                    onChange={(e) => setCriaSexo(e.target.value as typeof criaSexo)}
+                    id="tipo"
+                    value={tipo}
+                    onChange={(e) => setTipo(e.target.value)}
                     className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
                   >
-                    <option value="femea">Cadastrar fêmea</option>
-                    <option value="macho">Cadastrar macho</option>
-                    <option value="nao">Não cadastrar</option>
+                    {TIPOS.map((t) => (
+                      <option key={t} value={t}>
+                        {TIPO_LABEL[t] ?? t}
+                      </option>
+                    ))}
                   </select>
                 </div>
-                {criaSexo !== "nao" ? (
+                <div className="min-w-0 space-y-1.5 sm:min-w-[150px] sm:flex-1">
+                  <Label htmlFor="animal">Animal</Label>
+                  <select
+                    id="animal"
+                    value={animalId}
+                    onChange={(e) => setAnimalId(e.target.value)}
+                    className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+                    required
+                  >
+                    <option value="">Selecione</option>
+                    {animaisParaSelecao.map((a) => (
+                      <option key={a.id} value={a.id}>
+                        {a.nome}
+                        {a.brinco ? ` (${a.brinco})` : ""}
+                      </option>
+                    ))}
+                  </select>
+                  {animalSelecionado ? (
+                    <p className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-muted-foreground">
+                      {animalSelecionado.nascimento ? (
+                        <span>
+                          Nascido em {dataCurta(animalSelecionado.nascimento)} (
+                          {idadeTexto(animalSelecionado.nascimento)})
+                        </span>
+                      ) : null}
+                      {animalSelecionado.mae ? <span>Mãe: {animalSelecionado.mae}</span> : null}
+                      {animalSelecionado.pai ? <span>Pai: {animalSelecionado.pai}</span> : null}
+                    </p>
+                  ) : null}
+                </div>
+                <div className="min-w-0 space-y-1.5 sm:min-w-[150px] sm:flex-1">
+                  <Label htmlFor="data-repro">Data</Label>
+                  <Input
+                    id="data-repro"
+                    type="date"
+                    value={data}
+                    onChange={(e) => setData(e.target.value)}
+                    required
+                  />
+                </div>
+                {tipo === "diagnostico" ? (
+                  <div className="min-w-0 space-y-1.5 sm:min-w-[150px] sm:flex-1">
+                    <Label htmlFor="resultado-diagnostico">Resultado</Label>
+                    <select
+                      id="resultado-diagnostico"
+                      value={resultadoDiagnostico}
+                      onChange={(e) =>
+                        setResultadoDiagnostico(e.target.value as "positivo" | "negativo")
+                      }
+                      className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+                    >
+                      <option value="positivo">Prenhe (positivo)</option>
+                      <option value="negativo">Vazia (negativo)</option>
+                    </select>
+                  </div>
+                ) : null}
+                {requerPrevisao ? (
+                  <div className="min-w-0 space-y-1.5 sm:min-w-[150px] sm:flex-1">
+                    <Label htmlFor="touro">
+                      {rotuloReprodutor} / sêmen <span className="text-destructive">*</span>
+                    </Label>
+                    <select
+                      id="touro"
+                      value={touroId}
+                      onChange={(e) => setTouroId(e.target.value)}
+                      className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+                      required
+                    >
+                      <option value="" disabled>
+                        Selecione
+                      </option>
+                      {touros.data?.map((t) => (
+                        <option key={t.id} value={t.id}>
+                          {t.nome}
+                          {t.brinco ? ` (${t.brinco})` : ""}
+                        </option>
+                      ))}
+                      <option value="outro">Outro (não cadastrado)</option>
+                    </select>
+                  </div>
+                ) : null}
+                {requerPrevisao && touroId === "outro" ? (
+                  <div className="min-w-0 space-y-1.5 sm:min-w-[150px] sm:flex-1">
+                    <Label htmlFor="touro-custom">
+                      Nome do {rotuloReprodutor.toLowerCase()}/sêmen{" "}
+                      <span className="text-destructive">*</span>
+                    </Label>
+                    <Input
+                      id="touro-custom"
+                      value={touroCustom}
+                      onChange={(e) => setTouroCustom(e.target.value)}
+                      required
+                      placeholder={`Ex: ${rotuloReprodutor} emprestado — Fazenda X`}
+                    />
+                  </div>
+                ) : null}
+                {requerPrevisao ? (
+                  <div className="min-w-0 space-y-1.5 sm:min-w-[150px] sm:flex-1">
+                    <Label htmlFor="previsao-parto">Previsão de parto</Label>
+                    <Input
+                      id="previsao-parto"
+                      type="date"
+                      value={previsaoParto}
+                      onChange={(e) => setPrevisaoParto(e.target.value)}
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Calculada com base em uma gestação média de {diasGestacao} dias
+                      {soOvino ? " (ovinos)" : ""}.
+                    </p>
+                  </div>
+                ) : null}
+                {tipo === "parto" ? (
                   <>
                     <div className="min-w-0 space-y-1.5 sm:min-w-[150px] sm:flex-1">
-                      <Label htmlFor="cria-nome">Nome da cria</Label>
-                      <Input
-                        id="cria-nome"
-                        value={criaNome}
-                        placeholder={
-                          animalSelecionado ? `Cria de ${animalSelecionado.nome}` : "Opcional"
-                        }
-                        onChange={(e) => setCriaNome(e.target.value)}
-                      />
-                    </div>
-                    <div className="min-w-0 space-y-1.5 sm:min-w-[120px] sm:flex-1">
-                      <Label htmlFor="cria-brinco">Brinco</Label>
-                      <Input
-                        id="cria-brinco"
-                        value={criaBrinco}
-                        placeholder="Opcional"
-                        onChange={(e) => setCriaBrinco(e.target.value)}
-                      />
-                    </div>
-                    <div className="min-w-0 space-y-1.5 sm:min-w-[120px] sm:flex-1">
-                      <Label htmlFor="cria-peso">Peso ao nascer (kg)</Label>
-                      <Input
-                        id="cria-peso"
-                        type="number"
-                        step="0.1"
-                        min="0"
-                        value={criaPeso}
-                        placeholder="Opcional"
-                        onChange={(e) => setCriaPeso(e.target.value)}
-                      />
-                    </div>
-                    {criasExtras.map((c, i) => (
-                      <div
-                        key={i}
-                        className="flex w-full min-w-0 flex-wrap items-end gap-3 border-t border-border pt-3"
+                      <Label htmlFor="cria-sexo">Cria</Label>
+                      <select
+                        id="cria-sexo"
+                        value={criaSexo}
+                        onChange={(e) => setCriaSexo(e.target.value as typeof criaSexo)}
+                        className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
                       >
-                        <div className="min-w-0 space-y-1.5 sm:min-w-[120px] sm:flex-1">
-                          <Label htmlFor={`cria-sexo-${i}`}>Cria {i + 2}</Label>
-                          <select
-                            id={`cria-sexo-${i}`}
-                            value={c.sexo}
-                            onChange={(e) =>
-                              setCriasExtras((l) =>
-                                l.map((x, j) =>
-                                  j === i ? { ...x, sexo: e.target.value as "femea" | "macho" } : x,
-                                ),
-                              )
-                            }
-                            className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
-                          >
-                            <option value="femea">Fêmea</option>
-                            <option value="macho">Macho</option>
-                          </select>
-                        </div>
+                        <option value="femea">Cadastrar fêmea</option>
+                        <option value="macho">Cadastrar macho</option>
+                        <option value="nao">Não cadastrar</option>
+                      </select>
+                    </div>
+                    {criaSexo !== "nao" ? (
+                      <>
                         <div className="min-w-0 space-y-1.5 sm:min-w-[150px] sm:flex-1">
-                          <Label htmlFor={`cria-nome-${i}`}>Nome</Label>
+                          <Label htmlFor="cria-nome">Nome da cria</Label>
                           <Input
-                            id={`cria-nome-${i}`}
-                            value={c.nome}
-                            placeholder="Opcional"
-                            onChange={(e) =>
-                              setCriasExtras((l) =>
-                                l.map((x, j) => (j === i ? { ...x, nome: e.target.value } : x)),
-                              )
+                            id="cria-nome"
+                            value={criaNome}
+                            placeholder={
+                              animalSelecionado ? `Cria de ${animalSelecionado.nome}` : "Opcional"
                             }
+                            onChange={(e) => setCriaNome(e.target.value)}
                           />
                         </div>
-                        <div className="min-w-0 space-y-1.5 sm:min-w-[100px] sm:flex-1">
-                          <Label htmlFor={`cria-brinco-${i}`}>Brinco</Label>
+                        <div className="min-w-0 space-y-1.5 sm:min-w-[120px] sm:flex-1">
+                          <Label htmlFor="cria-brinco">Brinco</Label>
                           <Input
-                            id={`cria-brinco-${i}`}
-                            value={c.brinco}
+                            id="cria-brinco"
+                            value={criaBrinco}
                             placeholder="Opcional"
-                            onChange={(e) =>
-                              setCriasExtras((l) =>
-                                l.map((x, j) => (j === i ? { ...x, brinco: e.target.value } : x)),
-                              )
-                            }
+                            onChange={(e) => setCriaBrinco(e.target.value)}
                           />
                         </div>
-                        <div className="min-w-0 space-y-1.5 sm:min-w-[100px] sm:flex-1">
-                          <Label htmlFor={`cria-peso-${i}`}>Peso (kg)</Label>
+                        <div className="min-w-0 space-y-1.5 sm:min-w-[120px] sm:flex-1">
+                          <Label htmlFor="cria-peso">Peso ao nascer (kg)</Label>
                           <Input
-                            id={`cria-peso-${i}`}
+                            id="cria-peso"
                             type="number"
                             step="0.1"
                             min="0"
-                            value={c.peso}
+                            value={criaPeso}
                             placeholder="Opcional"
-                            onChange={(e) =>
-                              setCriasExtras((l) =>
-                                l.map((x, j) => (j === i ? { ...x, peso: e.target.value } : x)),
-                              )
-                            }
+                            onChange={(e) => setCriaPeso(e.target.value)}
                           />
                         </div>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => setCriasExtras((l) => l.filter((_, j) => j !== i))}
-                        >
-                          Remover
-                        </Button>
-                      </div>
-                    ))}
-                    <div className="w-full">
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        className="h-7 px-2 text-xs"
-                        onClick={() =>
-                          setCriasExtras((l) => [
-                            ...l,
-                            { sexo: "femea", nome: "", brinco: "", peso: "" },
-                          ])
-                        }
-                      >
-                        + Outra cria (gêmeos)
-                      </Button>
-                    </div>
+                        {criasExtras.map((c, i) => (
+                          <div
+                            key={i}
+                            className="flex w-full min-w-0 flex-wrap items-end gap-3 border-t border-border pt-3"
+                          >
+                            <div className="min-w-0 space-y-1.5 sm:min-w-[120px] sm:flex-1">
+                              <Label htmlFor={`cria-sexo-${i}`}>Cria {i + 2}</Label>
+                              <select
+                                id={`cria-sexo-${i}`}
+                                value={c.sexo}
+                                onChange={(e) =>
+                                  setCriasExtras((l) =>
+                                    l.map((x, j) =>
+                                      j === i
+                                        ? { ...x, sexo: e.target.value as "femea" | "macho" }
+                                        : x,
+                                    ),
+                                  )
+                                }
+                                className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+                              >
+                                <option value="femea">Fêmea</option>
+                                <option value="macho">Macho</option>
+                              </select>
+                            </div>
+                            <div className="min-w-0 space-y-1.5 sm:min-w-[150px] sm:flex-1">
+                              <Label htmlFor={`cria-nome-${i}`}>Nome</Label>
+                              <Input
+                                id={`cria-nome-${i}`}
+                                value={c.nome}
+                                placeholder="Opcional"
+                                onChange={(e) =>
+                                  setCriasExtras((l) =>
+                                    l.map((x, j) => (j === i ? { ...x, nome: e.target.value } : x)),
+                                  )
+                                }
+                              />
+                            </div>
+                            <div className="min-w-0 space-y-1.5 sm:min-w-[100px] sm:flex-1">
+                              <Label htmlFor={`cria-brinco-${i}`}>Brinco</Label>
+                              <Input
+                                id={`cria-brinco-${i}`}
+                                value={c.brinco}
+                                placeholder="Opcional"
+                                onChange={(e) =>
+                                  setCriasExtras((l) =>
+                                    l.map((x, j) =>
+                                      j === i ? { ...x, brinco: e.target.value } : x,
+                                    ),
+                                  )
+                                }
+                              />
+                            </div>
+                            <div className="min-w-0 space-y-1.5 sm:min-w-[100px] sm:flex-1">
+                              <Label htmlFor={`cria-peso-${i}`}>Peso (kg)</Label>
+                              <Input
+                                id={`cria-peso-${i}`}
+                                type="number"
+                                step="0.1"
+                                min="0"
+                                value={c.peso}
+                                placeholder="Opcional"
+                                onChange={(e) =>
+                                  setCriasExtras((l) =>
+                                    l.map((x, j) => (j === i ? { ...x, peso: e.target.value } : x)),
+                                  )
+                                }
+                              />
+                            </div>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => setCriasExtras((l) => l.filter((_, j) => j !== i))}
+                            >
+                              Remover
+                            </Button>
+                          </div>
+                        ))}
+                        <div className="w-full">
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            className="h-7 px-2 text-xs"
+                            onClick={() =>
+                              setCriasExtras((l) => [
+                                ...l,
+                                { sexo: "femea", nome: "", brinco: "", peso: "" },
+                              ])
+                            }
+                          >
+                            + Outra cria (gêmeos)
+                          </Button>
+                        </div>
+                      </>
+                    ) : null}
                   </>
                 ) : null}
-              </>
-            ) : null}
-            <div className="min-w-0 space-y-1.5 sm:min-w-[150px] sm:flex-1">
-              <Label htmlFor="custo-reproducao">Custo (R$)</Label>
-              <Input
-                id="custo-reproducao"
-                type="number"
-                step="0.01"
-                min="0"
-                value={custo}
-                placeholder="Opcional"
-                onChange={(e) => setCusto(e.target.value)}
-              />
-              <p className="text-xs text-muted-foreground">Sêmen, inseminador, veterinário.</p>
-            </div>
-            <div className="col-span-2 w-full space-y-1.5 sm:w-auto sm:min-w-[150px]">
-              <Label className="invisible hidden sm:block">Registrar</Label>
-              <Button
-                type="submit"
-                className="w-full"
-                disabled={salvar.isPending || confirmarLactacao !== null}
-              >
-                <Plus className="size-4" aria-hidden="true" />
-                Registrar
-              </Button>
-            </div>
-          </form>
+                <div className="min-w-0 space-y-1.5 sm:min-w-[150px] sm:flex-1">
+                  <Label htmlFor="custo-reproducao">Custo (R$)</Label>
+                  <Input
+                    id="custo-reproducao"
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value={custo}
+                    placeholder="Opcional"
+                    onChange={(e) => setCusto(e.target.value)}
+                  />
+                  <p className="text-xs text-muted-foreground">Sêmen, inseminador, veterinário.</p>
+                </div>
+                <div className="col-span-2 w-full space-y-1.5 sm:w-auto sm:min-w-[150px]">
+                  <Label className="invisible hidden sm:block">Registrar</Label>
+                  <Button
+                    type="submit"
+                    className="w-full"
+                    disabled={salvar.isPending || confirmarLactacao !== null}
+                  >
+                    <Plus className="size-4" aria-hidden="true" />
+                    Registrar
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="w-full"
+                    onClick={() => setFormAberto(false)}
+                  >
+                    Fechar
+                  </Button>
+                </div>
+              </form>
 
-          {confirmarLactacao ? (
-            <p className="mb-3 text-xs text-muted-foreground">
-              Responda a pergunta abaixo antes de registrar outro parto.
-            </p>
+              {confirmarLactacao ? (
+                <p className="mb-3 text-xs text-muted-foreground">
+                  Responda a pergunta abaixo antes de registrar outro parto.
+                </p>
+              ) : null}
+            </>
           ) : null}
 
           {confirmarLactacao ? (
