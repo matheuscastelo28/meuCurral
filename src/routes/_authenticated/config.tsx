@@ -5,6 +5,7 @@ import { db } from "@/lib/local-db";
 import { AppShell } from "@/components/AppShell";
 import { Button } from "@/components/ui/button";
 import { CartaoConfig } from "@/components/config/CartaoConfig";
+import { CartoesRecolhiveis } from "@/components/config/cartoes-recolhiveis";
 import { SecaoFazenda } from "@/components/config/SecaoFazenda";
 import { SecaoAtividade } from "@/components/config/SecaoAtividade";
 import { SecaoPerfil } from "@/components/config/SecaoPerfil";
@@ -31,17 +32,6 @@ export const Route = createFileRoute("/_authenticated/config")({
   component: Config,
 });
 
-const ATALHOS = [
-  { id: "fazenda", rotulo: "Fazenda" },
-  { id: "equipe", rotulo: "Equipe", soDono: true },
-  { id: "atividade", rotulo: "Atividade", soDono: true },
-  { id: "perfil", rotulo: "Perfil" },
-  { id: "seguranca", rotulo: "Segurança" },
-  { id: "preferencias", rotulo: "Preferências" },
-  { id: "plano", rotulo: "Plano e uso", soDono: true },
-  { id: "dados", rotulo: "Dados" },
-];
-
 function Config() {
   const navigate = useNavigate();
   const { data: fazenda } = useFazenda();
@@ -58,44 +48,34 @@ function Config() {
 
   return (
     <AppShell titulo="Configurações">
-      <nav aria-label="Seções das configurações" className="mb-5 flex flex-wrap gap-2">
-        {ATALHOS.filter((a) => souDono || !("soDono" in a)).map((a) => (
-          <a
-            key={a.id}
-            href={`#${a.id}`}
-            className="rounded-full border border-border px-3 py-1.5 text-xs font-medium text-muted-foreground transicao-suave hover:bg-accent hover:text-foreground"
-          >
-            {a.rotulo}
-          </a>
-        ))}
-      </nav>
+      <CartoesRecolhiveis.Provider value={true}>
+        <div className="space-y-2">
+          {souDono ? <SecaoFazenda /> : <SecaoAcessoCompartilhado />}
+          {souDono ? <SecaoEquipe /> : null}
+          {souDono ? <SecaoAtividade /> : null}
+          <SecaoPerfil />
+          <SecaoSeguranca />
+          <SecaoPreferencias />
+          {souDono ? <SecaoPlano /> : null}
+          <SecaoDados />
 
-      <div className="space-y-4">
-        {souDono ? <SecaoFazenda /> : <SecaoAcessoCompartilhado />}
-        {souDono ? <SecaoEquipe /> : null}
-        {souDono ? <SecaoAtividade /> : null}
-        <SecaoPerfil />
-        <SecaoSeguranca />
-        <SecaoPreferencias />
-        {souDono ? <SecaoPlano /> : null}
-        <SecaoDados />
-
-        <CartaoConfig id="sobre" titulo="Sobre e privacidade">
-          <div className="flex flex-wrap items-center gap-3 text-sm">
-            <Link to="/termos" className="text-primary underline underline-offset-4">
-              Termos de uso
-            </Link>
-            <Link to="/privacidade" className="text-primary underline underline-offset-4">
-              Política de privacidade
-            </Link>
-            <span className="text-muted-foreground">Versão 1.0</span>
-          </div>
-          <Button variant="outline" className="mt-4" onClick={sair}>
-            <LogOut className="size-4" aria-hidden="true" />
-            Sair da conta
-          </Button>
-        </CartaoConfig>
-      </div>
+          <CartaoConfig id="sobre" titulo="Sobre e privacidade">
+            <div className="flex flex-wrap items-center gap-3 text-sm">
+              <Link to="/termos" className="text-primary underline underline-offset-4">
+                Termos de uso
+              </Link>
+              <Link to="/privacidade" className="text-primary underline underline-offset-4">
+                Política de privacidade
+              </Link>
+              <span className="text-muted-foreground">Versão 1.0</span>
+            </div>
+            <Button variant="outline" className="mt-4" onClick={sair}>
+              <LogOut className="size-4" aria-hidden="true" />
+              Sair da conta
+            </Button>
+          </CartaoConfig>
+        </div>
+      </CartoesRecolhiveis.Provider>
     </AppShell>
   );
 }
