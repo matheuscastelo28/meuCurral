@@ -473,6 +473,27 @@ create table if not exists assinaturas (
 );
 create index if not exists idx_assinaturas_fazenda on assinaturas(fazenda_id, created_at);
 
+-- Acesso compartilhado: o dono convida veterinário ou colaborador por e-mail;
+-- ao aceitar, a pessoa vira membro (fazenda_membros) e passa a ver a fazenda.
+create unique index if not exists idx_membros_unico on fazenda_membros(fazenda_id, user_id);
+create index if not exists idx_membros_usuario on fazenda_membros(user_id);
+create table if not exists convites (
+  id uuid primary key default gen_random_uuid(),
+  fazenda_id uuid references fazendas(id) on delete cascade,
+  email text not null,
+  papel text not null, -- veterinario | colaborador
+  token text not null unique,
+  status text not null default 'pendente', -- pendente | aceito | cancelado
+  convidado_por uuid references usuarios(id) on delete set null,
+  aceito_por uuid references usuarios(id) on delete set null,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+create index if not exists idx_convites_fazenda on convites(fazenda_id, status);
+-- Quem lançou o manejo/registro reprodutivo (atendimentos do veterinário).
+alter table manejos add column if not exists criado_por uuid references usuarios(id) on delete set null;
+alter table reproducao add column if not exists criado_por uuid references usuarios(id) on delete set null;
+
 -- Plano anual (cobrado uma vez por ano) ou mensal.
 alter table assinaturas add column if not exists periodo text not null default 'mensal';
 

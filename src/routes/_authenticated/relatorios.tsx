@@ -8,7 +8,7 @@ import { AppShell } from "@/components/AppShell";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { useFazenda, useLimitePlano } from "@/hooks/use-fazenda";
+import { useFazenda, useLimitePlano, useMinhasFazendas } from "@/hooks/use-fazenda";
 import { RecursoBloqueado } from "@/components/RecursoBloqueado";
 import { planoMinimoDo } from "@/lib/planos";
 import { usePerfil } from "@/hooks/use-preferencias";
@@ -65,7 +65,8 @@ function lerIdentificacao(chave: string): Identificacao | null {
 
 function Relatorios() {
   const { data: fazenda } = useFazenda();
-  const { plano, carregando: carregandoPlano } = useLimitePlano();
+  const { plano } = useLimitePlano();
+  const minhas = useMinhasFazendas();
   const { data: perfil } = usePerfil();
   const especies = especiesDasAtividades(fazenda?.atividades);
   const temLeite = especies.includes("bovino");
@@ -237,9 +238,19 @@ function Relatorios() {
   const resultado = (relatorio?.totalReceitas ?? 0) - (relatorio?.totalDespesas ?? 0);
 
   const completo = plano.recursos.relatoriosCompletos;
+  const souVeterinario = (minhas.data ?? []).some((f) => f.papel === "veterinario");
 
   return (
-    <AppShell titulo="Relatórios">
+    <AppShell
+      titulo="Relatórios"
+      acao={
+        souVeterinario ? (
+          <Button variant="outline" asChild>
+            <Link to="/atendimentos">Relatório do veterinário</Link>
+          </Button>
+        ) : undefined
+      }
+    >
       {/* No celular a prévia (com o botão de baixar) vem logo depois do
           período; no desktop ela ocupa a coluna da direita. */}
       <div className="grid gap-4 lg:grid-cols-[22rem_1fr] lg:grid-rows-[auto_1fr] lg:items-start">

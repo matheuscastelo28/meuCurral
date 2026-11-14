@@ -173,3 +173,53 @@ export async function enviarCodigoPorEmail({
     html: emailVerificacaoHtml({ nome, codigo }),
   });
 }
+
+function escapar(t: string) {
+  return t.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
+}
+
+/**
+ * Convite para acessar a fazenda de outra pessoa (veterinário ou
+ * colaborador). Sem RESEND_API_KEY em desenvolvimento, só registra no log.
+ * Devolve se o e-mail saiu — o link também aparece na tela pra quem convidou.
+ */
+export async function enviarConviteEmail({
+  to,
+  fazenda,
+  papel,
+  quem,
+  link,
+}: {
+  to: string;
+  fazenda: string;
+  papel: string;
+  quem: string | null;
+  link: string;
+}): Promise<boolean> {
+  if (!chaveEmail()) {
+    console.warn(`[dev] RESEND_API_KEY não configurada. Convite para ${to}: ${link}`);
+    return false;
+  }
+  const rotulo = papel === "veterinario" ? "veterinário(a)" : "colaborador(a)";
+  const autor = quem ? `${escapar(quem)} convidou você` : "Você foi convidado(a)";
+  try {
+    await enviarEmail({
+      to,
+      subject: `Convite para acessar a fazenda ${fazenda} no Curral Online`,
+      html: `<!doctype html><html lang="pt-BR"><body style="margin:0;padding:24px;background:#f4f3ec;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr><td align="center">
+<table role="presentation" width="100%" style="max-width:480px;background:#fff;border-radius:16px;border:1px solid #e6e4da;">
+<tr><td style="background:#1f6b45;padding:20px 28px;color:#fff;font-weight:800;border-radius:16px 16px 0 0;">Curral Online</td></tr>
+<tr><td style="padding:28px;color:#16241b;font-size:14px;line-height:1.6;">
+<p style="margin:0 0 12px;font-size:18px;font-weight:800;">${autor} para a fazenda ${escapar(fazenda)}</p>
+<p style="margin:0 0 20px;color:#57635b;">Você vai acessar como <strong>${rotulo}</strong>, com o rebanho, o manejo e a reprodução dessa fazenda no seu login. Se ainda não tem conta, crie uma com este mesmo e-mail.</p>
+<p style="margin:0 0 20px;"><a href="${escapar(link)}" style="display:inline-block;background:#1f6b45;color:#fff;text-decoration:none;padding:12px 20px;border-radius:10px;font-weight:700;">Aceitar convite</a></p>
+<p style="margin:0;color:#8a948d;font-size:12px;">Se não esperava este convite, ignore este e-mail.</p>
+</td></tr></table></td></tr></table></body></html>`,
+    });
+    return true;
+  } catch (e) {
+    console.error("Falha ao enviar convite", e);
+    return false;
+  }
+}

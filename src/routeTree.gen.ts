@@ -13,9 +13,11 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as AuthenticatedRouteRouteImport } from './routes/_authenticated/route'
 import { Route as AuthRouteImport } from './routes/auth'
 import { Route as CadastroRouteImport } from './routes/cadastro'
+import { Route as ConviteRouteImport } from './routes/convite'
 import { Route as PrivacidadeRouteImport } from './routes/privacidade'
 import { Route as TermosRouteImport } from './routes/termos'
 import { Route as VerificarEmailRouteImport } from './routes/verificar-email'
+import { Route as AuthenticatedAtendimentosRouteImport } from './routes/_authenticated/atendimentos'
 import { Route as AuthenticatedCalendarioRouteImport } from './routes/_authenticated/calendario'
 import { Route as AuthenticatedConfigRouteImport } from './routes/_authenticated/config'
 import { Route as AuthenticatedEngordaRouteImport } from './routes/_authenticated/engorda'
@@ -50,6 +52,11 @@ const CadastroRoute = CadastroRouteImport.update({
   path: '/cadastro',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ConviteRoute = ConviteRouteImport.update({
+  id: '/convite',
+  path: '/convite',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const PrivacidadeRoute = PrivacidadeRouteImport.update({
   id: '/privacidade',
   path: '/privacidade',
@@ -65,6 +72,12 @@ const VerificarEmailRoute = VerificarEmailRouteImport.update({
   path: '/verificar-email',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AuthenticatedAtendimentosRoute =
+  AuthenticatedAtendimentosRouteImport.update({
+    id: '/atendimentos',
+    path: '/atendimentos',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 const AuthenticatedCalendarioRoute = AuthenticatedCalendarioRouteImport.update({
   id: '/calendario',
   path: '/calendario',
@@ -141,9 +154,11 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/auth': typeof AuthRoute
   '/cadastro': typeof CadastroRoute
+  '/convite': typeof ConviteRoute
   '/privacidade': typeof PrivacidadeRoute
   '/termos': typeof TermosRoute
   '/verificar-email': typeof VerificarEmailRoute
+  '/atendimentos': typeof AuthenticatedAtendimentosRoute
   '/calendario': typeof AuthenticatedCalendarioRoute
   '/config': typeof AuthenticatedConfigRoute
   '/engorda': typeof AuthenticatedEngordaRoute
@@ -163,9 +178,11 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/auth': typeof AuthRoute
   '/cadastro': typeof CadastroRoute
+  '/convite': typeof ConviteRoute
   '/privacidade': typeof PrivacidadeRoute
   '/termos': typeof TermosRoute
   '/verificar-email': typeof VerificarEmailRoute
+  '/atendimentos': typeof AuthenticatedAtendimentosRoute
   '/calendario': typeof AuthenticatedCalendarioRoute
   '/config': typeof AuthenticatedConfigRoute
   '/engorda': typeof AuthenticatedEngordaRoute
@@ -187,9 +204,11 @@ export interface FileRoutesById {
   '/_authenticated': typeof AuthenticatedRouteRouteWithChildren
   '/auth': typeof AuthRoute
   '/cadastro': typeof CadastroRoute
+  '/convite': typeof ConviteRoute
   '/privacidade': typeof PrivacidadeRoute
   '/termos': typeof TermosRoute
   '/verificar-email': typeof VerificarEmailRoute
+  '/_authenticated/atendimentos': typeof AuthenticatedAtendimentosRoute
   '/_authenticated/calendario': typeof AuthenticatedCalendarioRoute
   '/_authenticated/config': typeof AuthenticatedConfigRoute
   '/_authenticated/engorda': typeof AuthenticatedEngordaRoute
@@ -211,9 +230,11 @@ export interface FileRouteTypes {
     | '/'
     | '/auth'
     | '/cadastro'
+    | '/convite'
     | '/privacidade'
     | '/termos'
     | '/verificar-email'
+    | '/atendimentos'
     | '/calendario'
     | '/config'
     | '/engorda'
@@ -233,9 +254,11 @@ export interface FileRouteTypes {
     | '/'
     | '/auth'
     | '/cadastro'
+    | '/convite'
     | '/privacidade'
     | '/termos'
     | '/verificar-email'
+    | '/atendimentos'
     | '/calendario'
     | '/config'
     | '/engorda'
@@ -256,9 +279,11 @@ export interface FileRouteTypes {
     | '/_authenticated'
     | '/auth'
     | '/cadastro'
+    | '/convite'
     | '/privacidade'
     | '/termos'
     | '/verificar-email'
+    | '/_authenticated/atendimentos'
     | '/_authenticated/calendario'
     | '/_authenticated/config'
     | '/_authenticated/engorda'
@@ -280,6 +305,7 @@ export interface RootRouteChildren {
   AuthenticatedRouteRoute: typeof AuthenticatedRouteRouteWithChildren
   AuthRoute: typeof AuthRoute
   CadastroRoute: typeof CadastroRoute
+  ConviteRoute: typeof ConviteRoute
   PrivacidadeRoute: typeof PrivacidadeRoute
   TermosRoute: typeof TermosRoute
   VerificarEmailRoute: typeof VerificarEmailRoute
@@ -317,6 +343,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof CadastroRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/convite': {
+      id: '/convite'
+      path: '/convite'
+      fullPath: '/convite'
+      preLoaderRoute: typeof ConviteRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/privacidade': {
       id: '/privacidade'
       path: '/privacidade'
@@ -337,6 +370,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/verificar-email'
       preLoaderRoute: typeof VerificarEmailRouteImport
       parentRoute: typeof rootRouteImport
+    }
+    '/_authenticated/atendimentos': {
+      id: '/_authenticated/atendimentos'
+      path: '/atendimentos'
+      fullPath: '/atendimentos'
+      preLoaderRoute: typeof AuthenticatedAtendimentosRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
     }
     '/_authenticated/calendario': {
       id: '/_authenticated/calendario'
@@ -440,6 +480,7 @@ declare module '@tanstack/react-router' {
 }
 
 interface AuthenticatedRouteRouteChildren {
+  AuthenticatedAtendimentosRoute: typeof AuthenticatedAtendimentosRoute
   AuthenticatedCalendarioRoute: typeof AuthenticatedCalendarioRoute
   AuthenticatedConfigRoute: typeof AuthenticatedConfigRoute
   AuthenticatedEngordaRoute: typeof AuthenticatedEngordaRoute
@@ -455,6 +496,7 @@ interface AuthenticatedRouteRouteChildren {
 }
 
 const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
+  AuthenticatedAtendimentosRoute: AuthenticatedAtendimentosRoute,
   AuthenticatedCalendarioRoute: AuthenticatedCalendarioRoute,
   AuthenticatedConfigRoute: AuthenticatedConfigRoute,
   AuthenticatedEngordaRoute: AuthenticatedEngordaRoute,
@@ -477,6 +519,7 @@ const rootRouteChildren: RootRouteChildren = {
   AuthenticatedRouteRoute: AuthenticatedRouteRouteWithChildren,
   AuthRoute: AuthRoute,
   CadastroRoute: CadastroRoute,
+  ConviteRoute: ConviteRoute,
   PrivacidadeRoute: PrivacidadeRoute,
   TermosRoute: TermosRoute,
   VerificarEmailRoute: VerificarEmailRoute,

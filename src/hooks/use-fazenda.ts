@@ -17,6 +17,29 @@ export interface Fazenda {
   proprietario: string | null;
   dap_caf: string | null;
   telefone: string | null;
+  /** É dono desta fazenda (membro convidado só usa; configurações são do dono). */
+  souDono: boolean;
+}
+
+/** Fazenda escolhida no menu (quem acessa mais de uma). Fica neste aparelho. */
+export const CHAVE_FAZENDA_ATUAL = "mcd:fazenda-atual";
+
+export function lerFazendaAtual(): string | null {
+  try {
+    return localStorage.getItem(CHAVE_FAZENDA_ATUAL);
+  } catch {
+    return null;
+  }
+}
+
+/** Troca a fazenda e recarrega o app (todos os dados mudam de dono). */
+export function trocarFazenda(id: string) {
+  try {
+    localStorage.setItem(CHAVE_FAZENDA_ATUAL, id);
+  } catch {
+    // sem armazenamento: fica na primeira fazenda
+  }
+  window.location.assign("/inicio");
 }
 
 export function useSessao() {
@@ -41,11 +64,38 @@ export function useFazenda() {
         .select(
           "id, nome, cidade, estado, plano, acesso_total, dono_id, produtos_leite, atividades, proprietario, dap_caf, telefone",
         )
-        .eq("dono_id", user.id)
-        .order("created_at", { ascending: true })
-        .limit(1);
+        .order("created_at", { ascending: true });
       if (error) throw error;
-      return (data?.[0] as Fazenda | undefined) ?? null;
+      // O servidor devolve as fazendas que a pessoa acessa (dela e as em que
+      // é membro). Vale a escolhida no menu; senão a dela; senão a primeira.
+      const lista = (data ?? []) as Omit<Fazenda, "souDono">[];
+      const escolhida = lerFazendaAtual();
+      const alvo =
+        lista.find((f) => f.id === escolhida) ??
+        lista.find((f) => f.dono_id === user.id) ??
+        lista[0];
+      return alvo ? { ...alvo, souDono: alvo.dono_id === user.id } : null;
+    },
+  });
+}
+
+export interface FazendaAcessivel {
+  id: string;
+  nome: string;
+  cidade: string | null;
+  estado: string | null;
+  papel: string; // dono | veterinario | colaborador
+  dono_nome: string | null;
+}
+
+/** Todas as fazendas que a pessoa acessa, para o menu de troca. */
+export function useMinhasFazendas() {
+  return useQuery({
+    queryKey: ["minhas-fazendas"],
+    queryFn: async () => {
+      const { data, error } = await db.equipe.minhasFazendas();
+      if (error) throw new Error(error.message);
+      return (data ?? []) as FazendaAcessivel[];
     },
   });
 }

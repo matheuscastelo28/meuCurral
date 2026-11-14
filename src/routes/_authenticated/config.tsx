@@ -12,6 +12,8 @@ import { SecaoSeguranca } from "@/components/config/SecaoSeguranca";
 import { SecaoPreferencias } from "@/components/config/SecaoPreferencias";
 import { SecaoPlano } from "@/components/config/SecaoPlano";
 import { SecaoDados } from "@/components/config/SecaoDados";
+import { SecaoAcessoCompartilhado, SecaoEquipe } from "@/components/config/SecaoEquipe";
+import { useFazenda } from "@/hooks/use-fazenda";
 
 export const Route = createFileRoute("/_authenticated/config")({
   head: () => ({
@@ -31,16 +33,20 @@ export const Route = createFileRoute("/_authenticated/config")({
 
 const ATALHOS = [
   { id: "fazenda", rotulo: "Fazenda" },
-  { id: "atividade", rotulo: "Atividade" },
+  { id: "equipe", rotulo: "Equipe", soDono: true },
+  { id: "atividade", rotulo: "Atividade", soDono: true },
   { id: "perfil", rotulo: "Perfil" },
   { id: "seguranca", rotulo: "Segurança" },
   { id: "preferencias", rotulo: "Preferências" },
-  { id: "plano", rotulo: "Plano e uso" },
+  { id: "plano", rotulo: "Plano e uso", soDono: true },
   { id: "dados", rotulo: "Dados" },
 ];
 
 function Config() {
   const navigate = useNavigate();
+  const { data: fazenda } = useFazenda();
+  // Em fazenda compartilhada, o membro não mexe em configurações do dono.
+  const souDono = fazenda?.souDono ?? true;
   const queryClient = useQueryClient();
 
   async function sair() {
@@ -53,7 +59,7 @@ function Config() {
   return (
     <AppShell titulo="Configurações">
       <nav aria-label="Seções das configurações" className="mb-5 flex flex-wrap gap-2">
-        {ATALHOS.map((a) => (
+        {ATALHOS.filter((a) => souDono || !("soDono" in a)).map((a) => (
           <a
             key={a.id}
             href={`#${a.id}`}
@@ -65,12 +71,13 @@ function Config() {
       </nav>
 
       <div className="space-y-4">
-        <SecaoFazenda />
-        <SecaoAtividade />
+        {souDono ? <SecaoFazenda /> : <SecaoAcessoCompartilhado />}
+        {souDono ? <SecaoEquipe /> : null}
+        {souDono ? <SecaoAtividade /> : null}
         <SecaoPerfil />
         <SecaoSeguranca />
         <SecaoPreferencias />
-        <SecaoPlano />
+        {souDono ? <SecaoPlano /> : null}
         <SecaoDados />
 
         <CartaoConfig id="sobre" titulo="Sobre e privacidade">

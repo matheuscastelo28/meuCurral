@@ -229,7 +229,14 @@ const TABELAS_PERMITIDAS = new Set([
 // contas/parcelas seguem o mesmo motivo: criar uma conta gera N parcelas
 // numa transação, e pagar/cancelar uma parcela recalcula a conta pai —
 // escrita só via criarConta/marcarParcelaPaga/cancelarConta abaixo.
-const TABELAS_SOMENTE_LEITURA = new Set(["destinacoes_leite", "vendas", "contas", "parcelas"]);
+// fazenda_membros: só por convite (equipe.functions), que confere o limite do plano.
+const TABELAS_SOMENTE_LEITURA = new Set([
+  "destinacoes_leite",
+  "vendas",
+  "contas",
+  "parcelas",
+  "fazenda_membros",
+]);
 
 // ---------------------------------------------------------------------------
 // Consulta genérica (espelha o que as telas usam)
@@ -261,8 +268,10 @@ export const consultar = createServerFn({ method: "POST" })
       let fazendasDoUsuarioCache: string[] | null = null;
       async function fazendasDoUsuario(): Promise<string[]> {
         if (!fazendasDoUsuarioCache) {
-          const linhas: { id: string }[] =
-            await sql`select id from fazendas where dono_id = ${userId}`;
+          const linhas: { id: string }[] = await sql`
+            select id from fazendas where dono_id = ${userId}
+            union
+            select fazenda_id as id from fazenda_membros where user_id = ${userId}`;
           fazendasDoUsuarioCache = linhas.map((l) => l.id);
         }
         return fazendasDoUsuarioCache;
@@ -272,8 +281,16 @@ export const consultar = createServerFn({ method: "POST" })
       // usuário autenticado, mesmo que o navegador não mande esse filtro.
       const fragmentoPosse = (prefixo = ""): any => {
         if (tabela === "perfis") return sql`${sql(`${prefixo}id`)} = ${userId}`;
-        if (tabela === "fazendas") return sql`${sql(`${prefixo}dono_id`)} = ${userId}`;
-        return sql`${sql(`${prefixo}fazenda_id`)} in (select id from fazendas where dono_id = ${userId})`;
+        // Fazenda: membro só lê (configurações e plano são do dono).
+        if (tabela === "fazendas") {
+          return pedido.modo === "select"
+            ? sql`(${sql(`${prefixo}dono_id`)} = ${userId} or ${sql(`${prefixo}id`)} in (select fazenda_id from fazenda_membros where user_id = ${userId}))`
+            : sql`${sql(`${prefixo}dono_id`)} = ${userId}`;
+        }
+        return sql`${sql(`${prefixo}fazenda_id`)} in (
+          select id from fazendas where dono_id = ${userId}
+          union
+          select fazenda_id from fazenda_membros where user_id = ${userId})`;
       };
 
       const frag = (f: FiltroRemoto): any => {
@@ -321,6 +338,10 @@ export const consultar = createServerFn({ method: "POST" })
           );
           if (invalida) return { data: [], error: { message: "Fazenda inválida." }, count: 0 };
           entradaSegura = entrada as Record<string, unknown>[];
+          // Quem lançou: base dos "atendimentos" no relatório do veterinário.
+          if (tabela === "manejos" || tabela === "reproducao") {
+            entradaSegura = entradaSegura.map((v) => ({ ...v, criado_por: userId }));
+          }
         }
 
         if (tabela === "financeiro_lancamentos") {
@@ -1056,8 +1077,13 @@ async function fazendaDoUsuario(
 ): Promise<string | null> {
   const userId = await usuarioIdDaSessao(sql, token);
   if (!userId) return null;
-  const fazendas: { id: string }[] =
-    await sql`select id from fazendas where id = ${fazendaId} and dono_id = ${userId} limit 1`;
+  // Dono ou membro (veterinário/colaborador convidado) da fazenda.
+  const fazendas: { id: string }[] = await sql`
+    select f.id from fazendas f
+    where f.id = ${fazendaId}
+      and (f.dono_id = ${userId}
+        or exists (select 1 from fazenda_membros m where m.fazenda_id = f.id and m.user_id = ${userId}))
+    limit 1`;
   return fazendas[0] ? userId : null;
 }
 
@@ -1356,7 +1382,10 @@ export const marcarLancamentosRecebidos = createServerFn({ method: "POST" })
       const atualizados: any[] = await sql`
         update financeiro_lancamentos set status = 'recebido', updated_at = now()
         where id = any(${data.ids}) and status = 'a_receber'
-          and fazenda_id in (select id from fazendas where dono_id = ${userId})
+          and fazenda_id in (
+            select id from fazendas where dono_id = ${userId}
+            union
+            select fazenda_id from fazenda_membros where user_id = ${userId})
         returning *`;
       return { data: normalizarLinhas(atualizados) as any, error: null };
     } catch (erro) {

@@ -41,6 +41,16 @@ import {
   minhaAssinatura,
   sincronizarAssinatura,
 } from "@/lib/assinatura.functions";
+import {
+  minhasFazendas,
+  listarEquipe,
+  convidarMembro,
+  cancelarConvite,
+  removerMembro,
+  verConvite,
+  aceitarConvite,
+  relatorioVeterinario,
+} from "@/lib/equipe.functions";
 
 const CHAVE_TOKEN = "mcd:pg-token";
 
@@ -499,6 +509,33 @@ export const db = {
     },
     cancelar() {
       return cancelarAssinatura({ data: { token: tokenSessao() } });
+    },
+  },
+  equipe: {
+    minhasFazendas() {
+      return minhasFazendas({ data: { token: tokenSessao() } });
+    },
+    listar(fazendaId: string) {
+      return listarEquipe({ data: { token: tokenSessao(), fazendaId } });
+    },
+    convidar(params: { fazendaId: string; email: string; papel: string }) {
+      return convidarMembro({ data: { token: tokenSessao(), ...params } });
+    },
+    cancelarConvite(params: { fazendaId: string; conviteId: string }) {
+      return cancelarConvite({ data: { token: tokenSessao(), ...params } });
+    },
+    /** Sem membroId: a própria pessoa sai da fazenda. */
+    remover(params: { fazendaId: string; membroId?: string | null }) {
+      return removerMembro({ data: { token: tokenSessao(), ...params } });
+    },
+    verConvite(conviteToken: string) {
+      return verConvite({ data: { conviteToken } });
+    },
+    aceitarConvite(conviteToken: string) {
+      return aceitarConvite({ data: { token: tokenSessao(), conviteToken } });
+    },
+    relatorioVeterinario(mes: string) {
+      return relatorioVeterinario({ data: { token: tokenSessao(), mes } });
     },
   },
   rebanho: {

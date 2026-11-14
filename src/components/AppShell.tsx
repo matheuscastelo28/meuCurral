@@ -21,6 +21,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { db } from "@/lib/local-db";
 import { useLimitePlano } from "@/hooks/use-fazenda";
 import { usoCabecasTexto } from "@/lib/planos";
+import { SeletorFazenda } from "@/components/SeletorFazenda";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
@@ -187,6 +188,7 @@ export function AppShell({
             )}
           </Button>
         </div>
+        {!colapsada ? <SeletorFazenda className="border-b border-border px-3 py-2" /> : null}
 
         <nav aria-label="Seções" className="flex-1 space-y-1 overflow-y-auto px-2 py-3">
           {nav.map((entry) => {
@@ -342,6 +344,7 @@ export function AppShell({
               </Button>
             </div>
           </div>
+          <SeletorFazenda className="px-4 pb-2" />
         </header>
 
         <main className="mx-auto max-w-6xl px-4 py-6">
