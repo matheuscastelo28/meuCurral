@@ -69,13 +69,14 @@ function Config() {
               </Link>
               <span className="text-muted-foreground">Versão 1.0</span>
             </div>
-            <Button variant="outline" className="mt-4" onClick={sair}>
-              <LogOut className="size-4" aria-hidden="true" />
-              Sair da conta
-            </Button>
           </CartaoConfig>
         </div>
       </CartoesRecolhiveis.Provider>
+      {/* Sair fica aqui (e na barra lateral do computador); no celular não há mais botão no topo. */}
+      <Button variant="outline" className="mt-4 w-full sm:w-auto" onClick={sair}>
+        <LogOut className="size-4" aria-hidden="true" />
+        Sair da conta
+      </Button>
     </AppShell>
   );
 }

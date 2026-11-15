@@ -341,10 +341,6 @@ export function AppShell({
                 {usoCabecasTexto(usados, limite)} · {plano.nome}
               </Link>
               <SinoNotificacoes />
-              <Button variant="ghost" size="sm" onClick={sair} aria-label="Sair da conta">
-                <LogOut className="size-4" aria-hidden="true" />
-                <span className="hidden sm:inline">Sair</span>
-              </Button>
             </div>
           </div>
           <SeletorFazenda className="px-4 pb-2" />

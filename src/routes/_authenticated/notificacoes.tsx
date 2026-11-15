@@ -7,6 +7,7 @@ import {
   CalendarDays,
   CheckCheck,
   Scale,
+  SlidersHorizontal,
   Syringe,
   Wallet,
   Zap,
@@ -84,6 +85,8 @@ function Notificacoes() {
   const [tipo, setTipo] = useState<TipoNotificacao | "todos">("todos");
   const [situacao, setSituacao] = useState<SituacaoNotificacao | "todas">("todas");
   const [soNaoLidas, setSoNaoLidas] = useState(false);
+  // No celular os filtros ficam atrás do botão "Filtrar".
+  const [filtrosAbertos, setFiltrosAbertos] = useState(false);
 
   const visiveis = useMemo(
     () =>
@@ -99,6 +102,8 @@ function Notificacoes() {
     notificacoes.some((n) => n.tipo === t),
   );
   const conta = (f: (n: (typeof notificacoes)[number]) => boolean) => notificacoes.filter(f).length;
+  const filtrosAtivos =
+    (tipo !== "todos" ? 1 : 0) + (situacao !== "todas" ? 1 : 0) + (soNaoLidas ? 1 : 0);
   const naoLidasVisiveis = visiveis.filter((n) => !lidas.has(n.id));
 
   return (
@@ -115,7 +120,23 @@ function Notificacoes() {
         </Button>
       }
     >
-      <div className="mb-4 space-y-3">
+      <div className="mb-3 md:hidden">
+        <Button
+          type="button"
+          variant="outline"
+          aria-expanded={filtrosAbertos}
+          onClick={() => setFiltrosAbertos((v) => !v)}
+        >
+          <SlidersHorizontal className="size-4" aria-hidden="true" />
+          Filtrar
+          {filtrosAtivos > 0 ? (
+            <span className="rounded-full bg-primary px-1.5 text-[11px] leading-5 font-semibold text-primary-foreground">
+              {filtrosAtivos}
+            </span>
+          ) : null}
+        </Button>
+      </div>
+      <div className={cn("mb-4 space-y-3 md:block", filtrosAbertos ? "block" : "hidden")}>
         <div className="flex flex-wrap gap-2" role="group" aria-label="Filtrar por setor">
           <Chip ativo={tipo === "todos"} onClick={() => setTipo("todos")}>
             Todos ({notificacoes.length})
