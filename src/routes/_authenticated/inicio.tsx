@@ -21,7 +21,6 @@ import { AppShell } from "@/components/AppShell";
 import { EmptyState } from "@/components/EmptyState";
 import { Button } from "@/components/ui/button";
 import { useFazenda } from "@/hooks/use-fazenda";
-import { useFemeasImprodutivas } from "@/hooks/use-femeas-improdutivas";
 import { dataCurta, diasAtrasISO, hojeISO, moeda as formatarMoeda } from "@/lib/formato";
 import { rotuloCategoria } from "@/lib/rotulos";
 import { especieDoAnimal, especiesDasAtividades } from "@/lib/especies";
@@ -50,7 +49,6 @@ function Inicio() {
   const prefs = usePreferencias();
   const moeda = (v: number | null | undefined) => formatarMoeda(v, prefs.moeda);
   const queryClient = useQueryClient();
-  const improdutivas = useFemeasImprodutivas();
   const [cumprindo, setCumprindo] = useState<EventoSanitario | null>(null);
 
   const resumo = useQuery({
@@ -244,52 +242,6 @@ function Inicio() {
       ) : (
         <div className="space-y-5">
           {temAtrasados ? compromissos : null}
-          {improdutivas.lista.length > 0 ? (
-            <section className="rounded-xl border border-warning/40 bg-card p-5">
-              <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
-                <h2 className="flex flex-wrap items-center gap-2 text-base font-semibold">
-                  Fêmeas improdutivas
-                  <span className="whitespace-nowrap rounded-full bg-warning/15 px-2 py-0.5 text-xs font-semibold text-warning">
-                    {improdutivas.lista.length}
-                  </span>
-                </h2>
-                <Link
-                  to="/reproducao"
-                  search={{ improdutivas: true }}
-                  className="whitespace-nowrap text-sm text-primary underline-offset-4 hover:underline"
-                >
-                  Ver todas
-                </Link>
-              </div>
-              <ul className="mt-3 space-y-2">
-                {improdutivas.lista.slice(0, 5).map((f) => (
-                  <li key={f.animalId} className="text-sm">
-                    <Link
-                      to="/rebanho/$animalId"
-                      params={{ animalId: f.animalId }}
-                      className="font-medium text-primary underline-offset-4 hover:underline"
-                    >
-                      {f.nome}
-                    </Link>
-                    {ambasAtividades ? (
-                      <span className="text-muted-foreground">
-                        {" "}
-                        · {f.especie === "ovino" ? "ovino" : "bovino"}
-                      </span>
-                    ) : null}
-                    <span className="block text-xs text-muted-foreground">
-                      {f.motivos.map((m) => m.texto).join(" · ")}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-              {improdutivas.lista.length > 5 ? (
-                <p className="mt-2 text-xs text-muted-foreground">
-                  e mais {improdutivas.lista.length - 5}
-                </p>
-              ) : null}
-            </section>
-          ) : null}
           {/* Celular: "Cabeças" ocupa a linha toda e o resto vai 2 por linha,
               sempre com a mesma altura. Desktop: tudo numa linha só. */}
           <div

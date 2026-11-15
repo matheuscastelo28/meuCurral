@@ -6,6 +6,7 @@ import {
   CalendarClock,
   CircleDashed,
   HeartPulse,
+  TriangleAlert,
   Pencil,
   Plus,
   Repeat,
@@ -897,7 +898,7 @@ function Reproducao() {
     valor: string;
     detalhe?: string;
     /** Card da lista que esse número resume: clicar leva até ela. */
-    alvo?: string;
+    alvo?: string | undefined;
     /** Recurso do plano que libera este número. */
     recurso?: RecursoId;
   }[] = [
@@ -921,6 +922,14 @@ function Reproducao() {
       valor: `${situacao.vazias.length}`,
       detalhe: "prontas pra novo serviço",
       alvo: "card-lista",
+    },
+    {
+      icone: TriangleAlert,
+      rotulo: "Improdutivas",
+      valor: `${improdutivasDaVisao.length}`,
+      detalhe: "toque para ver a lista",
+      alvo: "card-improdutivas",
+      recurso: "indicesAvancados",
     },
     {
       icone: HeartPulse,
@@ -955,14 +964,20 @@ function Reproducao() {
 
   const kpisDoPlano = kpis.map((k) =>
     k.recurso && !plano.recursos[k.recurso]
-      ? { ...k, valor: "—", detalhe: `Plano ${planoMinimoDo(k.recurso).nome}` }
+      ? { ...k, valor: "—", detalhe: `Plano ${planoMinimoDo(k.recurso).nome}`, alvo: undefined }
       : k,
   );
 
-  function irPara(id: string) {
-    if (id === "card-lista") {
+  function irPara(alvo: string) {
+    let id = alvo;
+    if (alvo === "card-lista") {
       setFiltroTipoHist("vazias");
       setFiltroAnimalHist("");
+    }
+    if (alvo === "card-improdutivas") {
+      setFiltroTipoHist("improdutivas");
+      setFiltroAnimalHist("");
+      id = "card-lista";
     }
     const el = document.getElementById(id);
     if (!el) return;
@@ -1152,7 +1167,7 @@ function Reproducao() {
         </section>
       ) : (
         <>
-          <div className="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+          <div className="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-7">
             {kpisDoPlano.map((k) => {
               const conteudo = (
                 <>
