@@ -231,3 +231,154 @@ export function statusAposRegistro(
   if (tipo === "secagem" && s !== "seca") return "seca";
   return null;
 }
+
+// ---------------------------------------------------------------------------
+// Fêmeas improdutivas
+// ---------------------------------------------------------------------------
+
+/**
+ * Limites para apontar a fêmea improdutiva. São pontos de partida, em um
+ * lugar só pra ajustar: bovino — primeiro parto esperado entre 29 e 35
+ * meses; ovino — fêmea que passou de 24 meses já devia ter parido.
+ */
+export const LIMITES_IMPRODUTIVA = {
+  bovino: { idadeSemPartoMeses: 36, diasAbertosMax: 150 },
+  ovino: { idadeSemPartoMeses: 24, diasAbertosMax: 90 },
+  /** Serviços seguidos sem prenhez que já merecem atenção. */
+  servicosSemPrenhez: 2,
+} as const;
+
+export type MotivoImprodutiva = {
+  codigo: "sem_parto" | "servicos" | "intervalo";
+  texto: string;
+};
+
+export type FemeaImprodutiva = {
+  animalId: string;
+  nome: string;
+  especie: "bovino" | "ovino";
+  motivos: MotivoImprodutiva[];
+};
+
+type AnimalFemea = {
+  id: string;
+  nome: string | null;
+  brinco?: string | null;
+  categoria: string | null;
+  especie?: string | null;
+  sexo: string | null;
+  status: string | null;
+  nascimento?: string | Date | null;
+};
+
+function mesesDesde(nascimento: string, hoje: string) {
+  const [an, mn, dn] = nascimento.split("-").map(Number) as [number, number, number];
+  const [ah, mh, dh] = hoje.split("-").map(Number) as [number, number, number];
+  let m = (ah - an) * 12 + (mh - mn);
+  if (dh < dn) m--;
+  return m;
+}
+
+function diasEntreISO(a: string, b: string) {
+  return Math.round(
+    (new Date(`${b}T00:00:00Z`).getTime() - new Date(`${a}T00:00:00Z`).getTime()) / 86400000,
+  );
+}
+
+/** Serviços seguidos, desde o último parto ou prenhez confirmada, que não deram prenhez. */
+export function servicosSemPrenhez(historico: RegistroRepro[]): number {
+  let falhas = 0;
+  let aguardando = false; // há um serviço ainda sem desfecho
+  for (const r of ordenar(historico)) {
+    if (SERVICO.has(r.tipo ?? "")) {
+      // Novo serviço com o anterior sem prenhez: o anterior falhou.
+      if (aguardando) falhas++;
+      aguardando = true;
+    } else if (r.tipo === "diagnostico") {
+      if (r.resultado === "negativo") {
+        if (aguardando) falhas++;
+        aguardando = false;
+      } else {
+        falhas = 0;
+        aguardando = false;
+      }
+    } else if (r.tipo === "parto") {
+      falhas = 0;
+      aguardando = false;
+    }
+  }
+  return falhas;
+}
+
+/**
+ * Fêmeas improdutivas: nunca pariram depois da idade esperada, têm vários
+ * serviços seguidos sem prenhez ou estão muito tempo sem emprenhar depois do
+ * parto. Ovinos vêm primeiro (rebanhos grandes escondem a ovelha que nunca
+ * emprenha), depois quem tem mais motivos.
+ */
+export function femeasImprodutivas(
+  animais: AnimalFemea[],
+  registros: RegistroRepro[],
+  hoje: string,
+): FemeaImprodutiva[] {
+  const porAnimal = agruparPorAnimal(registros);
+  const resultado: FemeaImprodutiva[] = [];
+  for (const a of animais) {
+    if (a.sexo === "macho" || a.sexo === "castrado") continue;
+    if (a.status === "vendido" || a.status === "morto" || a.status === "engorda") continue;
+    const especie =
+      a.categoria && /ovelha|borrega|cordeir/.test(a.categoria)
+        ? "ovino"
+        : a.especie === "ovino"
+          ? "ovino"
+          : "bovino";
+    const lim = LIMITES_IMPRODUTIVA[especie];
+    const historico = porAnimal.get(a.id) ?? [];
+    const est = estadoDaFemea(historico);
+    const gestando = est.diagnostico === "positivo" || a.status === "prenhe";
+    const motivos: MotivoImprodutiva[] = [];
+
+    // 1. Nunca pariu, depois da idade em que já devia ter parido.
+    const nasc = a.nascimento ? dataISO(a.nascimento) : null;
+    const jaPariu = historico.some((r) => r.tipo === "parto");
+    if (nasc && !jaPariu && !gestando) {
+      const meses = mesesDesde(nasc, hoje);
+      if (meses >= lim.idadeSemPartoMeses) {
+        const anos = Math.floor(meses / 12);
+        motivos.push({
+          codigo: "sem_parto",
+          texto: `nunca pariu, com ${anos} ${anos === 1 ? "ano" : "anos"}`,
+        });
+      }
+    }
+
+    // 2. Serviços seguidos sem prenhez.
+    if (!gestando) {
+      const falhas = servicosSemPrenhez(historico);
+      if (falhas >= LIMITES_IMPRODUTIVA.servicosSemPrenhez) {
+        motivos.push({ codigo: "servicos", texto: `${falhas} serviços seguidos sem prenhez` });
+      }
+    }
+
+    // 3. Muito tempo do parto até a nova prenhez.
+    if (est.ultimoParto && !est.servicoAberto && !gestando) {
+      const dias = diasEntreISO(est.ultimoParto, hoje);
+      if (dias > lim.diasAbertosMax) {
+        motivos.push({
+          codigo: "intervalo",
+          texto: `${dias} dias desde o parto sem nova prenhez`,
+        });
+      }
+    }
+
+    if (motivos.length > 0) {
+      resultado.push({ animalId: a.id, nome: a.nome || a.brinco || "Animal", especie, motivos });
+    }
+  }
+  return resultado.sort(
+    (x, y) =>
+      Number(y.especie === "ovino") - Number(x.especie === "ovino") ||
+      y.motivos.length - x.motivos.length ||
+      x.nome.localeCompare(y.nome, "pt-BR"),
+  );
+}

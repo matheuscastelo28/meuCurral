@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { db } from "@/lib/local-db";
 import { useFazenda, useLimitePlano } from "@/hooks/use-fazenda";
 import { usePreferencias } from "@/hooks/use-preferencias";
-import { diasAtrasISO, hojeISO } from "@/lib/formato";
+import { hojeISO } from "@/lib/formato";
 import {
   DIAS_ANTECEDENCIA,
   montarNotificacoes,
@@ -84,13 +84,15 @@ export function useNotificacoes() {
           .limit(100),
         db
           .from("animais")
-          .select("id, nome, brinco, categoria, especie, sexo, status, lote, created_at")
+          .select(
+            "id, nome, brinco, categoria, especie, sexo, status, lote, created_at, nascimento",
+          )
           .eq("fazenda_id", id),
         db
           .from("reproducao")
           .select("id, animal_id, tipo, data, resultado, previsao_parto, touro, created_at")
           .eq("fazenda_id", id)
-          .gte("data", diasAtrasISO(900)),
+          .limit(5000),
       ]);
       const emEngorda = (animais.data ?? [])
         .filter((a) => a.status === "engorda")
@@ -127,6 +129,7 @@ export function useNotificacoes() {
       hoje: hojeISO(),
       ...brutos.data,
       uso: { usados, limite, planoNome: plano.nome },
+      indicesAvancados: plano.recursos.indicesAvancados,
       prefs: {
         vacina: prefs.alerta_vacina,
         pesagem: prefs.alerta_pesagem,
@@ -141,6 +144,7 @@ export function useNotificacoes() {
     prefs.alerta_vacina,
     prefs.alerta_pesagem,
     prefs.alerta_parto,
+    plano.recursos.indicesAvancados,
   ]);
 
   const guardar = useCallback(

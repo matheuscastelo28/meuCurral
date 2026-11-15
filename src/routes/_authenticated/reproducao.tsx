@@ -39,6 +39,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { useFazenda, useLimitePlano } from "@/hooks/use-fazenda";
+import { useFemeasImprodutivas } from "@/hooks/use-femeas-improdutivas";
 import { planoMinimoDo, type RecursoId } from "@/lib/planos";
 import { RecursoBloqueado } from "@/components/RecursoBloqueado";
 import { dataCurta, dataISO, diasAtrasISO, hojeISO, idadeTexto, pesoTexto } from "@/lib/formato";
@@ -57,6 +58,9 @@ import {
 import { montarNascimentos, racaDaCria, type AnimalNascimento } from "@/lib/nascimentos";
 
 export const Route = createFileRoute("/_authenticated/reproducao")({
+  validateSearch: (s: Record<string, unknown>): { improdutivas?: boolean | undefined } => ({
+    improdutivas: s["improdutivas"] === true || s["improdutivas"] === "true" ? true : undefined,
+  }),
   head: () => ({
     meta: [
       { title: "Reprodução — Curral Online" },
@@ -628,11 +632,33 @@ function Reproducao() {
   // Histórico: filtro por animal e tipo, 30 por vez, e edição de registro.
   const [filtroAnimalHist, setFiltroAnimalHist] = useState("");
   const [filtroTipoHist, setFiltroTipoHist] = useState("");
+  // Fêmeas improdutivas (índice avançado): só a espécie em vista.
+  const todasImprodutivas = useFemeasImprodutivas();
+  const improdutivasDaVisao = todasImprodutivas.lista.filter((f) => f.especie === especieVisivel);
+  // Vindo do alerta do Início: abre a lista, já na espécie da primeira (ovino primeiro).
+  const { improdutivas: abrirImprodutivas } = Route.useSearch();
+  const abriuImprodutivas = useRef(false);
+  useEffect(() => {
+    if (!abrirImprodutivas || abriuImprodutivas.current || todasImprodutivas.carregando) return;
+    abriuImprodutivas.current = true;
+    const primeira = todasImprodutivas.lista[0];
+    if (primeira && ambasAtividades) setVisaoEspecie(primeira.especie);
+    setFiltroTipoHist("improdutivas");
+    setFiltroAnimalHist("");
+    window.setTimeout(
+      () => document.getElementById("card-lista")?.scrollIntoView({ behavior: "smooth" }),
+      200,
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [abrirImprodutivas, todasImprodutivas.carregando]);
   const [limiteHist, setLimiteHist] = useState(30);
   const historico = registrosFiltrados.filter(
     (r) =>
       (!filtroAnimalHist || r.animal_id === filtroAnimalHist) &&
-      (!filtroTipoHist || filtroTipoHist === "vazias" || r.tipo === filtroTipoHist),
+      (!filtroTipoHist ||
+        filtroTipoHist === "vazias" ||
+        filtroTipoHist === "improdutivas" ||
+        r.tipo === filtroTipoHist),
   );
 
   // Nascimentos: mesma base da ficha da fêmea (lib/nascimentos), filtrada por
@@ -1713,10 +1739,54 @@ function Reproducao() {
                       </option>
                     ))}
                     <option value="vazias">Vazias ({situacao.vazias.length})</option>
+                    {!todasImprodutivas.bloqueado ? (
+                      <option value="improdutivas">
+                        Improdutivas ({improdutivasDaVisao.length})
+                      </option>
+                    ) : null}
                   </select>
                 </div>
               </div>
-              {filtroTipoHist === "vazias" ? (
+              {filtroTipoHist === "improdutivas" ? (
+                improdutivasDaVisao.length === 0 ? (
+                  <p className="px-4 py-6 text-sm text-muted-foreground">
+                    Nenhuma fêmea improdutiva nesta espécie.
+                  </p>
+                ) : (
+                  <ul className="divide-y divide-border">
+                    {improdutivasDaVisao
+                      .filter((f) => !filtroAnimalHist || f.animalId === filtroAnimalHist)
+                      .map((f) => (
+                        <li
+                          key={f.animalId}
+                          className="flex items-center justify-between gap-3 px-4 py-3 text-sm"
+                        >
+                          <span className="min-w-0">
+                            <Link
+                              to="/rebanho/$animalId"
+                              params={{ animalId: f.animalId }}
+                              className="block truncate font-medium text-primary hover:underline"
+                            >
+                              {f.nome}
+                            </Link>
+                            <span className="block text-xs text-muted-foreground">
+                              {f.motivos.map((m) => m.texto).join(" · ")}
+                            </span>
+                          </span>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            className="h-7 shrink-0 px-2 text-xs"
+                            onClick={() => preencher("cobertura", f.animalId)}
+                          >
+                            Registrar serviço
+                          </Button>
+                        </li>
+                      ))}
+                  </ul>
+                )
+              ) : filtroTipoHist === "vazias" ? (
                 <>
                   {situacao.vazias.length === 0 ? (
                     <p className="px-4 py-6 text-sm text-muted-foreground">

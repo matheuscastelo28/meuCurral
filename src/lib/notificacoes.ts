@@ -1,5 +1,6 @@
 import { dataISO } from "@/lib/formato";
 import {
+  femeasImprodutivas as calcularImprodutivas,
   estadoDaFemea,
   agruparPorAnimal,
   DIAS_PARA_DIAGNOSTICO,
@@ -105,12 +106,15 @@ export interface DadosNotificacoes {
     status: string | null;
     lote: string | null;
     created_at: string | Date | null;
+    nascimento?: string | Date | null;
   }[];
   reproducao: RegistroRepro[];
   /** Data da última pesagem de cada animal (só dos em engorda). */
   ultimaPesagem: Record<string, string>;
   uso: { usados: number; limite: number; planoNome: string };
   prefs: { vacina: boolean; pesagem: boolean; parto: boolean };
+  /** Índice avançado: false no plano que não inclui. */
+  indicesAvancados: boolean;
 }
 
 export function montarNotificacoes(d: DadosNotificacoes): Notificacao[] {
@@ -224,6 +228,32 @@ export function montarNotificacoes(d: DadosNotificacoes): Notificacao[] {
           });
         }
       }
+    }
+  }
+
+  // ---- Fêmeas improdutivas (um aviso só, para não lotar a lista) ---------
+  if (d.indicesAvancados) {
+    const imp = calcularImprodutivas(d.animais, d.reproducao, hoje);
+    if (imp.length > 0) {
+      const ovelhas = imp.filter((f) => f.especie === "ovino").length;
+      lista.push({
+        id: `improdutivas:${imp
+          .map((f) => f.animalId)
+          .sort()
+          .join(",")}`,
+        tipo: "reproducao",
+        situacao: "info",
+        titulo: `${imp.length} ${imp.length === 1 ? "fêmea improdutiva" : "fêmeas improdutivas"}`,
+        detalhe:
+          (ovelhas > 0 ? `${ovelhas} ${ovelhas === 1 ? "ovelha" : "ovelhas"} · ` : "") +
+          imp
+            .slice(0, 3)
+            .map((f) => f.nome)
+            .join(", ") +
+          (imp.length > 3 ? " e outras" : ""),
+        data: null,
+        destino: { to: "/reproducao", search: { improdutivas: "true" } },
+      });
     }
   }
 
