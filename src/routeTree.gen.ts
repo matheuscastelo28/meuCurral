@@ -24,6 +24,7 @@ import { Route as AuthenticatedEngordaRouteImport } from './routes/_authenticate
 import { Route as AuthenticatedFinanceiroRouteImport } from './routes/_authenticated/financeiro'
 import { Route as AuthenticatedInicioRouteImport } from './routes/_authenticated/inicio'
 import { Route as AuthenticatedLeiteRouteImport } from './routes/_authenticated/leite'
+import { Route as AuthenticatedNotificacoesRouteImport } from './routes/_authenticated/notificacoes'
 import { Route as AuthenticatedPesagemRouteImport } from './routes/_authenticated/pesagem'
 import { Route as AuthenticatedPlanosRouteImport } from './routes/_authenticated/planos'
 import { Route as AuthenticatedRebanhoRouteImport } from './routes/_authenticated/rebanho'
@@ -108,6 +109,12 @@ const AuthenticatedLeiteRoute = AuthenticatedLeiteRouteImport.update({
   path: '/leite',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
+const AuthenticatedNotificacoesRoute =
+  AuthenticatedNotificacoesRouteImport.update({
+    id: '/notificacoes',
+    path: '/notificacoes',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 const AuthenticatedPesagemRoute = AuthenticatedPesagemRouteImport.update({
   id: '/pesagem',
   path: '/pesagem',
@@ -165,6 +172,7 @@ export interface FileRoutesByFullPath {
   '/financeiro': typeof AuthenticatedFinanceiroRoute
   '/inicio': typeof AuthenticatedInicioRoute
   '/leite': typeof AuthenticatedLeiteRoute
+  '/notificacoes': typeof AuthenticatedNotificacoesRoute
   '/pesagem': typeof AuthenticatedPesagemRoute
   '/planos': typeof AuthenticatedPlanosRoute
   '/rebanho': typeof AuthenticatedRebanhoRoute
@@ -189,6 +197,7 @@ export interface FileRoutesByTo {
   '/financeiro': typeof AuthenticatedFinanceiroRoute
   '/inicio': typeof AuthenticatedInicioRoute
   '/leite': typeof AuthenticatedLeiteRoute
+  '/notificacoes': typeof AuthenticatedNotificacoesRoute
   '/pesagem': typeof AuthenticatedPesagemRoute
   '/planos': typeof AuthenticatedPlanosRoute
   '/rebanho': typeof AuthenticatedRebanhoRoute
@@ -215,6 +224,7 @@ export interface FileRoutesById {
   '/_authenticated/financeiro': typeof AuthenticatedFinanceiroRoute
   '/_authenticated/inicio': typeof AuthenticatedInicioRoute
   '/_authenticated/leite': typeof AuthenticatedLeiteRoute
+  '/_authenticated/notificacoes': typeof AuthenticatedNotificacoesRoute
   '/_authenticated/pesagem': typeof AuthenticatedPesagemRoute
   '/_authenticated/planos': typeof AuthenticatedPlanosRoute
   '/_authenticated/rebanho': typeof AuthenticatedRebanhoRoute
@@ -241,6 +251,7 @@ export interface FileRouteTypes {
     | '/financeiro'
     | '/inicio'
     | '/leite'
+    | '/notificacoes'
     | '/pesagem'
     | '/planos'
     | '/rebanho'
@@ -265,6 +276,7 @@ export interface FileRouteTypes {
     | '/financeiro'
     | '/inicio'
     | '/leite'
+    | '/notificacoes'
     | '/pesagem'
     | '/planos'
     | '/rebanho'
@@ -290,6 +302,7 @@ export interface FileRouteTypes {
     | '/_authenticated/financeiro'
     | '/_authenticated/inicio'
     | '/_authenticated/leite'
+    | '/_authenticated/notificacoes'
     | '/_authenticated/pesagem'
     | '/_authenticated/planos'
     | '/_authenticated/rebanho'
@@ -420,6 +433,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedLeiteRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/notificacoes': {
+      id: '/_authenticated/notificacoes'
+      path: '/notificacoes'
+      fullPath: '/notificacoes'
+      preLoaderRoute: typeof AuthenticatedNotificacoesRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/pesagem': {
       id: '/_authenticated/pesagem'
       path: '/pesagem'
@@ -487,6 +507,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedFinanceiroRoute: typeof AuthenticatedFinanceiroRoute
   AuthenticatedInicioRoute: typeof AuthenticatedInicioRoute
   AuthenticatedLeiteRoute: typeof AuthenticatedLeiteRoute
+  AuthenticatedNotificacoesRoute: typeof AuthenticatedNotificacoesRoute
   AuthenticatedPesagemRoute: typeof AuthenticatedPesagemRoute
   AuthenticatedPlanosRoute: typeof AuthenticatedPlanosRoute
   AuthenticatedRebanhoRoute: typeof AuthenticatedRebanhoRoute
@@ -503,6 +524,7 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedFinanceiroRoute: AuthenticatedFinanceiroRoute,
   AuthenticatedInicioRoute: AuthenticatedInicioRoute,
   AuthenticatedLeiteRoute: AuthenticatedLeiteRoute,
+  AuthenticatedNotificacoesRoute: AuthenticatedNotificacoesRoute,
   AuthenticatedPesagemRoute: AuthenticatedPesagemRoute,
   AuthenticatedPlanosRoute: AuthenticatedPlanosRoute,
   AuthenticatedRebanhoRoute: AuthenticatedRebanhoRoute,

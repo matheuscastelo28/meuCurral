@@ -22,6 +22,7 @@ import { db } from "@/lib/local-db";
 import { useLimitePlano } from "@/hooks/use-fazenda";
 import { usoCabecasTexto } from "@/lib/planos";
 import { SeletorFazenda } from "@/components/SeletorFazenda";
+import { SinoNotificacoes } from "@/components/SinoNotificacoes";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
@@ -173,6 +174,7 @@ export function AppShell({
               </span>
             ) : null}
           </Link>
+          <SinoNotificacoes />
           <Button
             variant="ghost"
             size="icon"
@@ -338,6 +340,7 @@ export function AppShell({
               >
                 {usoCabecasTexto(usados, limite)} · {plano.nome}
               </Link>
+              <SinoNotificacoes />
               <Button variant="ghost" size="sm" onClick={sair} aria-label="Sair da conta">
                 <LogOut className="size-4" aria-hidden="true" />
                 <span className="hidden sm:inline">Sair</span>
