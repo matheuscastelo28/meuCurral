@@ -21,6 +21,7 @@ import { PlanejamentoSanitario } from "@/components/PlanejamentoSanitario";
 import { RegrasSanitarias } from "@/components/RegrasSanitarias";
 import { useRegrasSanitarias } from "@/hooks/use-regras-sanitarias";
 import { acharRegra, somarDias, textoIntervalo } from "@/lib/sanidade";
+import { numeroDaDose, semSufixoDeDose } from "@/lib/protocolos-sanitarios";
 
 const TIPOS = [
   { valor: "vacina", rotulo: "Vacina", exemplo: "Ex: Aftosa, Brucelose, Clostridiose" },
@@ -49,14 +50,18 @@ export type EventoSanitario = {
  * (tanto pelo planejamento quanto pela "próxima dose"), então dá pra
  * desmontar o título e preencher o registro sem o produtor redigitar.
  */
-function lerTitulo(titulo: string) {
+function lerTitulo(tituloCompleto: string) {
+  // "(1ª dose)" é só a posição na série de vacinação sugerida (ver
+  // lib/protocolos-sanitarios); não faz parte do alvo nem do produto.
+  const titulo = semSufixoDeDose(tituloCompleto);
+  const serie = numeroDaDose(tituloCompleto);
   const [esquerda = "", ...resto] = titulo.split(" — ");
   const alvo = resto.join(" — ").trim();
   const doisPontos = esquerda.indexOf(":");
   const rotulo = doisPontos >= 0 ? esquerda.slice(0, doisPontos).trim() : "";
   const produto = (doisPontos >= 0 ? esquerda.slice(doisPontos + 1) : esquerda).trim();
   const tipo = TIPOS.find((t) => t.rotulo.toLowerCase() === rotulo.toLowerCase())?.valor;
-  return { tipo, produto, alvo };
+  return { tipo, produto, alvo, serie };
 }
 
 /**
@@ -153,6 +158,11 @@ export function DialogManejoSanitario({
     const lido = lerTitulo(evento.titulo ?? "");
     setTipo(lido.tipo ?? (evento.tipo === "vacina" ? "vacina" : "tratamento"));
     setProduto(lido.produto);
+    // 1ª dose de uma série: a 2ª já está na Agenda, então não sugere "próxima dose".
+    if (lido.serie?.numero === 1) {
+      setProximaTocada(true);
+      setProxima("");
+    }
     const alvo = lido.alvo.toLowerCase();
     const loteCitado = (animais.data ?? [])
       .map((a) => String(a.lote ?? "").trim())
@@ -316,20 +326,22 @@ export function DialogManejoSanitario({
       // se o produto tem intervalo (ex.: vermífugo a cada 2 meses).
       const lido = lerTitulo(evento.titulo ?? "");
       const regra = acharRegra(lido.produto, lido.tipo ?? null, regras.data ?? []);
-      if (!regra || !fazenda) return null;
+      // 1ª dose de uma série: a 2ª já está agendada, não repete pela regra anual.
+      if (!regra || !fazenda || lido.serie?.numero === 1) return null;
+      const tituloProximo = semSufixoDeDose(evento.titulo ?? "");
       const proximaData = somarDias(hojeISO(), regra.intervalo_dias);
       const { data: existentes } = await db
         .from("eventos_agenda")
         .select("id")
         .eq("fazenda_id", fazenda.id)
-        .eq("titulo", evento.titulo ?? "")
+        .eq("titulo", tituloProximo)
         .eq("data", proximaData);
       if ((existentes ?? []).length > 0) return proximaData;
       const { error: erroNovo } = await db.from("eventos_agenda").insert({
         fazenda_id: fazenda.id,
         animal_id: evento.animal_id ?? null,
         tipo: evento.tipo ?? "tratamento",
-        titulo: evento.titulo,
+        titulo: tituloProximo,
         descricao: `Repetição automática (a cada ${textoIntervalo(regra.intervalo_dias)}).`,
         data: proximaData,
         concluido: false,

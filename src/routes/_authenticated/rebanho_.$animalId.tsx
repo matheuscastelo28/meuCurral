@@ -6,6 +6,7 @@ import {
   Baby,
   BadgeDollarSign,
   Coins,
+  Lightbulb,
   Milk,
   Pencil,
   Scale,
@@ -20,6 +21,7 @@ import { db } from "@/lib/local-db";
 import { AppShell } from "@/components/AppShell";
 import { DialogManejoSanitario } from "@/components/DialogManejoSanitario";
 import { BlocoPartos } from "@/components/rebanho/BlocoPartos";
+import { SugestoesVacina } from "@/components/SugestoesVacina";
 import { DialogVenderAnimal, type AnimalParaVenda } from "@/components/DialogVenderAnimal";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -118,6 +120,7 @@ function Ficha() {
   const [editando, setEditando] = useState<EntradaHistorico | null>(null);
   const [excluindo, setExcluindo] = useState<EntradaHistorico | null>(null);
   const [sanidadeAberto, setSanidadeAberto] = useState(false);
+  const [sugestoesAberto, setSugestoesAberto] = useState(false);
   const [vendendo, setVendendo] = useState<AnimalParaVenda | null>(null);
   const [estornando, setEstornando] = useState<EntradaHistorico | null>(null);
   const { data: fazenda } = useFazenda();
@@ -404,6 +407,10 @@ function Ficha() {
                 <Syringe className="size-4" aria-hidden="true" />
                 Vacinas e manejo
               </Button>
+              <Button variant="outline" onClick={() => setSugestoesAberto(true)}>
+                <Lightbulb className="size-4" aria-hidden="true" />
+                Vacinas sugeridas
+              </Button>
               <Button variant="outline" onClick={() => setVendendo(a)}>
                 <BadgeDollarSign className="size-4" aria-hidden="true" />
                 Vender
@@ -424,6 +431,11 @@ function Ficha() {
         fazendaId={fazenda?.id}
         onFechar={() => setVendendo(null)}
         moeda={moeda}
+      />
+      <SugestoesVacina
+        animal={a}
+        aberto={sugestoesAberto}
+        onFechar={() => setSugestoesAberto(false)}
       />
       <DialogManejoSanitario
         aberto={sanidadeAberto}

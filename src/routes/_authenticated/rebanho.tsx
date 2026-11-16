@@ -25,6 +25,7 @@ import { useLimitePlano } from "@/hooks/use-fazenda";
 import { DialogVenderAnimal, type AnimalParaVenda } from "@/components/DialogVenderAnimal";
 import { dataCurta, dataISO, hojeISO, idadeTexto, pesoTexto } from "@/lib/formato";
 import { usePreferencias } from "@/hooks/use-preferencias";
+import { SugestoesVacina, type AnimalSugestao } from "@/components/SugestoesVacina";
 import { moeda as formatarMoeda } from "@/lib/formato";
 import { textoLote, rotuloCategoria, rotuloSexo, rotuloStatus } from "@/lib/rotulos";
 import {
@@ -424,6 +425,8 @@ function Rebanho() {
     );
   }
 
+  const [sugestaoPara, setSugestaoPara] = useState<AnimalSugestao | null>(null);
+
   const criar = useMutation({
     mutationFn: async (form: FormData) => {
       const racaFinal = raca === OUTRA_RACA ? racaCustom.trim() : raca;
@@ -456,9 +459,13 @@ function Rebanho() {
         lote: payload.lote,
         animalId: (criados?.[0]?.id as string | undefined) ?? null,
       });
-      return { compraOk, comCompra: valorCompra > 0 };
+      return {
+        compraOk,
+        comCompra: valorCompra > 0,
+        animal: (criados?.[0] as AnimalSugestao | undefined) ?? null,
+      };
     },
-    onSuccess: ({ compraOk, comCompra }) => {
+    onSuccess: ({ compraOk, comCompra, animal }) => {
       if (!compraOk) {
         toast.error(
           "Animal cadastrado, mas a compra não entrou no Financeiro. Lance em Financeiro → Novo lançamento.",
@@ -469,6 +476,10 @@ function Rebanho() {
         );
       }
       setAberto(false);
+      // Animal novo: oferece as vacinas sugeridas (um toque cria o lembrete).
+      if (animal && animal.status !== "vendido" && animal.status !== "morto") {
+        setSugestaoPara(animal);
+      }
       setRaca(racasDaEspecie(especie)[0]!);
       setRacaCustom("");
       queryClient.invalidateQueries({ queryKey: ["animais"] });
@@ -1593,6 +1604,11 @@ function Rebanho() {
       </Dialog>
 
       <DialogManejoSanitario aberto={sanidadeAberto} onFechar={() => setSanidadeAberto(false)} />
+      <SugestoesVacina
+        animal={sugestaoPara}
+        aberto={sugestaoPara !== null}
+        onFechar={() => setSugestaoPara(null)}
+      />
       <DialogVenderAnimal
         animal={vendendo}
         fazendaId={fazenda?.id}
