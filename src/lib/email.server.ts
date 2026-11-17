@@ -234,3 +234,70 @@ export async function enviarConviteEmail({
     };
   }
 }
+
+export interface ItemAviso {
+  titulo: string;
+  detalhe: string;
+  tipo: string;
+}
+
+/**
+ * E-mail diário com o que vence amanhã. Sem RESEND_API_KEY em desenvolvimento
+ * só registra no log. Devolve se saiu.
+ */
+export async function enviarAvisoDiarioEmail({
+  to,
+  nome,
+  dataAmanha,
+  fazendas,
+  link,
+}: {
+  to: string;
+  nome: string | null;
+  dataAmanha: string;
+  fazendas: { nome: string; itens: ItemAviso[] }[];
+  link: string;
+}): Promise<{ enviado: boolean; erro: string | null; assunto: string }> {
+  const total = fazendas.reduce((s, f) => s + f.itens.length, 0);
+  const assunto = `Amanhã: ${total} ${total === 1 ? "compromisso" : "compromissos"} no Curral Online`;
+  if (!chaveEmail()) {
+    console.warn(`[dev] RESEND_API_KEY não configurada. Aviso diário para ${to}: ${assunto}`);
+    return { enviado: false, erro: "e-mail não configurado", assunto };
+  }
+  const [a, m, d] = dataAmanha.split("-");
+  const saudacao = primeiroNome(nome) ? `Bom dia, ${escapar(primeiroNome(nome))}!` : "Bom dia!";
+  const blocos = fazendas
+    .map(
+      (
+        f,
+      ) => `<p style="margin:18px 0 6px;font-size:13px;font-weight:800;color:#1f6b45;">${escapar(f.nome)}</p>
+<ul style="margin:0;padding:0 0 0 18px;color:#16241b;font-size:14px;line-height:1.55;">${f.itens
+        .map(
+          (i) =>
+            `<li style="margin:0 0 6px;"><strong>${escapar(i.titulo)}</strong><br><span style="color:#57635b;font-size:13px;">${escapar(i.detalhe)}</span></li>`,
+        )
+        .join("")}</ul>`,
+    )
+    .join("");
+  try {
+    await enviarEmail({
+      to,
+      subject: assunto,
+      html: `<!doctype html><html lang="pt-BR"><body style="margin:0;padding:24px;background:#f4f3ec;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr><td align="center">
+<table role="presentation" width="100%" style="max-width:480px;background:#fff;border-radius:16px;border:1px solid #e6e4da;">
+<tr><td style="background:#1f6b45;padding:20px 28px;color:#fff;font-weight:800;border-radius:16px 16px 0 0;">Curral Online</td></tr>
+<tr><td style="padding:28px;font-size:14px;line-height:1.6;color:#16241b;">
+<p style="margin:0 0 4px;font-size:18px;font-weight:800;">${saudacao}</p>
+<p style="margin:0;color:#57635b;">O que vence amanhã, ${d}/${m}/${a}:</p>
+${blocos}
+<p style="margin:24px 0 0;"><a href="${escapar(link)}" style="display:inline-block;background:#1f6b45;color:#fff;text-decoration:none;padding:12px 20px;border-radius:10px;font-weight:700;">Abrir o Curral Online</a></p>
+<p style="margin:20px 0 0;color:#8a948d;font-size:12px;">Você recebe este aviso todo dia às 6h quando há algo para o dia seguinte. Para parar, desligue em Configurações → Preferências.</p>
+</td></tr></table></td></tr></table></body></html>`,
+    });
+    return { enviado: true, erro: null, assunto };
+  } catch (e) {
+    console.error("Falha ao enviar aviso diário", e);
+    return { enviado: false, erro: "e-mail não saiu", assunto };
+  }
+}

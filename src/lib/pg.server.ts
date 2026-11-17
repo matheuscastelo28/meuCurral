@@ -490,6 +490,36 @@ create table if not exists convites (
   updated_at timestamptz not null default now()
 );
 create index if not exists idx_convites_fazenda on convites(fazenda_id, status);
+
+-- Avisos fora do sistema (e-mail diário às 6h e notificação no celular).
+-- aviso_email: recebe o e-mail com os compromissos de amanhã (plano que inclui).
+alter table perfis add column if not exists aviso_email boolean not null default true;
+-- Um aparelho (navegador/celular) inscrito em notificações push.
+create table if not exists push_assinaturas (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid references usuarios(id) on delete cascade,
+  endpoint text not null unique,
+  p256dh text not null,
+  auth text not null,
+  user_agent text,
+  created_at timestamptz not null default now()
+);
+create index if not exists idx_push_usuario on push_assinaturas(user_id);
+-- Aviso do dia já enviado (por pessoa e canal): a tarefa agendada pode rodar
+-- de novo sem mandar duas vezes.
+create table if not exists avisos_enviados (
+  user_id uuid references usuarios(id) on delete cascade,
+  dia date not null,
+  canal text not null,
+  created_at timestamptz not null default now(),
+  primary key (user_id, dia, canal)
+);
+-- Chaves do servidor (par VAPID das notificações push, geradas na primeira vez).
+create table if not exists config_servidor (
+  chave text primary key,
+  valor text not null,
+  created_at timestamptz not null default now()
+);
 -- Quem lançou o manejo/registro reprodutivo (atendimentos do veterinário).
 alter table manejos add column if not exists criado_por uuid references usuarios(id) on delete set null;
 alter table reproducao add column if not exists criado_por uuid references usuarios(id) on delete set null;

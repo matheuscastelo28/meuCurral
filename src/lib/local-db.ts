@@ -42,6 +42,12 @@ import {
   sincronizarAssinatura,
 } from "@/lib/assinatura.functions";
 import {
+  statusPush,
+  salvarAssinaturaPush,
+  removerAssinaturaPush,
+  testarPush,
+} from "@/lib/push.functions";
+import {
   minhasFazendas,
   listarEquipe,
   convidarMembro,
@@ -69,6 +75,7 @@ const PADROES: Record<string, () => Registro> = {
     alerta_pesagem: true,
     alerta_parto: true,
     estagio_automatico: true,
+    aviso_email: true,
   }),
   fazendas: () => ({
     cidade: null,
@@ -510,6 +517,20 @@ export const db = {
     },
     cancelar() {
       return cancelarAssinatura({ data: { token: tokenSessao() } });
+    },
+  },
+  push: {
+    status(endpoint?: string | null) {
+      return statusPush({ data: { token: tokenSessao(), endpoint: endpoint ?? null } });
+    },
+    salvar(params: { endpoint: string; p256dh: string; auth: string; userAgent?: string | null }) {
+      return salvarAssinaturaPush({ data: { token: tokenSessao(), ...params } });
+    },
+    remover(endpoint: string) {
+      return removerAssinaturaPush({ data: { token: tokenSessao(), endpoint } });
+    },
+    testar() {
+      return testarPush({ data: { token: tokenSessao() } });
     },
   },
   equipe: {

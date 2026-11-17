@@ -30,6 +30,7 @@ import { Route as AuthenticatedPlanosRouteImport } from './routes/_authenticated
 import { Route as AuthenticatedRebanhoRouteImport } from './routes/_authenticated/rebanho'
 import { Route as AuthenticatedRelatoriosRouteImport } from './routes/_authenticated/relatorios'
 import { Route as AuthenticatedReproducaoRouteImport } from './routes/_authenticated/reproducao'
+import { Route as ApiCronAvisosRouteImport } from './routes/api/cron-avisos'
 import { Route as ApiSaudeBancoRouteImport } from './routes/api/saude-banco'
 import { Route as AuthenticatedRebanhoAnimalIdRouteImport } from './routes/_authenticated/rebanho_.$animalId'
 import { Route as ApiMercadopagoWebhookRouteImport } from './routes/api/mercadopago/webhook'
@@ -140,6 +141,11 @@ const AuthenticatedReproducaoRoute = AuthenticatedReproducaoRouteImport.update({
   path: '/reproducao',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
+const ApiCronAvisosRoute = ApiCronAvisosRouteImport.update({
+  id: '/api/cron-avisos',
+  path: '/api/cron-avisos',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiSaudeBancoRoute = ApiSaudeBancoRouteImport.update({
   id: '/api/saude-banco',
   path: '/api/saude-banco',
@@ -178,6 +184,7 @@ export interface FileRoutesByFullPath {
   '/rebanho': typeof AuthenticatedRebanhoRoute
   '/relatorios': typeof AuthenticatedRelatoriosRoute
   '/reproducao': typeof AuthenticatedReproducaoRoute
+  '/api/cron-avisos': typeof ApiCronAvisosRoute
   '/api/saude-banco': typeof ApiSaudeBancoRoute
   '/rebanho/$animalId': typeof AuthenticatedRebanhoAnimalIdRoute
   '/api/mercadopago/webhook': typeof ApiMercadopagoWebhookRoute
@@ -203,6 +210,7 @@ export interface FileRoutesByTo {
   '/rebanho': typeof AuthenticatedRebanhoRoute
   '/relatorios': typeof AuthenticatedRelatoriosRoute
   '/reproducao': typeof AuthenticatedReproducaoRoute
+  '/api/cron-avisos': typeof ApiCronAvisosRoute
   '/api/saude-banco': typeof ApiSaudeBancoRoute
   '/rebanho/$animalId': typeof AuthenticatedRebanhoAnimalIdRoute
   '/api/mercadopago/webhook': typeof ApiMercadopagoWebhookRoute
@@ -230,6 +238,7 @@ export interface FileRoutesById {
   '/_authenticated/rebanho': typeof AuthenticatedRebanhoRoute
   '/_authenticated/relatorios': typeof AuthenticatedRelatoriosRoute
   '/_authenticated/reproducao': typeof AuthenticatedReproducaoRoute
+  '/api/cron-avisos': typeof ApiCronAvisosRoute
   '/api/saude-banco': typeof ApiSaudeBancoRoute
   '/_authenticated/rebanho_/$animalId': typeof AuthenticatedRebanhoAnimalIdRoute
   '/api/mercadopago/webhook': typeof ApiMercadopagoWebhookRoute
@@ -257,6 +266,7 @@ export interface FileRouteTypes {
     | '/rebanho'
     | '/relatorios'
     | '/reproducao'
+    | '/api/cron-avisos'
     | '/api/saude-banco'
     | '/rebanho/$animalId'
     | '/api/mercadopago/webhook'
@@ -282,6 +292,7 @@ export interface FileRouteTypes {
     | '/rebanho'
     | '/relatorios'
     | '/reproducao'
+    | '/api/cron-avisos'
     | '/api/saude-banco'
     | '/rebanho/$animalId'
     | '/api/mercadopago/webhook'
@@ -308,6 +319,7 @@ export interface FileRouteTypes {
     | '/_authenticated/rebanho'
     | '/_authenticated/relatorios'
     | '/_authenticated/reproducao'
+    | '/api/cron-avisos'
     | '/api/saude-banco'
     | '/_authenticated/rebanho_/$animalId'
     | '/api/mercadopago/webhook'
@@ -322,6 +334,7 @@ export interface RootRouteChildren {
   PrivacidadeRoute: typeof PrivacidadeRoute
   TermosRoute: typeof TermosRoute
   VerificarEmailRoute: typeof VerificarEmailRoute
+  ApiCronAvisosRoute: typeof ApiCronAvisosRoute
   ApiSaudeBancoRoute: typeof ApiSaudeBancoRoute
   ApiMercadopagoWebhookRoute: typeof ApiMercadopagoWebhookRoute
 }
@@ -475,6 +488,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedReproducaoRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/api/cron-avisos': {
+      id: '/api/cron-avisos'
+      path: '/api/cron-avisos'
+      fullPath: '/api/cron-avisos'
+      preLoaderRoute: typeof ApiCronAvisosRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/saude-banco': {
       id: '/api/saude-banco'
       path: '/api/saude-banco'
@@ -545,6 +565,7 @@ const rootRouteChildren: RootRouteChildren = {
   PrivacidadeRoute: PrivacidadeRoute,
   TermosRoute: TermosRoute,
   VerificarEmailRoute: VerificarEmailRoute,
+  ApiCronAvisosRoute: ApiCronAvisosRoute,
   ApiSaudeBancoRoute: ApiSaudeBancoRoute,
   ApiMercadopagoWebhookRoute: ApiMercadopagoWebhookRoute,
 }

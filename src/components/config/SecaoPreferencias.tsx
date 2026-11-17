@@ -7,6 +7,7 @@ import { Switch } from "@/components/ui/switch";
 import { usePerfil, useSalvarPerfil, PREFERENCIAS_PADRAO } from "@/hooks/use-preferencias";
 import { useFazenda } from "@/hooks/use-fazenda";
 import { CartaoConfig } from "./CartaoConfig";
+import { AvisosForaDoSistema } from "./AvisosForaDoSistema";
 
 export function SecaoPreferencias() {
   const { data: perfil } = usePerfil();
@@ -28,6 +29,7 @@ export function SecaoPreferencias() {
       alerta_pesagem: perfil.alerta_pesagem ?? true,
       alerta_parto: perfil.alerta_parto ?? true,
       estagio_automatico: perfil.estagio_automatico ?? true,
+      aviso_email: perfil.aviso_email ?? true,
     });
   }, [perfil, soOvino]);
 
@@ -120,6 +122,11 @@ export function SecaoPreferencias() {
             onCheckedChange={(v) => setValores((atual) => ({ ...atual, estagio_automatico: v }))}
           />
         </div>
+
+        <AvisosForaDoSistema
+          avisoEmail={valores.aviso_email}
+          onAvisoEmail={(v) => setValores((atual) => ({ ...atual, aviso_email: v }))}
+        />
 
         <Button type="submit" disabled={salvar.isPending}>
           {salvar.isPending ? <Loader2 className="size-4 animate-spin" aria-hidden="true" /> : null}
