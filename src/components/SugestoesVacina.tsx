@@ -15,7 +15,8 @@ import {
 import { useFazenda } from "@/hooks/use-fazenda";
 import { especieDoAnimal } from "@/lib/especies";
 import { dataCurta, hojeISO } from "@/lib/formato";
-import { normalizar } from "@/lib/sanidade";
+import { acharRegra, normalizar, textoIntervalo } from "@/lib/sanidade";
+import { useRegrasSanitarias } from "@/hooks/use-regras-sanitarias";
 import { sugerirVacinas, tituloDaDose, type SugestaoVacina } from "@/lib/protocolos-sanitarios";
 
 export interface AnimalSugestao {
@@ -47,6 +48,7 @@ export function SugestoesVacina({
   onFechar: () => void;
 }) {
   const { data: fazenda } = useFazenda();
+  const regras = useRegrasSanitarias();
   const queryClient = useQueryClient();
   const hoje = hojeISO();
   const [agendadasAgora, setAgendadasAgora] = useState<Set<string>>(new Set());
@@ -139,6 +141,17 @@ export function SugestoesVacina({
     onError: (e: Error) => toast.error(e.message || "Não conseguimos agendar agora."),
   });
 
+  // Depois da última dose o sistema agenda a repetição pelo intervalo da vacina
+  // (Configurações → regras sanitárias); aqui só avisa que isso vai acontecer.
+  function repeticao(s: SugestaoVacina) {
+    const regra = acharRegra(
+      s.protocolo.vacina.replace(/\s*\(.*\)\s*$/, ""),
+      "vacina",
+      regras.data ?? [],
+    );
+    return regra ? `, depois a cada ${textoIntervalo(regra.intervalo_dias)}` : "";
+  }
+
   const novas = sugestoes.filter((s) => situacaoDe(s) === "nova");
   const nome = animal?.nome || animal?.brinco || "animal";
 
@@ -176,9 +189,9 @@ export function SugestoesVacina({
                         ) : null}
                       </p>
                       <p className="mt-0.5 text-xs text-muted-foreground">
-                        {s.doses.length > 1
+                        {(s.doses.length > 1
                           ? `${s.doses.length} doses: ${s.doses.map((d) => dataCurta(d.data)).join(" e ")}`
-                          : `Dose em ${dataCurta(primeira.data)}`}
+                          : `Dose em ${dataCurta(primeira.data)}`) + repeticao(s)}
                       </p>
                       <p className="mt-1 text-xs text-muted-foreground">{s.protocolo.nota}</p>
                       {s.idadeNaoConferida ? (

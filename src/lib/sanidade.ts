@@ -20,6 +20,8 @@ export type RegraPadrao = RegraSanitaria & { rotulo: string };
 export const REGRAS_PADRAO: RegraPadrao[] = [
   { rotulo: "Raiva", produto: "raiva", tipo: null, intervalo_dias: 365 },
   { rotulo: "Clostridioses", produto: "clostrid", tipo: null, intervalo_dias: 365 },
+  { rotulo: "Leptospirose", produto: "leptospirose", tipo: null, intervalo_dias: 365 },
+  { rotulo: "IBR e BVD", produto: "ibr", tipo: null, intervalo_dias: 365 },
   { rotulo: "Febre aftosa", produto: "aftosa", tipo: null, intervalo_dias: 180 },
   { rotulo: "Vermífugo (qualquer produto)", produto: "", tipo: "vermifugo", intervalo_dias: 60 },
 ];
