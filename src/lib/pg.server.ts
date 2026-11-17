@@ -493,6 +493,12 @@ create index if not exists idx_convites_fazenda on convites(fazenda_id, status);
 -- Quem lançou o manejo/registro reprodutivo (atendimentos do veterinário).
 alter table manejos add column if not exists criado_por uuid references usuarios(id) on delete set null;
 alter table reproducao add column if not exists criado_por uuid references usuarios(id) on delete set null;
+-- Registros de antes do acesso compartilhado: só o dono lançava, então o autor
+-- é o dono. Todo registro novo já nasce com autor, então só os antigos entram aqui.
+update manejos m set criado_por = f.dono_id
+  from fazendas f where m.fazenda_id = f.id and m.criado_por is null;
+update reproducao r set criado_por = f.dono_id
+  from fazendas f where r.fazenda_id = f.id and r.criado_por is null;
 
 -- Plano anual (cobrado uma vez por ano) ou mensal.
 alter table assinaturas add column if not exists periodo text not null default 'mensal';

@@ -46,6 +46,7 @@ import {
   listarEquipe,
   convidarMembro,
   cancelarConvite,
+  reenviarConvite,
   removerMembro,
   verConvite,
   aceitarConvite,
@@ -520,6 +521,9 @@ export const db = {
     },
     convidar(params: { fazendaId: string; email: string; papel: string }) {
       return convidarMembro({ data: { token: tokenSessao(), ...params } });
+    },
+    reenviarConvite(params: { fazendaId: string; conviteId: string }) {
+      return reenviarConvite({ data: { token: tokenSessao(), ...params } });
     },
     cancelarConvite(params: { fazendaId: string; conviteId: string }) {
       return cancelarConvite({ data: { token: tokenSessao(), ...params } });

@@ -1481,8 +1481,8 @@ export const venderAnimal = createServerFn({ method: "POST" })
         const peso = Number(data.pesoKg ?? 0);
         if (peso > 0) {
           await tx`
-            insert into manejos (fazenda_id, animal_id, tipo, data, valor, descricao)
-            values (${data.fazendaId}, ${animal.id}, 'pesagem', ${data.data}, ${peso}, 'Peso na venda')`;
+            insert into manejos (fazenda_id, animal_id, tipo, data, valor, descricao, criado_por)
+            values (${data.fazendaId}, ${animal.id}, 'pesagem', ${data.data}, ${peso}, 'Peso na venda', ${userId})`;
         }
         await tx`
           update animais set status = 'vendido',
@@ -1623,8 +1623,8 @@ export const registrarPesagemLote = createServerFn({ method: "POST" })
                 where m.animal_id = ${p.animalId} and m.tipo = 'pesagem' and m.data > ${data.data}
               )`;
           await tx`
-            insert into manejos (fazenda_id, animal_id, tipo, data, valor)
-            values (${data.fazendaId}, ${p.animalId}, 'pesagem', ${data.data}, ${p.peso})`;
+            insert into manejos (fazenda_id, animal_id, tipo, data, valor, criado_por)
+            values (${data.fazendaId}, ${p.animalId}, 'pesagem', ${data.data}, ${p.peso}, ${userId})`;
           registrados++;
         }
         return registrados;

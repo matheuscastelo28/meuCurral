@@ -102,7 +102,7 @@ function Atendimentos() {
           nome: "Registros",
           titulo,
           subtitulo: sub,
-          colunas: ["Data", "Fazenda", "Área", "Tipo", "Animal", "Detalhe", "Lançado por você"],
+          colunas: ["Data", "Fazenda", "Área", "Tipo", "Animal", "Detalhe", "Lançado por"],
           linhas: r.fazendas.flatMap((f) =>
             f.registros.map((x) => [
               dataCurta(x.data),
@@ -111,7 +111,7 @@ function Atendimentos() {
               TIPO[x.tipo] ?? x.tipo,
               x.animal || "—",
               x.detalhe || "",
-              x.seu ? "sim" : "",
+              x.seu ? "você" : x.autor || "",
             ]),
           ),
         },
@@ -144,6 +144,11 @@ function Atendimentos() {
         />
       </div>
 
+      <p className="mb-4 max-w-xl text-xs text-muted-foreground">
+        Dia de atendimento é o dia em que você lançou algum registro de sanidade ou reprodução na
+        fazenda. Registros lançados por outras pessoas aparecem na lista, com o nome de quem lançou,
+        mas não contam como atendimento seu.
+      </p>
       {rel.isLoading ? (
         <p className="text-sm text-muted-foreground">Carregando...</p>
       ) : rel.isError ? (
@@ -201,7 +206,7 @@ function Atendimentos() {
                       </span>
                       <span className="text-xs text-muted-foreground">
                         {dataCurta(x.data)}
-                        {x.seu ? " · lançado por você" : ""}
+                        {x.seu ? " · lançado por você" : x.autor ? ` · por ${x.autor}` : ""}
                       </span>
                     </li>
                   ))}

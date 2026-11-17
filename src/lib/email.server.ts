@@ -181,7 +181,8 @@ function escapar(t: string) {
 /**
  * Convite para acessar a fazenda de outra pessoa (veterinário ou
  * colaborador). Sem RESEND_API_KEY em desenvolvimento, só registra no log.
- * Devolve se o e-mail saiu — o link também aparece na tela pra quem convidou.
+ * Devolve se o e-mail saiu e, se não, o motivo em português — o link também
+ * aparece na tela pra quem convidou, então a falha nunca trava o convite.
  */
 export async function enviarConviteEmail({
   to,
@@ -195,10 +196,10 @@ export async function enviarConviteEmail({
   papel: string;
   quem: string | null;
   link: string;
-}): Promise<boolean> {
+}): Promise<{ enviado: boolean; erro: string | null }> {
   if (!chaveEmail()) {
     console.warn(`[dev] RESEND_API_KEY não configurada. Convite para ${to}: ${link}`);
-    return false;
+    return { enviado: false, erro: "O envio de e-mail não está configurado neste ambiente." };
   }
   const rotulo = papel === "veterinario" ? "veterinário(a)" : "colaborador(a)";
   const autor = quem ? `${escapar(quem)} convidou você` : "Você foi convidado(a)";
@@ -214,12 +215,22 @@ export async function enviarConviteEmail({
 <p style="margin:0 0 12px;font-size:18px;font-weight:800;">${autor} para a fazenda ${escapar(fazenda)}</p>
 <p style="margin:0 0 20px;color:#57635b;">Você vai acessar como <strong>${rotulo}</strong>, com o rebanho, o manejo e a reprodução dessa fazenda no seu login. Se ainda não tem conta, crie uma com este mesmo e-mail.</p>
 <p style="margin:0 0 20px;"><a href="${escapar(link)}" style="display:inline-block;background:#1f6b45;color:#fff;text-decoration:none;padding:12px 20px;border-radius:10px;font-weight:700;">Aceitar convite</a></p>
+<p style="margin:0 0 8px;color:#8a948d;font-size:12px;">Se o botão não abrir, copie este endereço no navegador:<br><span style="word-break:break-all;">${escapar(link)}</span></p>
 <p style="margin:0;color:#8a948d;font-size:12px;">Se não esperava este convite, ignore este e-mail.</p>
 </td></tr></table></td></tr></table></body></html>`,
     });
-    return true;
+    return { enviado: true, erro: null };
   } catch (e) {
     console.error("Falha ao enviar convite", e);
-    return false;
+    const msg = e instanceof Error ? e.message : "";
+    // Resend sem domínio verificado só entrega para o dono da conta de e-mail.
+    const semDominio =
+      /only send testing emails to your own|verify a domain|domain is not verified/i.test(msg);
+    return {
+      enviado: false,
+      erro: semDominio
+        ? "O serviço de e-mail ainda não está liberado para enviar a outras pessoas (falta verificar o domínio de envio)."
+        : "O e-mail não saiu agora.",
+    };
   }
 }

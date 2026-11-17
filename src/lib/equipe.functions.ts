@@ -159,6 +159,7 @@ export const convidarMembro = createServerFn({ method: "POST" })
           data: {
             link: `${urlDoSistema()}/convite?token=${pendente[0].token}`,
             emailEnviado: false,
+            emailErro: null as string | null,
             jaExistia: true,
           },
           error: null,
@@ -195,16 +196,54 @@ export const convidarMembro = createServerFn({ method: "POST" })
         values (${fazenda.id}, ${email}, ${papel}, ${token}, ${u.id})`;
       const link = `${urlDoSistema()}/convite?token=${token}`;
       const { enviarConviteEmail } = await import("./email.server");
-      const emailEnviado = await enviarConviteEmail({
+      const envio = await enviarConviteEmail({
         to: email,
         fazenda: fazenda.nome,
         papel,
         quem: u.nome,
         link,
       });
-      return { data: { link, emailEnviado, jaExistia: false }, error: null };
+      return {
+        data: {
+          link,
+          emailEnviado: envio.enviado,
+          emailErro: envio.erro,
+          jaExistia: false,
+        },
+        error: null,
+      };
     } catch (e) {
       return erro(e instanceof Error ? e.message : "Erro ao convidar.");
+    }
+  });
+
+/** Manda de novo o e-mail de um convite pendente. */
+export const reenviarConvite = createServerFn({ method: "POST" })
+  .inputValidator((dados: { token: string | null; fazendaId: string; conviteId: string }) => dados)
+  .handler(async ({ data }) => {
+    try {
+      const sql = await banco();
+      const u = await usuarioDaSessao(sql, data.token);
+      if (!u) return erro("Não autenticado.");
+      const fazenda = await fazendaDoDono(sql, u.id, data.fazendaId);
+      if (!fazenda) return erro("Sem permissão.");
+      const c: { email: string; papel: string; token: string }[] = await sql`
+        select email, papel, token from convites
+        where id = ${data.conviteId} and fazenda_id = ${fazenda.id} and status = 'pendente'`;
+      if (!c[0]) return erro("Convite não encontrado ou já respondido.");
+      const { urlDoSistema } = await import("./mercadopago.server");
+      const link = `${urlDoSistema()}/convite?token=${c[0].token}`;
+      const { enviarConviteEmail } = await import("./email.server");
+      const envio = await enviarConviteEmail({
+        to: c[0].email,
+        fazenda: fazenda.nome,
+        papel: c[0].papel,
+        quem: u.nome,
+        link,
+      });
+      return { data: { emailEnviado: envio.enviado, emailErro: envio.erro, link }, error: null };
+    } catch (e) {
+      return erro(e instanceof Error ? e.message : "Erro ao reenviar o convite.");
     }
   });
 
@@ -364,10 +403,12 @@ export const relatorioVeterinario = createServerFn({ method: "POST" })
         descricao: string | null;
         animal: string | null;
         criado_por: string | null;
+        autor: string | null;
       }[] = await sql`
         select m.fazenda_id, m.data, m.tipo, m.descricao,
-          coalesce(a.nome, a.brinco) as animal, m.criado_por
+          coalesce(a.nome, a.brinco) as animal, m.criado_por, p.nome as autor
         from manejos m left join animais a on a.id = m.animal_id
+        left join perfis p on p.id = m.criado_por
         where m.fazenda_id = any(${ids}) and m.data between ${inicio} and ${fim}
           and m.tipo in ('vacina', 'vermifugo', 'tratamento', 'outro')
         order by m.data`;
@@ -378,10 +419,12 @@ export const relatorioVeterinario = createServerFn({ method: "POST" })
         resultado: string | null;
         animal: string | null;
         criado_por: string | null;
+        autor: string | null;
       }[] = await sql`
         select r.fazenda_id, r.data, r.tipo, r.resultado,
-          coalesce(a.nome, a.brinco) as animal, r.criado_por
+          coalesce(a.nome, a.brinco) as animal, r.criado_por, p.nome as autor
         from reproducao r left join animais a on a.id = r.animal_id
+        left join perfis p on p.id = r.criado_por
         where r.fazenda_id = any(${ids}) and r.data between ${inicio} and ${fim}
         order by r.data`;
       const dia = (d: Date) => new Date(d).toISOString().slice(0, 10);
@@ -424,6 +467,7 @@ export const relatorioVeterinario = createServerFn({ method: "POST" })
               detalhe: x.descricao ?? "",
               animal: x.animal ?? "",
               seu: x.criado_por === u.id,
+              autor: x.autor ?? "",
             })),
             ...rs.map((x) => ({
               data: dia(x.data),
@@ -432,6 +476,7 @@ export const relatorioVeterinario = createServerFn({ method: "POST" })
               detalhe: x.tipo === "diagnostico" ? (x.resultado ?? "") : "",
               animal: x.animal ?? "",
               seu: x.criado_por === u.id,
+              autor: x.autor ?? "",
             })),
           ].sort((p, q) => p.data.localeCompare(q.data)),
         };

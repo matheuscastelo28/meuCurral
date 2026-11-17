@@ -56,13 +56,33 @@ export function SecaoEquipe() {
       return data!;
     },
     onSuccess: (r) => {
-      toast.success(
-        r.emailEnviado
-          ? "Convite enviado por e-mail."
-          : "Convite criado. Copie o link abaixo e mande para a pessoa.",
-      );
+      if (r.emailEnviado) toast.success("Convite enviado por e-mail.");
+      else
+        toast.message(
+          `Convite criado. ${r.emailErro ?? ""} Copie o link abaixo e mande para a pessoa.`.replace(
+            "  ",
+            " ",
+          ),
+        );
       setEmail("");
       atualizar();
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const reenviar = useMutation({
+    mutationFn: async (conviteId: string) => {
+      const { data, error } = await db.equipe.reenviarConvite({
+        fazendaId: fazenda!.id,
+        conviteId,
+      });
+      if (error) throw new Error(error.message);
+      return data!;
+    },
+    onSuccess: (r) => {
+      if (r.emailEnviado) toast.success("E-mail reenviado.");
+      else
+        toast.message(`${r.emailErro ?? "O e-mail não saiu."} Copie o link e mande para a pessoa.`);
     },
     onError: (e: Error) => toast.error(e.message),
   });
@@ -176,10 +196,20 @@ export function SecaoEquipe() {
                   {PAPEL[c.papel] ?? c.papel} · convite pendente desde {dataCurta(c.criado)}
                 </p>
               </div>
-              <div className="flex gap-1">
+              <div className="flex flex-wrap gap-1">
                 <Button type="button" size="sm" variant="outline" onClick={() => copiar(c.link)}>
                   <Copy className="size-4" aria-hidden="true" />
                   Copiar link
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  disabled={reenviar.isPending}
+                  onClick={() => reenviar.mutate(c.id)}
+                >
+                  <Mail className="size-4" aria-hidden="true" />
+                  Reenviar
                 </Button>
                 <Button
                   type="button"

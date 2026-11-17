@@ -84,7 +84,7 @@ function Convite() {
   const c = convite.data;
   return (
     <main className="flex min-h-screen items-center justify-center bg-background px-4 py-10">
-      <div className="w-full max-w-md rounded-2xl border border-border bg-card p-6">
+      <div className="w-full min-w-0 max-w-md rounded-2xl border border-border bg-card p-6">
         <span className="flex size-10 items-center justify-center rounded-xl bg-accent text-primary">
           <Users className="size-5" aria-hidden="true" />
         </span>
@@ -119,18 +119,27 @@ function Convite() {
               {c.quem ? `${c.quem} convidou você` : "Você foi convidado(a)"} para acessar como{" "}
               {PAPEL[c.papel] ?? c.papel}
               {c.cidade ? ` (${[c.cidade, c.estado].filter(Boolean).join("/")})` : ""}. O convite é
-              para <strong>{c.email}</strong>.
+              para <strong className="break-all">{c.email}</strong>.
             </p>
             {logado ? (
               <Button className="mt-5 w-full" onClick={aceitar} disabled={aceitando}>
                 {aceitando ? "Aceitando..." : "Aceitar convite"}
               </Button>
             ) : (
-              <div className="mt-5 grid gap-2">
-                <Button asChild onClick={guardarPendente}>
+              <div className="mt-5 grid min-w-0 gap-2">
+                <Button
+                  asChild
+                  onClick={guardarPendente}
+                  className="h-auto whitespace-normal break-all py-2.5 text-center"
+                >
                   <Link to="/auth">Já tenho conta: entrar</Link>
                 </Button>
-                <Button variant="outline" asChild onClick={guardarPendente}>
+                <Button
+                  variant="outline"
+                  asChild
+                  onClick={guardarPendente}
+                  className="h-auto whitespace-normal break-all py-2.5 text-center"
+                >
                   <Link to="/cadastro">Criar conta com {c.email}</Link>
                 </Button>
                 <p className="text-xs text-muted-foreground">
