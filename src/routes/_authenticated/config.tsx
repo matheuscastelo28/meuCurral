@@ -11,6 +11,7 @@ import { SecaoAtividade } from "@/components/config/SecaoAtividade";
 import { SecaoPerfil } from "@/components/config/SecaoPerfil";
 import { SecaoSeguranca } from "@/components/config/SecaoSeguranca";
 import { SecaoPreferencias } from "@/components/config/SecaoPreferencias";
+import { SecaoProtocolos } from "@/components/config/SecaoProtocolos";
 import { SecaoPlano } from "@/components/config/SecaoPlano";
 import { SecaoDados } from "@/components/config/SecaoDados";
 import { SecaoAcessoCompartilhado, SecaoEquipe } from "@/components/config/SecaoEquipe";
@@ -56,6 +57,7 @@ function Config() {
           <SecaoPerfil />
           <SecaoSeguranca />
           <SecaoPreferencias />
+          <SecaoProtocolos />
           {souDono ? <SecaoPlano /> : null}
           <SecaoDados />
 

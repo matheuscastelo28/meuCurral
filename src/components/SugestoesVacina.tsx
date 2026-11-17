@@ -16,8 +16,15 @@ import { useFazenda } from "@/hooks/use-fazenda";
 import { especieDoAnimal } from "@/lib/especies";
 import { dataCurta, hojeISO } from "@/lib/formato";
 import { acharRegra, normalizar, textoIntervalo } from "@/lib/sanidade";
+import { useValidacoesProtocolos } from "@/hooks/use-validacoes-protocolos";
 import { useRegrasSanitarias } from "@/hooks/use-regras-sanitarias";
-import { sugerirVacinas, tituloDaDose, type SugestaoVacina } from "@/lib/protocolos-sanitarios";
+import {
+  situacaoDaValidacao,
+  textoValidacao,
+  sugerirVacinas,
+  tituloDaDose,
+  type SugestaoVacina,
+} from "@/lib/protocolos-sanitarios";
 
 export interface AnimalSugestao {
   id: string;
@@ -49,6 +56,7 @@ export function SugestoesVacina({
 }) {
   const { data: fazenda } = useFazenda();
   const regras = useRegrasSanitarias();
+  const revisoes = useValidacoesProtocolos();
   const queryClient = useQueryClient();
   const hoje = hojeISO();
   const [agendadasAgora, setAgendadasAgora] = useState<Set<string>>(new Set());
@@ -194,6 +202,13 @@ export function SugestoesVacina({
                           : `Dose em ${dataCurta(primeira.data)}`) + repeticao(s)}
                       </p>
                       <p className="mt-1 text-xs text-muted-foreground">{s.protocolo.nota}</p>
+                      <p
+                        className={`mt-1 text-xs ${situacaoDaValidacao(s.protocolo, revisoes.data?.validacoes ?? []).tipo === "validado" ? "font-medium text-primary" : "text-muted-foreground"}`}
+                      >
+                        {textoValidacao(
+                          situacaoDaValidacao(s.protocolo, revisoes.data?.validacoes ?? []),
+                        )}
+                      </p>
                       {s.idadeNaoConferida ? (
                         <p className="mt-1 flex items-center gap-1 text-xs text-warning">
                           <Info className="size-3.5" aria-hidden="true" />

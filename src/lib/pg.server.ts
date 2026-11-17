@@ -520,6 +520,19 @@ create table if not exists config_servidor (
   valor text not null,
   created_at timestamptz not null default now()
 );
+-- Revisão da tabela de protocolos de vacinação pelo veterinário da fazenda.
+-- "versao" identifica o conteúdo revisado: se a tabela mudar, a revisão perde o efeito.
+create table if not exists protocolos_validacao (
+  fazenda_id uuid not null references fazendas(id) on delete cascade,
+  protocolo_id text not null,
+  versao text not null,
+  status text not null check (status in ('validado', 'ajustar')),
+  nota text,
+  user_id uuid references usuarios(id) on delete set null,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  primary key (fazenda_id, protocolo_id)
+);
 -- Quem lançou o manejo/registro reprodutivo (atendimentos do veterinário).
 alter table manejos add column if not exists criado_por uuid references usuarios(id) on delete set null;
 alter table reproducao add column if not exists criado_por uuid references usuarios(id) on delete set null;

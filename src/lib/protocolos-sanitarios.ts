@@ -1,5 +1,5 @@
 import { idadeEmMeses } from "@/lib/estagios";
-import { dataISO } from "@/lib/formato";
+import { dataCurta, dataISO } from "@/lib/formato";
 import type { Especie } from "@/lib/especies";
 import { somarDias } from "@/lib/sanidade";
 
@@ -217,4 +217,65 @@ export function sugerirVacinas(animal: AnimalParaSugestao, hoje: string): Sugest
     });
   }
   return sugestoes;
+}
+
+/**
+ * Identifica o conteúdo atual de um protocolo (vacina, faixa de idade, doses,
+ * estados e nota). A validação do veterinário vale para esta versão: se a
+ * tabela for alterada, o protocolo volta a "a validar".
+ */
+export function versaoDoProtocolo(p: Protocolo): string {
+  const texto = JSON.stringify([
+    p.id,
+    p.vacina,
+    p.especie,
+    p.categorias ?? [],
+    p.sexo ?? "",
+    p.idadeMinMeses,
+    p.idadeMaxMeses,
+    p.soEstados ?? [],
+    p.exceto ?? [],
+    p.doses,
+    p.obrigatoria ?? false,
+    p.nota,
+  ]);
+  let h = 5381;
+  for (let i = 0; i < texto.length; i++) h = ((h << 5) + h + texto.charCodeAt(i)) | 0;
+  return (h >>> 0).toString(36);
+}
+
+export type ValidacaoProtocolo = {
+  protocolo_id: string;
+  versao: string;
+  status: "validado" | "ajustar";
+  nota: string | null;
+  por: string | null;
+  em: string;
+};
+
+export type SituacaoValidacao =
+  | { tipo: "validado"; por: string | null; em: string }
+  | { tipo: "ajustar"; por: string | null; em: string; nota: string | null }
+  | { tipo: "pendente"; desatualizada: boolean };
+
+/** Situação de um protocolo diante da revisão gravada (vale só se for da versão atual). */
+export function situacaoDaValidacao(
+  p: Protocolo,
+  validacoes: ValidacaoProtocolo[],
+): SituacaoValidacao {
+  const v = validacoes.find((x) => x.protocolo_id === p.id);
+  if (!v) return { tipo: "pendente", desatualizada: false };
+  if (v.versao !== versaoDoProtocolo(p)) return { tipo: "pendente", desatualizada: true };
+  return v.status === "validado"
+    ? { tipo: "validado", por: v.por, em: v.em }
+    : { tipo: "ajustar", por: v.por, em: v.em, nota: v.nota };
+}
+
+/** Selo curto da situação, usado aqui e nas sugestões de vacina. */
+export function textoValidacao(s: SituacaoValidacao): string {
+  if (s.tipo === "validado") {
+    return `Validado${s.por ? ` por ${s.por}` : ""} em ${dataCurta(s.em.slice(0, 10))}`;
+  }
+  if (s.tipo === "ajustar") return "Ajuste pedido pelo veterinário";
+  return s.desatualizada ? "Alterado depois da revisão: a validar" : "Rascunho: ainda não validado";
 }

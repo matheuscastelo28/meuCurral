@@ -41,6 +41,7 @@ import {
   minhaAssinatura,
   sincronizarAssinatura,
 } from "@/lib/assinatura.functions";
+import { listarValidacoes, validarProtocolo } from "@/lib/protocolos.functions";
 import {
   statusPush,
   salvarAssinaturaPush,
@@ -517,6 +518,19 @@ export const db = {
     },
     cancelar() {
       return cancelarAssinatura({ data: { token: tokenSessao() } });
+    },
+  },
+  protocolos: {
+    validacoes(fazendaId: string) {
+      return listarValidacoes({ data: { token: tokenSessao(), fazendaId } });
+    },
+    validar(params: {
+      fazendaId: string;
+      protocoloId: string;
+      status: "validado" | "ajustar" | "limpar";
+      nota?: string | null;
+    }) {
+      return validarProtocolo({ data: { token: tokenSessao(), ...params } });
     },
   },
   push: {
