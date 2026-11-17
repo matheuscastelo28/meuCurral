@@ -533,6 +533,27 @@ create table if not exists protocolos_validacao (
   updated_at timestamptz not null default now(),
   primary key (fazenda_id, protocolo_id)
 );
+-- Avisos oficiais publicados pelo administrador (ex.: campanha de vacinação do
+-- órgão de defesa do estado). "estados" vazio = todos. Aparecem como faixa no
+-- Início e, se marcado, também por e-mail (uma vez por pessoa).
+create table if not exists avisos_oficiais (
+  id uuid primary key default gen_random_uuid(),
+  titulo text not null,
+  texto text not null,
+  link text,
+  estados text[] not null default '{}',
+  enviar_email boolean not null default false,
+  ativo boolean not null default true,
+  expira_em date,
+  criado_por uuid references usuarios(id) on delete set null,
+  created_at timestamptz not null default now()
+);
+create table if not exists avisos_oficiais_envios (
+  aviso_id uuid not null references avisos_oficiais(id) on delete cascade,
+  user_id uuid not null references usuarios(id) on delete cascade,
+  created_at timestamptz not null default now(),
+  primary key (aviso_id, user_id)
+);
 -- Quem lançou o manejo/registro reprodutivo (atendimentos do veterinário).
 alter table manejos add column if not exists criado_por uuid references usuarios(id) on delete set null;
 alter table reproducao add column if not exists criado_por uuid references usuarios(id) on delete set null;

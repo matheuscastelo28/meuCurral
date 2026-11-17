@@ -1,3 +1,4 @@
+import { useSouAdmin } from "@/hooks/use-avisos-oficiais";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useQueryClient } from "@tanstack/react-query";
 import { LogOut } from "lucide-react";
@@ -38,6 +39,7 @@ function Config() {
   const { data: fazenda } = useFazenda();
   // Em fazenda compartilhada, o membro não mexe em configurações do dono.
   const souDono = fazenda?.souDono ?? true;
+  const { data: admin } = useSouAdmin();
   const queryClient = useQueryClient();
 
   async function sair() {
@@ -60,6 +62,13 @@ function Config() {
           <SecaoProtocolos />
           {souDono ? <SecaoPlano /> : null}
           <SecaoDados />
+          {admin ? (
+            <CartaoConfig id="administracao" titulo="Administração">
+              <Link to="/admin" className="text-sm text-primary underline underline-offset-4">
+                Publicar avisos oficiais por estado
+              </Link>
+            </CartaoConfig>
+          ) : null}
 
           <CartaoConfig id="sobre" titulo="Sobre e privacidade">
             <div className="flex flex-wrap items-center gap-3 text-sm">

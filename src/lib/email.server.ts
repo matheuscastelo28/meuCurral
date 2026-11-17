@@ -301,3 +301,62 @@ ${blocos}
     return { enviado: false, erro: "e-mail não saiu", assunto };
   }
 }
+
+export interface AvisoOficialEmail {
+  titulo: string;
+  texto: string;
+  link: string | null;
+  estados: string[];
+}
+
+/**
+ * Manda um aviso oficial para várias pessoas de uma vez (envio em lote do
+ * Resend, até 100 por chamada). Devolve os endereços que o Resend aceitou.
+ */
+export async function enviarAvisoOficialEmLote(
+  aviso: AvisoOficialEmail,
+  destinos: { email: string; nome: string | null }[],
+  linkSistema: string,
+): Promise<string[]> {
+  if (destinos.length === 0) return [];
+  const chave = chaveEmail();
+  if (!chave) {
+    console.warn(
+      `[dev] RESEND_API_KEY não configurada. Aviso oficial "${aviso.titulo}" para ${destinos.length} pessoa(s)`,
+    );
+    return [];
+  }
+  const para = aviso.estados.length > 0 ? aviso.estados.join(", ") : "todos os estados";
+  const html = (
+    nome: string | null,
+  ) => `<!doctype html><html lang="pt-BR"><body style="margin:0;padding:24px;background:#f4f3ec;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr><td align="center">
+<table role="presentation" width="100%" style="max-width:480px;background:#fff;border-radius:16px;border:1px solid #e6e4da;">
+<tr><td style="background:#1f6b45;padding:20px 28px;color:#fff;font-weight:800;border-radius:16px 16px 0 0;">Curral Online</td></tr>
+<tr><td style="padding:28px;font-size:14px;line-height:1.6;color:#16241b;">
+<p style="margin:0 0 4px;color:#8a948d;font-size:12px;">Aviso para produtores de: ${escapar(para)}</p>
+<p style="margin:0 0 10px;font-size:18px;font-weight:800;">${escapar(aviso.titulo)}</p>
+<p style="margin:0;white-space:pre-line;">${escapar(aviso.texto)}</p>
+${aviso.link ? `<p style="margin:20px 0 0;"><a href="${escapar(aviso.link)}" style="display:inline-block;background:#1f6b45;color:#fff;text-decoration:none;padding:12px 20px;border-radius:10px;font-weight:700;">Saiba mais</a></p>` : ""}
+<p style="margin:24px 0 0;color:#8a948d;font-size:12px;">${primeiroNome(nome) ? `${escapar(primeiroNome(nome))}, ` : ""}este aviso também aparece no início do <a href="${escapar(linkSistema)}" style="color:#1f6b45;">Curral Online</a>. É informativo; confirme sempre com o órgão responsável. Para não receber avisos por e-mail, desligue em Configurações → Preferências.</p>
+</td></tr></table></td></tr></table></body></html>`;
+  const aceitos: string[] = [];
+  for (let i = 0; i < destinos.length; i += 100) {
+    const parte = destinos.slice(i, i + 100);
+    const resposta = await fetch(`${RESEND_ENDPOINT}/batch`, {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization: `Bearer ${chave}` },
+      body: JSON.stringify(
+        parte.map((d) => ({
+          from: remetenteEmail(),
+          to: [d.email],
+          subject: `Aviso: ${aviso.titulo}`,
+          html: html(d.nome),
+        })),
+      ),
+    });
+    if (resposta.ok) aceitos.push(...parte.map((d) => d.email));
+    else console.error("Falha no lote de avisos", resposta.status);
+  }
+  return aceitos;
+}

@@ -9,36 +9,7 @@ import { Label } from "@/components/ui/label";
 import { useFazenda } from "@/hooks/use-fazenda";
 import { PRODUTOS_LEITE } from "@/lib/produtos-leite";
 import { CartaoConfig } from "./CartaoConfig";
-
-const UFS = [
-  "AC",
-  "AL",
-  "AP",
-  "AM",
-  "BA",
-  "CE",
-  "DF",
-  "ES",
-  "GO",
-  "MA",
-  "MT",
-  "MS",
-  "MG",
-  "PA",
-  "PB",
-  "PR",
-  "PE",
-  "PI",
-  "RJ",
-  "RN",
-  "RS",
-  "RO",
-  "RR",
-  "SC",
-  "SP",
-  "SE",
-  "TO",
-];
+import { UFS } from "@/lib/ufs";
 
 export function SecaoFazenda() {
   const { data: fazenda, isLoading } = useFazenda();

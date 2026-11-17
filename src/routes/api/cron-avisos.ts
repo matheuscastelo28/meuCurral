@@ -33,7 +33,13 @@ export const Route = createFileRoute("/api/cron-avisos")({
             ...(dia && /^\d{4}-\d{2}-\d{2}$/.test(dia) ? { amanha: dia } : {}),
             simular: url.searchParams.get("dry") === "1",
           });
-          return json({ ok: true, ...resumo });
+          // Avisos oficiais com e-mail marcado que ainda faltam enviar.
+          let avisosOficiais = 0;
+          if (url.searchParams.get("dry") !== "1") {
+            const { enviarEmailsPendentes } = await import("@/lib/avisos-oficiais.server");
+            avisosOficiais = await enviarEmailsPendentes(sql);
+          }
+          return json({ ok: true, ...resumo, avisosOficiais });
         } catch (e) {
           console.error("cron-avisos falhou", e);
           return json({ ok: false, erro: "falha ao enviar os avisos" }, 500);

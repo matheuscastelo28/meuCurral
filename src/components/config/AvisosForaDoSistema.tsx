@@ -149,7 +149,8 @@ export function AvisosForaDoSistema({
           <Label htmlFor="aviso_email" className="font-normal">
             E-mail diário às 6h
             <span className="mt-0.5 block text-xs text-muted-foreground">
-              Compromissos, vencimentos e partos do dia seguinte. Só sai quando há algo.
+              Compromissos, vencimentos e partos do dia seguinte, mais os avisos oficiais do seu
+              estado.
             </span>
           </Label>
           <Switch

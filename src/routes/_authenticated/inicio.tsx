@@ -1,3 +1,4 @@
+import { FaixaAvisos } from "@/components/FaixaAvisos";
 import { useState } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -228,6 +229,7 @@ function Inicio() {
         evento={cumprindo}
         onFechar={() => setCumprindo(null)}
       />
+      <FaixaAvisos />
       {animais.length === 0 && !resumo.isLoading ? (
         <EmptyState
           icon={Beef}

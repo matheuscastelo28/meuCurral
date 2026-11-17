@@ -17,6 +17,7 @@ import { Route as ConviteRouteImport } from './routes/convite'
 import { Route as PrivacidadeRouteImport } from './routes/privacidade'
 import { Route as TermosRouteImport } from './routes/termos'
 import { Route as VerificarEmailRouteImport } from './routes/verificar-email'
+import { Route as AuthenticatedAdminRouteImport } from './routes/_authenticated/admin'
 import { Route as AuthenticatedAtendimentosRouteImport } from './routes/_authenticated/atendimentos'
 import { Route as AuthenticatedCalendarioRouteImport } from './routes/_authenticated/calendario'
 import { Route as AuthenticatedConfigRouteImport } from './routes/_authenticated/config'
@@ -73,6 +74,11 @@ const VerificarEmailRoute = VerificarEmailRouteImport.update({
   id: '/verificar-email',
   path: '/verificar-email',
   getParentRoute: () => rootRouteImport,
+} as any)
+const AuthenticatedAdminRoute = AuthenticatedAdminRouteImport.update({
+  id: '/admin',
+  path: '/admin',
+  getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
 const AuthenticatedAtendimentosRoute =
   AuthenticatedAtendimentosRouteImport.update({
@@ -171,6 +177,7 @@ export interface FileRoutesByFullPath {
   '/privacidade': typeof PrivacidadeRoute
   '/termos': typeof TermosRoute
   '/verificar-email': typeof VerificarEmailRoute
+  '/admin': typeof AuthenticatedAdminRoute
   '/atendimentos': typeof AuthenticatedAtendimentosRoute
   '/calendario': typeof AuthenticatedCalendarioRoute
   '/config': typeof AuthenticatedConfigRoute
@@ -197,6 +204,7 @@ export interface FileRoutesByTo {
   '/privacidade': typeof PrivacidadeRoute
   '/termos': typeof TermosRoute
   '/verificar-email': typeof VerificarEmailRoute
+  '/admin': typeof AuthenticatedAdminRoute
   '/atendimentos': typeof AuthenticatedAtendimentosRoute
   '/calendario': typeof AuthenticatedCalendarioRoute
   '/config': typeof AuthenticatedConfigRoute
@@ -225,6 +233,7 @@ export interface FileRoutesById {
   '/privacidade': typeof PrivacidadeRoute
   '/termos': typeof TermosRoute
   '/verificar-email': typeof VerificarEmailRoute
+  '/_authenticated/admin': typeof AuthenticatedAdminRoute
   '/_authenticated/atendimentos': typeof AuthenticatedAtendimentosRoute
   '/_authenticated/calendario': typeof AuthenticatedCalendarioRoute
   '/_authenticated/config': typeof AuthenticatedConfigRoute
@@ -253,6 +262,7 @@ export interface FileRouteTypes {
     | '/privacidade'
     | '/termos'
     | '/verificar-email'
+    | '/admin'
     | '/atendimentos'
     | '/calendario'
     | '/config'
@@ -279,6 +289,7 @@ export interface FileRouteTypes {
     | '/privacidade'
     | '/termos'
     | '/verificar-email'
+    | '/admin'
     | '/atendimentos'
     | '/calendario'
     | '/config'
@@ -306,6 +317,7 @@ export interface FileRouteTypes {
     | '/privacidade'
     | '/termos'
     | '/verificar-email'
+    | '/_authenticated/admin'
     | '/_authenticated/atendimentos'
     | '/_authenticated/calendario'
     | '/_authenticated/config'
@@ -396,6 +408,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/verificar-email'
       preLoaderRoute: typeof VerificarEmailRouteImport
       parentRoute: typeof rootRouteImport
+    }
+    '/_authenticated/admin': {
+      id: '/_authenticated/admin'
+      path: '/admin'
+      fullPath: '/admin'
+      preLoaderRoute: typeof AuthenticatedAdminRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
     }
     '/_authenticated/atendimentos': {
       id: '/_authenticated/atendimentos'
@@ -520,6 +539,7 @@ declare module '@tanstack/react-router' {
 }
 
 interface AuthenticatedRouteRouteChildren {
+  AuthenticatedAdminRoute: typeof AuthenticatedAdminRoute
   AuthenticatedAtendimentosRoute: typeof AuthenticatedAtendimentosRoute
   AuthenticatedCalendarioRoute: typeof AuthenticatedCalendarioRoute
   AuthenticatedConfigRoute: typeof AuthenticatedConfigRoute
@@ -537,6 +557,7 @@ interface AuthenticatedRouteRouteChildren {
 }
 
 const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
+  AuthenticatedAdminRoute: AuthenticatedAdminRoute,
   AuthenticatedAtendimentosRoute: AuthenticatedAtendimentosRoute,
   AuthenticatedCalendarioRoute: AuthenticatedCalendarioRoute,
   AuthenticatedConfigRoute: AuthenticatedConfigRoute,

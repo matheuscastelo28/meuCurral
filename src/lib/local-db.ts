@@ -41,6 +41,13 @@ import {
   minhaAssinatura,
   sincronizarAssinatura,
 } from "@/lib/assinatura.functions";
+import {
+  souAdmin,
+  avisosParaMim,
+  listarAvisosAdmin,
+  publicarAviso,
+  encerrarAviso,
+} from "@/lib/avisos-oficiais.functions";
 import { listarValidacoes, validarProtocolo } from "@/lib/protocolos.functions";
 import {
   statusPush,
@@ -518,6 +525,30 @@ export const db = {
     },
     cancelar() {
       return cancelarAssinatura({ data: { token: tokenSessao() } });
+    },
+  },
+  avisosOficiais: {
+    souAdmin() {
+      return souAdmin({ data: { token: tokenSessao() } });
+    },
+    paraMim(fazendaId: string) {
+      return avisosParaMim({ data: { token: tokenSessao(), fazendaId } });
+    },
+    listar() {
+      return listarAvisosAdmin({ data: { token: tokenSessao() } });
+    },
+    publicar(params: {
+      titulo: string;
+      texto: string;
+      link?: string | null;
+      estados: string[];
+      enviarEmail: boolean;
+      expiraEm?: string | null;
+    }) {
+      return publicarAviso({ data: { token: tokenSessao(), ...params } });
+    },
+    encerrar(id: string) {
+      return encerrarAviso({ data: { token: tokenSessao(), id } });
     },
   },
   protocolos: {
