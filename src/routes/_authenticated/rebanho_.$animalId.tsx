@@ -442,7 +442,7 @@ function Ficha() {
         onFechar={() => setSanidadeAberto(false)}
         animalIdInicial={a.id}
       />
-      <div className="grid items-start gap-4 lg:grid-cols-[320px_1fr]">
+      <div className="grid grid-cols-[minmax(0,1fr)] items-start gap-4 lg:grid-cols-[320px_minmax(0,1fr)]">
         <div className="rounded-xl border border-border bg-card p-5">
           <div className="flex items-center gap-3">
             <span className="flex size-16 shrink-0 items-center justify-center rounded-xl bg-accent text-xl font-extrabold text-primary">
