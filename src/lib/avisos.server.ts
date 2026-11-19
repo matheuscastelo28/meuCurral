@@ -61,7 +61,11 @@ async function itensDaFazenda(
     prefs,
     indicesAvancados: false,
   } as unknown as DadosNotificacoes;
-  return montarNotificacoes(dados).filter((n) => n.data === amanha && TIPOS_DO_DIA.has(n.tipo));
+  // O cálculo usa amanhã como "hoje", então os textos relativos saem com
+  // "hoje" ("vence hoje", "previsão hoje"); no aviso, isso é amanhã.
+  return montarNotificacoes(dados)
+    .filter((n) => n.data === amanha && TIPOS_DO_DIA.has(n.tipo))
+    .map((n) => ({ ...n, detalhe: n.detalhe.replace(/\bhoje\b/g, "amanhã") }));
 }
 
 /** Quem recebe o quê amanhã (sem enviar nada). */
