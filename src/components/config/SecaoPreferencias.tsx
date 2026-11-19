@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -19,8 +19,15 @@ export function SecaoPreferencias() {
   const salvar = useSalvarPerfil();
   const [valores, setValores] = useState(PREFERENCIAS_PADRAO);
 
+  // Copia o perfil para o formulário só na primeira carga (e se a fazenda
+  // mudar de ovino para bovino): o e-mail diário salva ao tocar e recarrega o
+  // perfil, e recopiar aí apagaria o que ainda não foi salvo nos outros campos.
+  const carregadoPara = useRef<string | null>(null);
   useEffect(() => {
     if (!perfil) return;
+    const chave = `${perfil.id}:${soOvino}`;
+    if (carregadoPara.current === chave) return;
+    carregadoPara.current = chave;
     setValores({
       unidade_peso: soOvino ? "kg" : (perfil.unidade_peso ?? "kg"),
       moeda: perfil.moeda ?? "BRL",
@@ -125,7 +132,22 @@ export function SecaoPreferencias() {
 
         <AvisosForaDoSistema
           avisoEmail={valores.aviso_email}
-          onAvisoEmail={(v) => setValores((atual) => ({ ...atual, aviso_email: v }))}
+          onAvisoEmail={(v) => {
+            // Salva na hora, como os botões do celular ao lado: desligar e
+            // sair sem "Salvar preferências" não deixa o e-mail chegando.
+            setValores((atual) => ({ ...atual, aviso_email: v }));
+            salvar.mutate(
+              { aviso_email: v },
+              {
+                onSuccess: () =>
+                  toast.success(v ? "E-mail diário ligado." : "E-mail diário desligado."),
+                onError: () => {
+                  setValores((atual) => ({ ...atual, aviso_email: !v }));
+                  toast.error("Não conseguimos salvar agora.");
+                },
+              },
+            );
+          }}
         />
 
         <Button type="submit" disabled={salvar.isPending}>

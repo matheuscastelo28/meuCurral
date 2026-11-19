@@ -125,7 +125,15 @@ export function AvisosForaDoSistema({
     if (error) toast.error(error.message);
     else if ((data?.entregues ?? 0) > 0)
       toast.success("Teste enviado. Olhe as notificações do aparelho.");
-    else toast.error("O teste não chegou a nenhum aparelho.");
+    else {
+      // Confere de novo: se o aparelho saiu da lista (permissão revogada,
+      // app desinstalado), a tela volta a oferecer "Ativar neste aparelho".
+      await atualizar();
+      toast.error(
+        "O teste não chegou. Toque em “Desativar neste aparelho” e ative de novo; se continuar, confira se as notificações do site estão liberadas.",
+        { duration: 8000 },
+      );
+    }
   }
 
   const mensagem: Partial<Record<Estado, string>> = {
