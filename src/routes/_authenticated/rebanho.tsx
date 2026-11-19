@@ -25,6 +25,7 @@ import { useLimitePlano } from "@/hooks/use-fazenda";
 import { DialogVenderAnimal, type AnimalParaVenda } from "@/components/DialogVenderAnimal";
 import { dataCurta, dataISO, hojeISO, idadeTexto, pesoTexto } from "@/lib/formato";
 import { usePreferencias } from "@/hooks/use-preferencias";
+import { SugestoesVacina, type AnimalSugestao } from "@/components/SugestoesVacina";
 import { moeda as formatarMoeda } from "@/lib/formato";
 import { textoLote, rotuloCategoria, rotuloSexo, rotuloStatus } from "@/lib/rotulos";
 import {
@@ -404,6 +405,28 @@ function Rebanho() {
     return !error;
   }
 
+  // Categoria pela idade (lib/estagios) logo ao salvar: novo animal só
+  // avança; data de nascimento corrigida recalcula (pode voltar).
+  async function aplicarEstagios(ids: string[], recalcular: boolean) {
+    if (!prefs.estagio_automatico || !fazenda?.id || ids.length === 0) return;
+    const { data } = await db.rebanho.atualizarEstagios({
+      fazendaId: fazenda.id,
+      animalIds: ids,
+      recalcular,
+    });
+    const alterados = data?.alterados ?? [];
+    if (alterados.length === 0) return;
+    queryClient.invalidateQueries({ queryKey: ["animal-ficha"] });
+    const ex = alterados[0]!;
+    toast.message(
+      alterados.length === 1
+        ? `Categoria ajustada pela idade: ${rotuloCategoria(ex.de)} → ${rotuloCategoria(ex.para)}.`
+        : `${alterados.length} animais tiveram a categoria ajustada pela idade.`,
+    );
+  }
+
+  const [sugestaoPara, setSugestaoPara] = useState<AnimalSugestao | null>(null);
+
   const criar = useMutation({
     mutationFn: async (form: FormData) => {
       const racaFinal = raca === OUTRA_RACA ? racaCustom.trim() : raca;
@@ -423,6 +446,12 @@ function Rebanho() {
       const { data: criados, error } = await db.from("animais").insert(payload as never);
       if (error) throw error;
       await registrarPesagensIniciais(criados ?? []);
+      if (payload.nascimento) {
+        await aplicarEstagios(
+          (criados ?? []).map((c) => String(c.id)),
+          false,
+        );
+      }
       const valorCompra = Number(form.get("valor_compra") || 0);
       const compraOk = await registrarCompra({
         valor: valorCompra,
@@ -430,9 +459,13 @@ function Rebanho() {
         lote: payload.lote,
         animalId: (criados?.[0]?.id as string | undefined) ?? null,
       });
-      return { compraOk, comCompra: valorCompra > 0 };
+      return {
+        compraOk,
+        comCompra: valorCompra > 0,
+        animal: (criados?.[0] as AnimalSugestao | undefined) ?? null,
+      };
     },
-    onSuccess: ({ compraOk, comCompra }) => {
+    onSuccess: ({ compraOk, comCompra, animal }) => {
       if (!compraOk) {
         toast.error(
           "Animal cadastrado, mas a compra não entrou no Financeiro. Lance em Financeiro → Novo lançamento.",
@@ -443,6 +476,10 @@ function Rebanho() {
         );
       }
       setAberto(false);
+      // Animal novo: oferece as vacinas sugeridas (um toque cria o lembrete).
+      if (animal && animal.status !== "vendido" && animal.status !== "morto") {
+        setSugestaoPara(animal);
+      }
       setRaca(racasDaEspecie(especie)[0]!);
       setRacaCustom("");
       queryClient.invalidateQueries({ queryKey: ["animais"] });
@@ -485,6 +522,16 @@ function Rebanho() {
         .update((viraVenda ? { ...payload, status: editando!.status } : payload) as never)
         .eq("id", editando!.id);
       if (error) throw error;
+      // Data de nascimento corrigida: a categoria acompanha, a menos que o
+      // produtor tenha mudado a categoria na mesma edição.
+      const nascimentoAntes = editando!.nascimento ? dataISO(editando!.nascimento) : null;
+      if (
+        payload.nascimento &&
+        payload.nascimento !== nascimentoAntes &&
+        payload.categoria === editando!.categoria
+      ) {
+        await aplicarEstagios([String(editando!.id)], true);
+      }
       return viraVenda ? { id: editando!.id as string, ...payload } : null;
     },
     onSuccess: (paraVender) => {
@@ -546,6 +593,12 @@ function Rebanho() {
       const { data: criados, error } = await db.from("animais").insert(payloads as never);
       if (error) throw error;
       await registrarPesagensIniciais(criados ?? []);
+      if (payloads.some((p) => p.nascimento)) {
+        await aplicarEstagios(
+          (criados ?? []).map((c) => String(c.id)),
+          false,
+        );
+      }
       const valorCompra = Number(grupoCompra) || 0;
       const compraOk = await registrarCompra({
         valor: valorCompra,
@@ -1551,6 +1604,11 @@ function Rebanho() {
       </Dialog>
 
       <DialogManejoSanitario aberto={sanidadeAberto} onFechar={() => setSanidadeAberto(false)} />
+      <SugestoesVacina
+        animal={sugestaoPara}
+        aberto={sugestaoPara !== null}
+        onFechar={() => setSugestaoPara(null)}
+      />
       <DialogVenderAnimal
         animal={vendendo}
         fazendaId={fazenda?.id}

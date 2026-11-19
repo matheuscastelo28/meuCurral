@@ -1,7 +1,19 @@
-import { createFileRoute } from "@tanstack/react-router";
-import { useEffect, useMemo, useState } from "react";
+import { createFileRoute, Link } from "@tanstack/react-router";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Plus, Stethoscope, Trash2, Users } from "lucide-react";
+import {
+  Baby,
+  CalendarClock,
+  CircleDashed,
+  HeartPulse,
+  TriangleAlert,
+  Pencil,
+  Plus,
+  Repeat,
+  Stethoscope,
+  Trash2,
+  Users,
+} from "lucide-react";
 import { toast } from "sonner";
 import { db } from "@/lib/local-db";
 import { AppShell } from "@/components/AppShell";
@@ -19,12 +31,37 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { useFazenda } from "@/hooks/use-fazenda";
-import { dataCurta, dataISO, diasAtrasISO, hojeISO, idadeTexto } from "@/lib/formato";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { useFazenda, useLimitePlano } from "@/hooks/use-fazenda";
+import { useFemeasImprodutivas } from "@/hooks/use-femeas-improdutivas";
+import { planoMinimoDo, type RecursoId } from "@/lib/planos";
+import { RecursoBloqueado } from "@/components/RecursoBloqueado";
+import { dataCurta, dataISO, diasAtrasISO, hojeISO, idadeTexto, pesoTexto } from "@/lib/formato";
 import { especieDaCategoria, especieDoAnimal } from "@/lib/especies";
 import { cn } from "@/lib/utils";
+import {
+  agruparPorAnimal,
+  DIAS_PARA_DIAGNOSTICO,
+  DIAS_SECAGEM_ANTES_PARTO,
+  DIAS_VAZIA,
+  estadoDaFemea,
+  indicesReproducao,
+  statusAposRegistro,
+  type RegistroRepro,
+} from "@/lib/reproducao";
+import { montarNascimentos, racaDaCria, type AnimalNascimento } from "@/lib/nascimentos";
 
 export const Route = createFileRoute("/_authenticated/reproducao")({
+  validateSearch: (s: Record<string, unknown>): { improdutivas?: boolean | undefined } => ({
+    improdutivas: s["improdutivas"] === true || s["improdutivas"] === "true" ? true : undefined,
+  }),
   head: () => ({
     meta: [
       { title: "Reprodução — Curral Online" },
@@ -70,8 +107,6 @@ const TIPOS_SEM_TOURO_NO_ANIMAL = new Set([
 // estimativas: a UI deixa isso explícito e permite ajustar a data manualmente.
 // Diagnóstico de prenhez costuma ser feito a partir de ~30 dias do serviço;
 // secagem da vaca leiteira, ~60 dias antes do parto.
-const DIAS_PARA_DIAGNOSTICO = 30;
-const DIAS_SECAGEM_ANTES_PARTO = 60;
 const DIAS_GESTACAO_BOVINO = 283;
 const DIAS_GESTACAO_OVINO = 150;
 
@@ -81,6 +116,8 @@ function previsaoPartoDe(data: string, diasGestacao: number) {
 
 function Reproducao() {
   const { data: fazenda } = useFazenda();
+  const { plano } = useLimitePlano();
+  const reproducaoCompleta = plano.recursos.reproducaoCompleta;
   const temBovino = !!fazenda?.atividades?.includes("bovino");
   const temOvino = !!fazenda?.atividades?.includes("ovino");
   const ambasAtividades = temBovino && temOvino;
@@ -103,6 +140,16 @@ function Reproducao() {
   );
   const [excluindo, setExcluindo] = useState<{ id: string; texto: string } | null>(null);
   const [custo, setCusto] = useState("");
+  // Cria do parto: cadastrada no Rebanho junto com o registro.
+  const [criaSexo, setCriaSexo] = useState<"femea" | "macho" | "nao">("femea");
+  const [criaNome, setCriaNome] = useState("");
+  const [criaBrinco, setCriaBrinco] = useState("");
+  const [criaPeso, setCriaPeso] = useState("");
+  // Outras crias do mesmo parto (gêmeos, trigêmeos...), cadastradas juntas.
+  const [criasExtras, setCriasExtras] = useState<
+    { sexo: "femea" | "macho"; nome: string; brinco: string; peso: string }[]
+  >([]);
+  const formRef = useRef<HTMLFormElement>(null);
   const [previsaoParto, setPrevisaoParto] = useState(() =>
     previsaoPartoDe(hojeISO(), diasGestacao),
   );
@@ -120,7 +167,9 @@ function Reproducao() {
     queryFn: async () => {
       const { data, error } = await db
         .from("animais")
-        .select("id, nome, brinco, categoria, especie, nascimento, mae, pai, sexo, status, lote")
+        .select(
+          "id, nome, brinco, categoria, especie, raca, nascimento, mae, pai, sexo, status, lote, peso_nascimento, parto_id",
+        )
         .eq("fazenda_id", fazenda!.id)
         .order("nome");
       if (error) throw error;
@@ -192,65 +241,162 @@ function Reproducao() {
     return especie === null || especie === especieVisivel;
   });
 
-  // Situação reprodutiva de cada fêmea a partir do histórico: o último
-  // serviço (cobertura/IA) sem parto depois dele é uma gestação em aberto;
-  // diagnóstico negativo encerra, positivo confirma.
+  // Situação reprodutiva de cada fêmea a partir do histórico (ver
+  // src/lib/reproducao.ts): gestação em aberto, diagnóstico pendente,
+  // vazias e os índices do período.
   const situacao = useMemo(() => {
     const hoje = hojeISO();
-    const porAnimal = new Map<string, typeof registrosFiltrados>();
-    for (const r of registrosFiltrados) {
-      if (!r.animal_id) continue;
-      const lista = porAnimal.get(r.animal_id) ?? [];
-      lista.push(r);
-      porAnimal.set(r.animal_id, lista);
-    }
+    const porAnimal = agruparPorAnimal(registrosFiltrados as RegistroRepro[]);
+    const ativa = (id: string) => {
+      const a = animais.data?.find((x) => x.id === id);
+      return a && a.status !== "vendido" && a.status !== "morto" ? a : null;
+    };
     const partos: {
       animalId: string;
       nome: string;
-      previsao: string;
+      previsao: string | null;
       confirmada: boolean;
+      origem: string;
       secarAte: string | null;
+      secar: boolean;
     }[] = [];
-    const aguardandoDiagnostico: { animalId: string; nome: string; servico: string }[] = [];
-    for (const [animalId, lista] of porAnimal) {
-      const ordenados = [...lista].sort((a, b) => dataISO(a.data).localeCompare(dataISO(b.data)));
-      let servico: (typeof lista)[number] | null = null;
-      let diagnostico: string | null = null;
-      for (const r of ordenados) {
-        if (r.tipo === "cobertura" || r.tipo === "inseminacao") {
-          servico = r;
-          diagnostico = null;
-        } else if (r.tipo === "diagnostico" && servico) {
-          diagnostico = r.resultado ?? null;
-        } else if (r.tipo === "parto") {
-          servico = null;
-          diagnostico = null;
+    const aguardandoDiagnostico: {
+      animalId: string;
+      nome: string;
+      servico: string;
+      aPartir: string;
+      pronto: boolean;
+    }[] = [];
+    const vazias: {
+      animalId: string;
+      nome: string;
+      dias: number | null;
+      motivo: string;
+    }[] = [];
+    const diasVazia = DIAS_VAZIA[especieVisivel];
+    const limiteDiagnostico = diasAtrasISO(DIAS_PARA_DIAGNOSTICO);
+    const diasDesde = (d: string) =>
+      Math.round(
+        (new Date(`${hoje}T00:00:00Z`).getTime() - new Date(`${d}T00:00:00Z`).getTime()) / 86400000,
+      );
+    // Todas as fêmeas da espécie em vista que estão no rebanho — inclusive as
+    // que ainda não têm nenhum registro reprodutivo.
+    const femeas = (animais.data ?? []).filter(
+      (a) =>
+        a.status !== "vendido" &&
+        a.status !== "morto" &&
+        a.sexo !== "macho" &&
+        a.sexo !== "castrado" &&
+        a.categoria !== categoriaReprodutor &&
+        especieDoAnimal(a) === especieVisivel,
+    );
+    const adulta = (categoria: string | null | undefined) =>
+      categoria === (soOvino ? "ovelha" : "vaca");
+    for (const animal of femeas) {
+      const animalId = animal.id;
+      const nome = animal.nome || animal.brinco || "Animal";
+      const est = estadoDaFemea(porAnimal.get(animalId) ?? []);
+      if (est.servicoAberto) {
+        const dataServico = dataISO(est.servicoAberto.data);
+        const previsao = est.servicoAberto.previsao_parto
+          ? dataISO(est.servicoAberto.previsao_parto)
+          : null;
+        let secarAte: string | null = null;
+        if (previsao && !soOvino) {
+          const secarEm = new Date(`${previsao}T00:00:00Z`);
+          secarEm.setUTCDate(secarEm.getUTCDate() - DIAS_SECAGEM_ANTES_PARTO);
+          secarAte = secarEm.toISOString().slice(0, 10);
         }
+        // Fluxo: serviço → Aguardando diagnóstico → (positivo) Partos previstos.
+        // Só entra em Partos previstos depois do diagnóstico positivo.
+        if (est.diagnostico === "positivo") {
+          partos.push({
+            animalId,
+            nome,
+            previsao,
+            confirmada: true,
+            origem: est.semServico
+              ? "Prenhez confirmada · sem serviço registrado"
+              : "Prenhez confirmada",
+            secarAte,
+            // Hora de secar: já passou da data e ainda não registrou secagem.
+            secar:
+              !!secarAte &&
+              secarAte <= hoje &&
+              !est.secagemDepoisDoServico &&
+              animal.status !== "seca",
+          });
+        } else if (!est.semServico) {
+          const aPartir = new Date(`${dataServico}T00:00:00Z`);
+          aPartir.setUTCDate(aPartir.getUTCDate() + DIAS_PARA_DIAGNOSTICO);
+          aguardandoDiagnostico.push({
+            animalId,
+            nome,
+            servico: dataServico,
+            aPartir: aPartir.toISOString().slice(0, 10),
+            pronto: dataServico <= limiteDiagnostico,
+          });
+        }
+        continue;
       }
-      if (!servico || diagnostico === "negativo") continue;
-      const animal = animais.data?.find((a) => a.id === animalId);
-      if (animal && (animal.status === "vendido" || animal.status === "morto")) continue;
-      const nome = animal?.nome || animal?.brinco || "Animal";
-      const dataServico = dataISO(servico.data);
-      if (servico.previsao_parto) {
-        const previsao = dataISO(servico.previsao_parto);
-        const secar = new Date(`${previsao}T00:00:00Z`);
-        secar.setUTCDate(secar.getUTCDate() - DIAS_SECAGEM_ANTES_PARTO);
+      // Marcada como prenhe no Rebanho, sem registro que mostre a gestação.
+      if (animal.status === "prenhe") {
         partos.push({
           animalId,
           nome,
-          previsao,
-          confirmada: diagnostico === "positivo",
-          secarAte: soOvino ? null : secar.toISOString().slice(0, 10),
+          previsao: null,
+          confirmada: true,
+          origem: "Marcada como prenhe no Rebanho",
+          secarAte: null,
+          secar: false,
         });
+        continue;
       }
-      if (diagnostico === null && dataServico <= diasAtrasISO(DIAS_PARA_DIAGNOSTICO)) {
-        aguardandoDiagnostico.push({ animalId, nome, servico: dataServico });
+      if (animal.status === "engorda" || animal.status === "seca") continue;
+      if (est.vaziaDesde) {
+        const dias = diasDesde(est.vaziaDesde);
+        // Depois do parto só passa a contar quando já devia ter sido servida
+        // de novo; diagnóstico negativo e cio contam na hora.
+        if (est.vaziaMotivo !== "parto" || dias >= diasVazia) {
+          vazias.push({
+            animalId,
+            nome,
+            dias,
+            motivo:
+              est.vaziaMotivo === "parto"
+                ? "desde o parto"
+                : est.vaziaMotivo === "cio"
+                  ? "desde o primeiro cio"
+                  : "diagnóstico negativo",
+          });
+        }
+      } else if (adulta(animal.categoria) && !porAnimal.has(animalId)) {
+        vazias.push({ animalId, nome, dias: null, motivo: "sem registro reprodutivo" });
       }
     }
-    partos.sort((a, b) => a.previsao.localeCompare(b.previsao));
+    partos.sort((a, b) => (a.previsao ?? "9999").localeCompare(b.previsao ?? "9999"));
     aguardandoDiagnostico.sort((a, b) => a.servico.localeCompare(b.servico));
-    return { partos, aguardandoDiagnostico, hoje };
+    vazias.sort((a, b) => (b.dias ?? -1) - (a.dias ?? -1));
+    const ativos = new Map(
+      [...porAnimal].filter(([id]) => ativa(id)) as [string, RegistroRepro[]][],
+    );
+    const indices = indicesReproducao(ativos, hoje);
+    // IEP olha o histórico inteiro, inclusive de quem já saiu do rebanho.
+    const iep = indicesReproducao(porAnimal, hoje).intervaloEntrePartos;
+    return {
+      partos,
+      aguardandoDiagnostico,
+      vazias,
+      hoje,
+      indices: {
+        ...indices,
+        iep,
+        // Mesma conta das listas abaixo, pra o número do topo bater com elas.
+        gestantes: partos.length,
+        confirmadas: partos.filter((p) => p.confirmada).length,
+      },
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [registrosFiltrados, animais.data, soOvino]);
 
   const excluir = useMutation({
@@ -275,6 +421,68 @@ function Reproducao() {
     nome: string;
   } | null>(null);
 
+  // Cadastra no Rebanho as crias de um parto: mãe, pai (touro do último
+  // serviço), lote da mãe, raça dos pais, peso ao nascer e vínculo ao parto.
+  async function cadastrarCrias(
+    animal: NonNullable<typeof animais.data>[number],
+    dataParto: string,
+    partoId: string | null,
+    crias: { sexo: "femea" | "macho"; nome: string; brinco: string; peso: number | null }[],
+  ) {
+    let criadas = 0;
+    let erro = "";
+    const historico = (registros.data ?? []).filter(
+      (r) => r.animal_id === animal.id,
+    ) as RegistroRepro[];
+    const pai = estadoDaFemea(historico).servicoAberto?.touro ?? null;
+    const nomeMae = animal.nome || animal.brinco || "";
+    // Raça: a da mãe, a do pai (touro que está no rebanho) ou o cruzamento.
+    const chavePai = pai?.trim().toLowerCase();
+    const reprodutor = chavePai
+      ? (animais.data ?? []).find(
+          (a) =>
+            a.sexo !== "femea" &&
+            [a.nome, a.brinco].some((t) => (t ?? "").trim().toLowerCase() === chavePai),
+        )
+      : null;
+    for (const [i, cria] of crias.entries()) {
+      const { data: criadasLinhas, error: erroCria } = await db.from("animais").insert({
+        fazenda_id: fazenda!.id,
+        nome: cria.nome.trim() || `Cria${crias.length > 1 ? ` ${i + 1}` : ""} de ${nomeMae}`,
+        brinco: cria.brinco.trim() || null,
+        especie: especieVisivel,
+        sexo: cria.sexo,
+        categoria: especieVisivel === "ovino" ? "cordeiro" : "bezerro",
+        status: "ativo",
+        nascimento: dataParto,
+        peso_kg: cria.peso,
+        lote: String(animal.lote ?? "").trim() || null,
+        mae: nomeMae || null,
+        pai,
+        raca: racaDaCria(animal.raca, reprodutor?.raca),
+        parto_id: partoId,
+        peso_nascimento: cria.peso,
+      } as never);
+      if (erroCria) {
+        erro = erroCria.message;
+        continue;
+      }
+      criadas++;
+      const criaId = criadasLinhas?.[0]?.id as string | undefined;
+      if (criaId && cria.peso) {
+        await db.from("manejos").insert({
+          fazenda_id: fazenda!.id,
+          animal_id: criaId,
+          tipo: "pesagem",
+          data: dataParto,
+          valor: cria.peso,
+          descricao: "Peso ao nascer",
+        } as never);
+      }
+    }
+    return { criadas, erro };
+  }
+
   const salvar = useMutation({
     mutationFn: async (vars: {
       tipo: string;
@@ -284,6 +492,7 @@ function Reproducao() {
       previsaoParto: string | null;
       resultado: string | null;
       custo: number;
+      crias: { sexo: "femea" | "macho"; nome: string; brinco: string; peso: number | null }[];
     }) => {
       const { data: criados, error } = await db.from("reproducao").insert({
         fazenda_id: fazenda!.id,
@@ -315,7 +524,34 @@ function Reproducao() {
         } as never);
         custoOk = !erroCusto;
       }
-      return { ...vars, custoOk };
+      // A situação do animal acompanha o registro (prenhe, vazia, seca),
+      // sem tirar de lactação ou engorda quem está nelas.
+      const animal = animais.data?.find((a) => a.id === vars.animalId);
+      const novoStatus = animal
+        ? statusAposRegistro(animal.status, vars.tipo, vars.resultado)
+        : null;
+      if (novoStatus && animal) {
+        await db
+          .from("animais")
+          .update({ status: novoStatus } as never)
+          .eq("id", animal.id);
+      }
+
+      // Parto: a cria entra no Rebanho com mãe, pai (touro do último
+      // serviço), lote da mãe e data de nascimento.
+      let criasCriadas = 0;
+      let criaErro = "";
+      if (vars.tipo === "parto" && vars.crias.length > 0 && animal) {
+        const r = await cadastrarCrias(
+          animal,
+          vars.data,
+          (criados?.[0]?.id as string | undefined) ?? null,
+          vars.crias,
+        );
+        criasCriadas = r.criadas;
+        criaErro = r.erro;
+      }
+      return { ...vars, custoOk, novoStatus, criasCriadas, criaErro };
     },
     onSuccess: (vars) => {
       if (!vars.custoOk) {
@@ -327,9 +563,36 @@ function Reproducao() {
           vars.custo > 0 ? "Registro salvo e custo lançado no Financeiro." : "Registro salvo.",
         );
       }
+      if (vars.criasCriadas > 0) {
+        toast.success(
+          vars.criasCriadas === 1
+            ? "Cria cadastrada no Rebanho."
+            : `${vars.criasCriadas} crias cadastradas no Rebanho.`,
+        );
+      }
+      if (vars.crias.length > vars.criasCriadas) {
+        toast.error(
+          vars.criaErro || "O parto foi salvo, mas não conseguimos cadastrar a cria no Rebanho.",
+        );
+      }
+      if (vars.novoStatus) {
+        const rotulo: Record<string, string> = { prenhe: "prenhe", ativo: "vazia", seca: "seca" };
+        toast.message(
+          `Situação do animal atualizada: ${rotulo[vars.novoStatus] ?? vars.novoStatus}.`,
+        );
+      }
+      setFormAberto(false);
       setTouroId("");
       setTouroCustom("");
       setCusto("");
+      setCriaNome("");
+      setCriaBrinco("");
+      setCriaPeso("");
+      setCriaSexo("femea");
+      setCriasExtras([]);
+      for (const chave of ["animais", "animais-simples", "animais-contagem", "inicio-resumo"]) {
+        queryClient.invalidateQueries({ queryKey: [chave] });
+      }
       for (const chave of ["financeiro", "inicio-resumo", "ficha-custos", "despesas-lote"]) {
         queryClient.invalidateQueries({ queryKey: [chave] });
       }
@@ -367,371 +630,1568 @@ function Reproducao() {
     onError: () => toast.error("Não conseguimos atualizar o status agora."),
   });
 
+  // Histórico: filtro por animal e tipo, 30 por vez, e edição de registro.
+  const [filtroAnimalHist, setFiltroAnimalHist] = useState("");
+  const [filtroTipoHist, setFiltroTipoHist] = useState("");
+  // Fêmeas improdutivas (índice avançado): só a espécie em vista.
+  const todasImprodutivas = useFemeasImprodutivas();
+  const improdutivasDaVisao = todasImprodutivas.lista.filter((f) => f.especie === especieVisivel);
+  // Vindo do alerta do Início: abre a lista, já na espécie da primeira (ovino primeiro).
+  const { improdutivas: abrirImprodutivas } = Route.useSearch();
+  const abriuImprodutivas = useRef(false);
+  useEffect(() => {
+    if (!abrirImprodutivas || abriuImprodutivas.current || todasImprodutivas.carregando) return;
+    abriuImprodutivas.current = true;
+    const primeira = todasImprodutivas.lista[0];
+    if (primeira && ambasAtividades) setVisaoEspecie(primeira.especie);
+    setFiltroTipoHist("improdutivas");
+    setFiltroAnimalHist("");
+    window.setTimeout(
+      () => document.getElementById("card-lista")?.scrollIntoView({ behavior: "smooth" }),
+      200,
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [abrirImprodutivas, todasImprodutivas.carregando]);
+  const [limiteHist, setLimiteHist] = useState(30);
+  const historico = registrosFiltrados.filter(
+    (r) =>
+      (!filtroAnimalHist || r.animal_id === filtroAnimalHist) &&
+      (!filtroTipoHist ||
+        filtroTipoHist === "vazias" ||
+        filtroTipoHist === "improdutivas" ||
+        r.tipo === filtroTipoHist),
+  );
+
+  // Nascimentos: mesma base da ficha da fêmea (lib/nascimentos), filtrada por
+  // período e (opcionalmente) pela mãe.
+  // Registro de vários partos (de vacas diferentes) numa execução só.
+  type LinhaLote = {
+    animalId: string;
+    sexo: "femea" | "macho";
+    nome: string;
+    brinco: string;
+    peso: string;
+  };
+  const novaLinha = (): LinhaLote => ({
+    animalId: "",
+    sexo: "femea",
+    nome: "",
+    brinco: "",
+    peso: "",
+  });
+  const [loteAberto, setLoteAberto] = useState(false);
+  const [loteData, setLoteData] = useState(hojeISO());
+  const [loteLinhas, setLoteLinhas] = useState<LinhaLote[]>([novaLinha(), novaLinha()]);
+
+  const salvarLote = useMutation({
+    mutationFn: async () => {
+      const preenchidas = loteLinhas.filter(
+        (l) => l.animalId || l.nome.trim() || l.brinco.trim() || l.peso,
+      );
+      if (preenchidas.length === 0) throw new Error("Preencha ao menos uma cria.");
+      if (preenchidas.some((l) => !l.animalId))
+        throw new Error("Escolha a mãe em todas as linhas.");
+      // Mesma mãe em várias linhas = gêmeos no mesmo parto.
+      const porMae = new Map<string, LinhaLote[]>();
+      for (const l of preenchidas) porMae.set(l.animalId, [...(porMae.get(l.animalId) ?? []), l]);
+      let partos = 0;
+      let crias = 0;
+      let falhas = 0;
+      for (const [maeId, linhas] of porMae) {
+        const mae = animais.data?.find((a) => a.id === maeId);
+        if (!mae) continue;
+        const { data: criados, error } = await db.from("reproducao").insert({
+          fazenda_id: fazenda!.id,
+          animal_id: maeId,
+          tipo: "parto",
+          data: loteData,
+        } as never);
+        if (error) {
+          falhas += linhas.length;
+          continue;
+        }
+        partos++;
+        const r = await cadastrarCrias(
+          mae,
+          loteData,
+          (criados?.[0]?.id as string | undefined) ?? null,
+          linhas.map((l) => ({
+            sexo: l.sexo,
+            nome: l.nome,
+            brinco: l.brinco,
+            peso: Number(l.peso) > 0 ? Number(l.peso) : null,
+          })),
+        );
+        crias += r.criadas;
+        falhas += linhas.length - r.criadas;
+      }
+      return { partos, crias, falhas };
+    },
+    onSuccess: (r) => {
+      if (r.falhas > 0) {
+        toast.error(
+          `${r.falhas} ${r.falhas === 1 ? "cria não foi salva" : "crias não foram salvas"}. Confira a lista.`,
+        );
+      }
+      if (r.crias > 0) {
+        toast.success(
+          `${r.partos} ${r.partos === 1 ? "parto" : "partos"} e ${r.crias} ${r.crias === 1 ? "cria registrados" : "crias registrados"}.`,
+        );
+      }
+      setLoteAberto(false);
+      setLoteLinhas([novaLinha(), novaLinha()]);
+      for (const chave of [
+        "animais",
+        "animais-simples",
+        "animais-contagem",
+        "inicio-resumo",
+        "reproducao",
+        "eventos",
+        "indices-rebanho",
+        "ficha-partos",
+        "ficha-crias",
+      ]) {
+        queryClient.invalidateQueries({ queryKey: [chave] });
+      }
+    },
+    onError: (e: Error) => toast.error(e.message || "Não conseguimos registrar agora."),
+  });
+
+  const opcoesMaesLote = useMemo(() => {
+    const previstas = new Map(situacao.partos.map((p) => [p.animalId, p.previsao]));
+    const elegiveis = (animais.data ?? [])
+      .filter((a) => a.status !== "vendido" && a.status !== "morto")
+      .filter((a) => especieDoAnimal(a) === especieVisivel)
+      .filter((a) => a.sexo !== "macho" && a.sexo !== "castrado")
+      .filter((a) => a.categoria !== categoriaReprodutor);
+    const nome = (a: (typeof elegiveis)[number]) => `${a.nome}${a.brinco ? ` (${a.brinco})` : ""}`;
+    return {
+      previstas: elegiveis
+        .filter((a) => previstas.has(a.id))
+        .sort((x, y) => (previstas.get(x.id) ?? "9").localeCompare(previstas.get(y.id) ?? "9"))
+        .map((a) => ({
+          id: a.id,
+          rotulo: `${nome(a)}${previstas.get(a.id) ? ` · prevista ${dataCurta(previstas.get(a.id)!)}` : ""}`,
+        })),
+      outras: elegiveis
+        .filter((a) => !previstas.has(a.id))
+        .sort((x, y) => (x.nome ?? "").localeCompare(y.nome ?? ""))
+        .map((a) => ({ id: a.id, rotulo: nome(a) })),
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [animais.data, situacao, especieVisivel]);
+
+  // O formulário de registro fica recolhido: abre pelo botão "Novo registro"
+  // (ou pelos atalhos das listas) e fecha ao salvar.
+  const [formAberto, setFormAberto] = useState(false);
+  const [aba, setAba] = useState<"acompanhamento" | "nascimentos">("acompanhamento");
+  const [filtroMaeNasc, setFiltroMaeNasc] = useState("");
+  const [periodoNasc, setPeriodoNasc] = useState<"30" | "90" | "365" | "tudo">("90");
+  const nascimentos = useMemo(() => {
+    const todos = (animais.data ?? []) as unknown as (AnimalNascimento & {
+      sexo?: string | null;
+    })[];
+    const femeas = todos.filter((a) => a.sexo === "femea");
+    return montarNascimentos(registrosFiltrados as RegistroRepro[], femeas, todos);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [animais.data, registros.data, especieVisivel]);
+  const nascimentosDoPeriodo = nascimentos.filter(
+    (n) =>
+      (!filtroMaeNasc || n.femeaId === filtroMaeNasc) &&
+      (periodoNasc === "tudo" || n.data >= diasAtrasISO(Number(periodoNasc))),
+  );
+  const maesNasc = useMemo(() => {
+    const nomes = new Map((animais.data ?? []).map((a) => [a.id, a.nome ?? "Fêmea"]));
+    const ids = [...new Set(nascimentos.map((n) => n.femeaId))];
+    return ids
+      .map((id) => [id, nomes.get(id) ?? "Fêmea"] as [string, string])
+      .sort((x, y) => x[1].localeCompare(y[1]));
+  }, [nascimentos, animais.data]);
+  const resumoNasc = useMemo(() => {
+    const crias = nascimentosDoPeriodo.flatMap((n) => n.crias);
+    const pesos = crias.map((c) => c.pesoKg).filter((p): p is number => p != null);
+    return {
+      total: crias.length,
+      machos: crias.filter((c) => c.sexo === "macho").length,
+      femeas: crias.filter((c) => c.sexo === "femea").length,
+      pesoMedio: pesos.length ? pesos.reduce((a, b) => a + b, 0) / pesos.length : null,
+    };
+  }, [nascimentosDoPeriodo]);
+  const animaisDoHistorico = useMemo(() => {
+    const vistos = new Map<string, string>();
+    for (const r of registrosFiltrados) {
+      const nome = (r as { animais?: { nome?: string } | null }).animais?.nome;
+      if (r.animal_id && nome && !vistos.has(r.animal_id)) vistos.set(r.animal_id, nome);
+    }
+    return [...vistos].sort((a, b) => a[1].localeCompare(b[1]));
+  }, [registrosFiltrados]);
+
+  const [editando, setEditando] = useState<{
+    id: string;
+    tipo: string;
+    animalId: string | null;
+    nome: string;
+    data: string;
+    touro: string;
+    previsao: string;
+    resultado: string;
+    resultadoAntes: string;
+  } | null>(null);
+
+  const atualizar = useMutation({
+    mutationFn: async (e: NonNullable<typeof editando>) => {
+      const servico = e.tipo === "cobertura" || e.tipo === "inseminacao";
+      const campos: Record<string, string | null> = { data: e.data };
+      if (servico) {
+        campos["touro"] = e.touro.trim() || null;
+        campos["previsao_parto"] = e.previsao || null;
+      }
+      if (e.tipo === "diagnostico") campos["resultado"] = e.resultado;
+      const { error } = await db
+        .from("reproducao")
+        .update(campos as never)
+        .eq("id", e.id);
+      if (error) throw error;
+      // Diagnóstico corrigido (prenhe ↔ vazia): a situação do animal acompanha.
+      if (e.tipo === "diagnostico" && e.resultado !== e.resultadoAntes && e.animalId) {
+        const animal = animais.data?.find((a) => a.id === e.animalId);
+        const novo = animal ? statusAposRegistro(animal.status, "diagnostico", e.resultado) : null;
+        if (novo) {
+          await db
+            .from("animais")
+            .update({ status: novo } as never)
+            .eq("id", e.animalId);
+        }
+      }
+    },
+    onSuccess: () => {
+      toast.success("Registro atualizado.");
+      setEditando(null);
+      for (const chave of [
+        "reproducao",
+        "ficha-reproducao",
+        "indices-rebanho",
+        "animais-simples",
+        "animais",
+      ]) {
+        queryClient.invalidateQueries({ queryKey: [chave] });
+      }
+    },
+    onError: () => toast.error("Não conseguimos salvar agora. Tente novamente."),
+  });
+
+  // Atalhos das listas: deixa o formulário pronto pro animal e rola até ele.
+  function preencher(novoTipo: string, id: string) {
+    setFormAberto(true);
+    setTipo(novoTipo);
+    setAnimalId(id);
+    setData(hojeISO());
+    if (novoTipo === "diagnostico") setResultadoDiagnostico("positivo");
+    setTimeout(() => formRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 60);
+  }
+
+  const ind = situacao.indices;
+  const prontos = situacao.aguardandoDiagnostico.filter((a) => a.pronto).length;
+  const kpis: {
+    icone: typeof Baby;
+    rotulo: string;
+    valor: string;
+    detalhe?: string;
+    /** Card da lista que esse número resume: clicar leva até ela. */
+    alvo?: string | undefined;
+    /** Recurso do plano que libera este número. */
+    recurso?: RecursoId;
+  }[] = [
+    {
+      icone: Baby,
+      rotulo: "Gestantes",
+      valor: `${ind.gestantes}`,
+      detalhe: "prenhez confirmada",
+      alvo: "card-partos",
+    },
+    {
+      icone: Stethoscope,
+      rotulo: "Aguardando diagnóstico",
+      valor: `${situacao.aguardandoDiagnostico.length}`,
+      detalhe: `${prontos} já pode${prontos === 1 ? "" : "m"} ser diagnosticada${prontos === 1 ? "" : "s"}`,
+      alvo: "card-diagnostico",
+    },
+    {
+      icone: CircleDashed,
+      rotulo: "Vazias",
+      valor: `${situacao.vazias.length}`,
+      detalhe: "prontas pra novo serviço",
+      alvo: "card-lista",
+    },
+    {
+      icone: TriangleAlert,
+      rotulo: "Improdutivas",
+      valor: `${improdutivasDaVisao.length}`,
+      detalhe: "toque para ver a lista",
+      alvo: "card-improdutivas",
+      recurso: "indicesAvancados",
+    },
+    {
+      icone: HeartPulse,
+      rotulo: "Taxa de prenhez (12 meses)",
+      recurso: "indicadores",
+      valor: ind.taxaPrenhezServico !== null ? `${ind.taxaPrenhezServico}%` : "—",
+      detalhe:
+        ind.servicosComDesfecho > 0
+          ? `${ind.servicosComDesfecho} serviço${ind.servicosComDesfecho === 1 ? "" : "s"} com resultado`
+          : "sem serviços com resultado",
+    },
+    {
+      icone: Repeat,
+      rotulo: "Serviços por concepção",
+      recurso: "indicadores",
+      valor:
+        ind.servicosPorConcepcao !== null
+          ? ind.servicosPorConcepcao.toLocaleString("pt-BR", { maximumFractionDigits: 1 })
+          : "—",
+    },
+    {
+      icone: CalendarClock,
+      rotulo: "Intervalo entre partos",
+      recurso: "indicesAvancados",
+      valor:
+        ind.iep !== null
+          ? `${(ind.iep / 30.44).toLocaleString("pt-BR", { maximumFractionDigits: 1 })} meses`
+          : "—",
+      detalhe: ind.iep !== null ? `${ind.iep} dias em média` : "precisa de 2 partos da mesma fêmea",
+    },
+  ];
+
+  const kpisDoPlano = kpis.map((k) =>
+    k.recurso && !plano.recursos[k.recurso]
+      ? { ...k, valor: "—", detalhe: `Plano ${planoMinimoDo(k.recurso).nome}`, alvo: undefined }
+      : k,
+  );
+
+  function irPara(alvo: string) {
+    let id = alvo;
+    if (alvo === "card-lista") {
+      setFiltroTipoHist("vazias");
+      setFiltroAnimalHist("");
+    }
+    if (alvo === "card-improdutivas") {
+      setFiltroTipoHist("improdutivas");
+      setFiltroAnimalHist("");
+      id = "card-lista";
+    }
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.scrollIntoView({ behavior: "smooth", block: "start" });
+    el.classList.add("ring-2", "ring-primary");
+    window.setTimeout(() => el.classList.remove("ring-2", "ring-primary"), 1500);
+  }
+
   return (
-    <AppShell titulo="Reprodução">
-      {ambasAtividades ? (
-        <div className="mb-4 inline-flex rounded-lg bg-muted p-1">
-          <button
-            type="button"
-            onClick={() => setVisaoEspecie("bovino")}
-            className={cn(
-              "rounded-md px-3 py-1.5 text-sm font-medium transicao-suave",
-              visaoEspecie === "bovino"
-                ? "bg-background text-foreground shadow-sm"
-                : "text-muted-foreground hover:text-foreground",
-            )}
-          >
-            Bovinos
-          </button>
-          <button
-            type="button"
-            onClick={() => setVisaoEspecie("ovino")}
-            className={cn(
-              "rounded-md px-3 py-1.5 text-sm font-medium transicao-suave",
-              visaoEspecie === "ovino"
-                ? "bg-background text-foreground shadow-sm"
-                : "text-muted-foreground hover:text-foreground",
-            )}
-          >
-            Ovinos
-          </button>
-        </div>
-      ) : null}
-      <form
-        className="mb-5 flex flex-wrap items-start justify-between gap-3 rounded-xl border border-border bg-card p-4"
-        onSubmit={(e) => {
-          e.preventDefault();
-          if (requerPrevisao && !touroTextoAtual()) {
-            toast.error(`Informe o ${rotuloReprodutor.toLowerCase()} ou o sêmen usado.`);
-            return;
-          }
-          salvar.mutate({
-            tipo,
-            animalId,
-            data,
-            touro: requerPrevisao ? touroTextoAtual() : "",
-            previsaoParto: requerPrevisao ? previsaoParto : null,
-            resultado: tipo === "diagnostico" ? resultadoDiagnostico : null,
-            custo: Number(custo) || 0,
-          });
-        }}
-      >
-        <div className="min-w-[150px] flex-1 space-y-1.5">
-          <Label htmlFor="tipo">Tipo</Label>
-          <select
-            id="tipo"
-            value={tipo}
-            onChange={(e) => setTipo(e.target.value)}
-            className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
-          >
-            {TIPOS.map((t) => (
-              <option key={t} value={t}>
-                {TIPO_LABEL[t] ?? t}
-              </option>
-            ))}
-          </select>
-        </div>
-        <div className="min-w-[150px] flex-1 space-y-1.5">
-          <Label htmlFor="animal">Animal</Label>
-          <select
-            id="animal"
-            value={animalId}
-            onChange={(e) => setAnimalId(e.target.value)}
-            className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
-            required
-          >
-            <option value="">Selecione</option>
-            {animaisParaSelecao.map((a) => (
-              <option key={a.id} value={a.id}>
-                {a.nome}
-                {a.brinco ? ` (${a.brinco})` : ""}
-              </option>
-            ))}
-          </select>
-          {animalSelecionado ? (
-            <p className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-muted-foreground">
-              {animalSelecionado.nascimento ? (
-                <span>
-                  Nascido em {dataCurta(animalSelecionado.nascimento)} (
-                  {idadeTexto(animalSelecionado.nascimento)})
-                </span>
-              ) : null}
-              {animalSelecionado.mae ? <span>Mãe: {animalSelecionado.mae}</span> : null}
-              {animalSelecionado.pai ? <span>Pai: {animalSelecionado.pai}</span> : null}
-            </p>
-          ) : null}
-        </div>
-        <div className="min-w-[150px] flex-1 space-y-1.5">
-          <Label htmlFor="data-repro">Data</Label>
-          <Input
-            id="data-repro"
-            type="date"
-            value={data}
-            onChange={(e) => setData(e.target.value)}
-            required
-          />
-        </div>
-        {tipo === "diagnostico" ? (
-          <div className="min-w-[150px] flex-1 space-y-1.5">
-            <Label htmlFor="resultado-diagnostico">Resultado</Label>
-            <select
-              id="resultado-diagnostico"
-              value={resultadoDiagnostico}
-              onChange={(e) => setResultadoDiagnostico(e.target.value as "positivo" | "negativo")}
-              className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
-            >
-              <option value="positivo">Prenhe (positivo)</option>
-              <option value="negativo">Vazia (negativo)</option>
-            </select>
-          </div>
-        ) : null}
-        {requerPrevisao ? (
-          <div className="min-w-[150px] flex-1 space-y-1.5">
-            <Label htmlFor="touro">
-              {rotuloReprodutor} / sêmen <span className="text-destructive">*</span>
-            </Label>
-            <select
-              id="touro"
-              value={touroId}
-              onChange={(e) => setTouroId(e.target.value)}
-              className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
-              required
-            >
-              <option value="" disabled>
-                Selecione
-              </option>
-              {touros.data?.map((t) => (
-                <option key={t.id} value={t.id}>
-                  {t.nome}
-                  {t.brinco ? ` (${t.brinco})` : ""}
-                </option>
-              ))}
-              <option value="outro">Outro (não cadastrado)</option>
-            </select>
-          </div>
-        ) : null}
-        {requerPrevisao && touroId === "outro" ? (
-          <div className="min-w-[150px] flex-1 space-y-1.5">
-            <Label htmlFor="touro-custom">
-              Nome do {rotuloReprodutor.toLowerCase()}/sêmen{" "}
-              <span className="text-destructive">*</span>
-            </Label>
-            <Input
-              id="touro-custom"
-              value={touroCustom}
-              onChange={(e) => setTouroCustom(e.target.value)}
-              required
-              placeholder={`Ex: ${rotuloReprodutor} emprestado — Fazenda X`}
-            />
-          </div>
-        ) : null}
-        {requerPrevisao ? (
-          <div className="min-w-[150px] flex-1 space-y-1.5">
-            <Label htmlFor="previsao-parto">Previsão de parto</Label>
-            <Input
-              id="previsao-parto"
-              type="date"
-              value={previsaoParto}
-              onChange={(e) => setPrevisaoParto(e.target.value)}
-            />
-            <p className="text-xs text-muted-foreground">
-              Calculada com base em uma gestação média de {diasGestacao} dias
-              {soOvino ? " (ovinos)" : ""}.
-            </p>
-          </div>
-        ) : null}
-        <div className="min-w-[150px] flex-1 space-y-1.5">
-          <Label htmlFor="custo-reproducao">Custo (R$)</Label>
-          <Input
-            id="custo-reproducao"
-            type="number"
-            step="0.01"
-            min="0"
-            value={custo}
-            placeholder="Opcional"
-            onChange={(e) => setCusto(e.target.value)}
-          />
-          <p className="text-xs text-muted-foreground">Sêmen, inseminador, veterinário.</p>
-        </div>
-        <div className="w-full space-y-1.5 sm:w-auto sm:min-w-[150px]">
-          <Label className="invisible hidden sm:block">Registrar</Label>
-          <Button
-            type="submit"
-            className="w-full"
-            disabled={salvar.isPending || confirmarLactacao !== null}
-          >
+    <AppShell
+      titulo="Reprodução"
+      acao={
+        aba === "acompanhamento" && !formAberto ? (
+          <Button onClick={() => preencher(tipo, animalId)}>
             <Plus className="size-4" aria-hidden="true" />
-            Registrar
+            Novo registro
+          </Button>
+        ) : undefined
+      }
+    >
+      <div className="mb-4 flex flex-wrap items-center gap-3">
+        {ambasAtividades ? (
+          <div className="inline-flex rounded-lg bg-muted p-1">
+            <button
+              type="button"
+              onClick={() => setVisaoEspecie("bovino")}
+              className={cn(
+                "rounded-md px-3 py-1.5 text-sm font-medium transicao-suave",
+                visaoEspecie === "bovino"
+                  ? "bg-background text-foreground shadow-sm"
+                  : "text-muted-foreground hover:text-foreground",
+              )}
+            >
+              Bovinos
+            </button>
+            <button
+              type="button"
+              onClick={() => setVisaoEspecie("ovino")}
+              className={cn(
+                "rounded-md px-3 py-1.5 text-sm font-medium transicao-suave",
+                visaoEspecie === "ovino"
+                  ? "bg-background text-foreground shadow-sm"
+                  : "text-muted-foreground hover:text-foreground",
+              )}
+            >
+              Ovinos
+            </button>
+          </div>
+        ) : null}
+        <div className="ml-auto inline-flex rounded-lg bg-muted p-1" role="tablist">
+          <button
+            type="button"
+            onClick={() => setAba("acompanhamento")}
+            className={cn(
+              "rounded-md px-3 py-1.5 text-sm font-medium transicao-suave",
+              aba === "acompanhamento"
+                ? "bg-background text-foreground shadow-sm"
+                : "text-muted-foreground hover:text-foreground",
+            )}
+          >
+            Acompanhamento
+          </button>
+          <button
+            type="button"
+            onClick={() => setAba("nascimentos")}
+            className={cn(
+              "rounded-md px-3 py-1.5 text-sm font-medium transicao-suave",
+              aba === "nascimentos"
+                ? "bg-background text-foreground shadow-sm"
+                : "text-muted-foreground hover:text-foreground",
+            )}
+          >
+            Nascimentos
+          </button>
+        </div>
+      </div>
+      {aba === "nascimentos" && !reproducaoCompleta ? (
+        <div className="max-w-xl space-y-3">
+          <RecursoBloqueado
+            recurso="A aba de Nascimentos"
+            planoNecessario={planoMinimoDo("reproducaoCompleta").nome}
+          />
+          <Button asChild>
+            <Link to="/config" hash="plano">
+              Ver planos
+            </Link>
           </Button>
         </div>
-      </form>
-
-      {confirmarLactacao ? (
-        <p className="mb-3 text-xs text-muted-foreground">
-          Responda a pergunta abaixo antes de registrar outro parto.
-        </p>
-      ) : null}
-
-      {confirmarLactacao ? (
-        <div className="mb-5 rounded-xl border border-border bg-card p-4">
-          <p className="text-sm font-medium">
-            Após este parto, {confirmarLactacao.nome} entrou em lactação?
-          </p>
-          <p className="mt-1 text-xs text-muted-foreground">
-            Se sim, o status do animal muda pra "lactação" e ele passa a aparecer na lista de
-            registro de leite por vaca.
-          </p>
-          <div className="mt-3 flex gap-2">
-            <Button
-              size="sm"
-              disabled={marcarLactacao.isPending}
-              onClick={() => marcarLactacao.mutate(confirmarLactacao.animalId)}
-            >
-              Sim
-            </Button>
-            <Button
-              size="sm"
-              variant="outline"
-              disabled={marcarLactacao.isPending}
-              onClick={() => setConfirmarLactacao(null)}
-            >
-              Não
-            </Button>
+      ) : aba === "nascimentos" ? (
+        <section className="rounded-xl border border-border bg-card">
+          <div className="grid grid-cols-2 gap-3 border-b border-border p-4 sm:grid-cols-4">
+            {[
+              ["Nascidos", String(resumoNasc.total)],
+              ["Machos", String(resumoNasc.machos)],
+              ["Fêmeas", String(resumoNasc.femeas)],
+              [
+                "Peso médio ao nascer",
+                resumoNasc.pesoMedio != null ? pesoTexto(resumoNasc.pesoMedio) : "—",
+              ],
+            ].map(([rotulo, valor]) => (
+              <div key={rotulo}>
+                <p className="text-[11px] text-muted-foreground">{rotulo}</p>
+                <p className="font-display text-lg font-extrabold">{valor}</p>
+              </div>
+            ))}
           </div>
-        </div>
-      ) : null}
-
-      <div className="mb-5 grid gap-4 lg:grid-cols-2">
-        <section className="rounded-xl border border-border bg-card p-4">
-          <h2 className="text-base font-semibold">Partos previstos</h2>
-          {situacao.partos.length === 0 ? (
-            <p className="mt-3 text-sm text-muted-foreground">Nenhuma gestação em andamento.</p>
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border px-4 py-3">
+            <div className="flex flex-wrap gap-2">
+              <select
+                aria-label="Período dos nascimentos"
+                value={periodoNasc}
+                onChange={(e) => setPeriodoNasc(e.target.value as typeof periodoNasc)}
+                className="h-9 rounded-md border border-input bg-background px-2 text-sm"
+              >
+                <option value="30">Últimos 30 dias</option>
+                <option value="90">Últimos 90 dias</option>
+                <option value="365">Último ano</option>
+                <option value="tudo">Tudo</option>
+              </select>
+              <select
+                aria-label="Filtrar por mãe"
+                value={filtroMaeNasc}
+                onChange={(e) => setFiltroMaeNasc(e.target.value)}
+                className="h-9 rounded-md border border-input bg-background px-2 text-sm"
+              >
+                <option value="">Todas as mães</option>
+                {maesNasc.map(([id, nome]) => (
+                  <option key={id} value={id}>
+                    {nome}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="ml-auto flex gap-2">
+              <Button type="button" size="sm" variant="outline" onClick={() => setLoteAberto(true)}>
+                Registrar vários
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                onClick={() => {
+                  setAba("acompanhamento");
+                  setTimeout(() => preencher("parto", ""), 50);
+                }}
+              >
+                Registrar parto
+              </Button>
+            </div>
+          </div>
+          {nascimentosDoPeriodo.length === 0 ? (
+            <p className="px-4 py-6 text-sm text-muted-foreground">
+              Nenhum nascimento nesse período.
+            </p>
           ) : (
-            <ul className="mt-3 max-h-64 divide-y divide-border overflow-y-auto">
-              {situacao.partos.map((p) => {
-                const passou = p.previsao < situacao.hoje;
-                return (
-                  <li
-                    key={p.animalId}
-                    className="flex items-center justify-between gap-3 py-2 text-sm"
-                  >
-                    <span className="min-w-0">
-                      <span className="block truncate font-medium">{p.nome}</span>
-                      <span className="block text-xs text-muted-foreground">
-                        {p.confirmada ? "Prenhez confirmada" : "Sem diagnóstico ainda"}
-                        {p.secarAte && !passou ? ` · secar até ${dataCurta(p.secarAte)}` : ""}
-                      </span>
-                    </span>
-                    <span
-                      className={cn(
-                        "shrink-0 rounded-full px-2 py-0.5 text-xs font-semibold",
-                        passou ? "bg-destructive/15 text-destructive" : "bg-accent text-primary",
-                      )}
-                    >
-                      {passou ? `Previsto ${dataCurta(p.previsao)}` : dataCurta(p.previsao)}
-                    </span>
-                  </li>
-                );
-              })}
-            </ul>
-          )}
-        </section>
-
-        <section className="rounded-xl border border-border bg-card p-4">
-          <h2 className="text-base font-semibold">Aguardando diagnóstico</h2>
-          {situacao.aguardandoDiagnostico.length === 0 ? (
-            <p className="mt-3 text-sm text-muted-foreground">Nada pendente.</p>
-          ) : (
-            <ul className="mt-3 max-h-64 divide-y divide-border overflow-y-auto">
-              {situacao.aguardandoDiagnostico.map((a) => (
-                <li
-                  key={a.animalId}
-                  className="flex items-center justify-between gap-3 py-2 text-sm"
-                >
-                  <span className="truncate font-medium">{a.nome}</span>
-                  <span className="shrink-0 text-xs text-muted-foreground">
-                    serviço em {dataCurta(a.servico)}
-                  </span>
+            <ul className="divide-y divide-border">
+              {nascimentosDoPeriodo.map((n) => (
+                <li key={n.partoId ?? `${n.femeaId}-${n.data}`} className="px-4 py-3 text-sm">
+                  <p className="font-medium">
+                    {animais.data?.find((a) => a.id === n.femeaId)?.nome ?? "Fêmea"}{" "}
+                    <span className="font-normal text-muted-foreground">· {dataCurta(n.data)}</span>
+                  </p>
+                  {n.crias.length === 0 ? (
+                    <p className="text-xs text-muted-foreground">Cria não cadastrada no rebanho.</p>
+                  ) : (
+                    <ul className="mt-0.5 space-y-0.5">
+                      {n.crias.map((c) => (
+                        <li key={c.id} className="text-muted-foreground">
+                          <Link
+                            to="/rebanho/$animalId"
+                            params={{ animalId: c.id }}
+                            className="font-medium text-primary hover:underline"
+                          >
+                            {c.nome}
+                          </Link>{" "}
+                          {c.sexo === "macho" ? "Macho" : c.sexo === "femea" ? "Fêmea" : ""}
+                          {" · "}
+                          {c.pesoKg != null ? pesoTexto(c.pesoKg) : "sem peso"}
+                          {c.raca ? ` · ${c.raca}` : ""}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
                 </li>
               ))}
             </ul>
           )}
         </section>
-      </div>
-
-      {registrosFiltrados.length === 0 ? (
-        <EmptyState
-          icon={Stethoscope}
-          titulo="Nenhum registro reprodutivo"
-          descricao="Registre uma cobertura ou inseminação para calcular a previsão de parto."
-        />
       ) : (
-        <ul className="divide-y divide-border rounded-xl border border-border bg-card">
-          {registrosFiltrados.map((r) => {
-            const animal = (
-              r as {
-                animais?: { nome?: string; mae?: string; pai?: string; nascimento?: string } | null;
-              }
-            ).animais;
-            const genealogia = [
-              animal?.nascimento ? `nascido em ${dataCurta(animal.nascimento)}` : null,
-              animal?.mae ? `mãe: ${animal.mae}` : null,
-              animal?.pai ? `pai: ${animal.pai}` : null,
-            ].filter(Boolean);
-            return (
-              <li
-                key={r.id}
-                className="flex flex-wrap items-center justify-between gap-2 px-4 py-3 text-sm"
-              >
-                <span className="min-w-0">
-                  <span>
-                    <span className="font-medium">{TIPO_LABEL[r.tipo ?? ""] ?? r.tipo}</span>
-                    {r.tipo === "diagnostico" && r.resultado ? (
-                      <span
-                        className={cn(
-                          "ml-1.5 rounded-full px-1.5 py-0.5 text-[11px] font-semibold",
-                          r.resultado === "positivo"
-                            ? "bg-success/15 text-success"
-                            : "bg-muted text-muted-foreground",
-                        )}
-                      >
-                        {r.resultado === "positivo" ? "Prenhe" : "Vazia"}
-                      </span>
-                    ) : null}
-                    {" · "}
-                    <span className="text-muted-foreground">{animal?.nome ?? "Rebanho"}</span>
+        <>
+          <div className="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-7">
+            {kpisDoPlano.map((k) => {
+              const conteudo = (
+                <>
+                  <span className="flex size-8 items-center justify-center rounded-lg bg-accent text-primary">
+                    <k.icone className="size-4" aria-hidden="true" />
                   </span>
-                  {genealogia.length > 0 ? (
-                    <span className="flex items-center gap-1 text-xs text-muted-foreground">
-                      <Users className="size-3 shrink-0" aria-hidden="true" />
-                      {genealogia.join(" · ")}
-                    </span>
+                  <p className="mt-2 text-[11px] text-muted-foreground">{k.rotulo}</p>
+                  <p className="font-display text-lg font-extrabold">{k.valor}</p>
+                  {k.detalhe ? (
+                    <p className="text-[11px] text-muted-foreground">{k.detalhe}</p>
                   ) : null}
-                </span>
-                <span className="flex items-center gap-1 text-xs text-muted-foreground">
-                  {dataCurta(r.data)}
-                  {r.previsao_parto ? ` · previsão de parto ${dataCurta(r.previsao_parto)}` : ""}
+                </>
+              );
+              return k.alvo ? (
+                <button
+                  key={k.rotulo}
+                  type="button"
+                  onClick={() => irPara(k.alvo!)}
+                  className="flex h-full flex-col items-start justify-start rounded-xl border border-border bg-card p-3 text-left transicao-suave hover:border-primary/50"
+                  aria-label={`${k.rotulo}: ${k.valor}. Ver lista`}
+                >
+                  {conteudo}
+                </button>
+              ) : (
+                <div key={k.rotulo} className="h-full rounded-xl border border-border bg-card p-3">
+                  {conteudo}
+                </div>
+              );
+            })}
+          </div>
+
+          {formAberto ? (
+            <>
+              <form
+                ref={formRef}
+                id="form-reproducao"
+                className="mb-5 grid scroll-mt-24 grid-cols-2 items-start gap-3 rounded-xl border border-border bg-card p-4 sm:flex sm:flex-wrap sm:justify-between"
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  if (requerPrevisao && !touroTextoAtual()) {
+                    toast.error(`Informe o ${rotuloReprodutor.toLowerCase()} ou o sêmen usado.`);
+                    return;
+                  }
+                  salvar.mutate({
+                    tipo,
+                    animalId,
+                    data,
+                    touro: requerPrevisao ? touroTextoAtual() : "",
+                    previsaoParto: requerPrevisao ? previsaoParto : null,
+                    resultado: tipo === "diagnostico" ? resultadoDiagnostico : null,
+                    custo: Number(custo) || 0,
+                    crias:
+                      tipo === "parto" && criaSexo !== "nao"
+                        ? [
+                            {
+                              sexo: criaSexo,
+                              nome: criaNome,
+                              brinco: criaBrinco,
+                              peso: Number(criaPeso) > 0 ? Number(criaPeso) : null,
+                            },
+                            ...criasExtras.map((c) => ({
+                              sexo: c.sexo,
+                              nome: c.nome,
+                              brinco: c.brinco,
+                              peso: Number(c.peso) > 0 ? Number(c.peso) : null,
+                            })),
+                          ]
+                        : [],
+                  });
+                }}
+              >
+                <div className="min-w-0 space-y-1.5 sm:min-w-[150px] sm:flex-1">
+                  <Label htmlFor="tipo">Tipo</Label>
+                  <select
+                    id="tipo"
+                    value={tipo}
+                    onChange={(e) => setTipo(e.target.value)}
+                    className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+                  >
+                    {TIPOS.map((t) => (
+                      <option key={t} value={t}>
+                        {TIPO_LABEL[t] ?? t}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="min-w-0 space-y-1.5 sm:min-w-[150px] sm:flex-1">
+                  <Label htmlFor="animal">Animal</Label>
+                  <select
+                    id="animal"
+                    value={animalId}
+                    onChange={(e) => setAnimalId(e.target.value)}
+                    className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+                    required
+                  >
+                    <option value="">Selecione</option>
+                    {animaisParaSelecao.map((a) => (
+                      <option key={a.id} value={a.id}>
+                        {a.nome}
+                        {a.brinco ? ` (${a.brinco})` : ""}
+                      </option>
+                    ))}
+                  </select>
+                  {animalSelecionado ? (
+                    <p className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-muted-foreground">
+                      {animalSelecionado.nascimento ? (
+                        <span>
+                          Nascido em {dataCurta(animalSelecionado.nascimento)} (
+                          {idadeTexto(animalSelecionado.nascimento)})
+                        </span>
+                      ) : null}
+                      {animalSelecionado.mae ? <span>Mãe: {animalSelecionado.mae}</span> : null}
+                      {animalSelecionado.pai ? <span>Pai: {animalSelecionado.pai}</span> : null}
+                    </p>
+                  ) : null}
+                </div>
+                <div className="min-w-0 space-y-1.5 sm:min-w-[150px] sm:flex-1">
+                  <Label htmlFor="data-repro">Data</Label>
+                  <Input
+                    id="data-repro"
+                    type="date"
+                    value={data}
+                    onChange={(e) => setData(e.target.value)}
+                    required
+                  />
+                </div>
+                {tipo === "diagnostico" ? (
+                  <div className="min-w-0 space-y-1.5 sm:min-w-[150px] sm:flex-1">
+                    <Label htmlFor="resultado-diagnostico">Resultado</Label>
+                    <select
+                      id="resultado-diagnostico"
+                      value={resultadoDiagnostico}
+                      onChange={(e) =>
+                        setResultadoDiagnostico(e.target.value as "positivo" | "negativo")
+                      }
+                      className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+                    >
+                      <option value="positivo">Prenhe (positivo)</option>
+                      <option value="negativo">Vazia (negativo)</option>
+                    </select>
+                  </div>
+                ) : null}
+                {requerPrevisao ? (
+                  <div className="min-w-0 space-y-1.5 sm:min-w-[150px] sm:flex-1">
+                    <Label htmlFor="touro">
+                      {rotuloReprodutor} / sêmen <span className="text-destructive">*</span>
+                    </Label>
+                    <select
+                      id="touro"
+                      value={touroId}
+                      onChange={(e) => setTouroId(e.target.value)}
+                      className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+                      required
+                    >
+                      <option value="" disabled>
+                        Selecione
+                      </option>
+                      {touros.data?.map((t) => (
+                        <option key={t.id} value={t.id}>
+                          {t.nome}
+                          {t.brinco ? ` (${t.brinco})` : ""}
+                        </option>
+                      ))}
+                      <option value="outro">Outro (não cadastrado)</option>
+                    </select>
+                  </div>
+                ) : null}
+                {requerPrevisao && touroId === "outro" ? (
+                  <div className="min-w-0 space-y-1.5 sm:min-w-[150px] sm:flex-1">
+                    <Label htmlFor="touro-custom">
+                      Nome do {rotuloReprodutor.toLowerCase()}/sêmen{" "}
+                      <span className="text-destructive">*</span>
+                    </Label>
+                    <Input
+                      id="touro-custom"
+                      value={touroCustom}
+                      onChange={(e) => setTouroCustom(e.target.value)}
+                      required
+                      placeholder={`Ex: ${rotuloReprodutor} emprestado — Fazenda X`}
+                    />
+                  </div>
+                ) : null}
+                {requerPrevisao ? (
+                  <div className="min-w-0 space-y-1.5 sm:min-w-[150px] sm:flex-1">
+                    <Label htmlFor="previsao-parto">Previsão de parto</Label>
+                    <Input
+                      id="previsao-parto"
+                      type="date"
+                      value={previsaoParto}
+                      onChange={(e) => setPrevisaoParto(e.target.value)}
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Calculada com base em uma gestação média de {diasGestacao} dias
+                      {soOvino ? " (ovinos)" : ""}.
+                    </p>
+                  </div>
+                ) : null}
+                {tipo === "parto" ? (
+                  <>
+                    <div className="min-w-0 space-y-1.5 sm:min-w-[150px] sm:flex-1">
+                      <Label htmlFor="cria-sexo">Cria</Label>
+                      <select
+                        id="cria-sexo"
+                        value={criaSexo}
+                        onChange={(e) => setCriaSexo(e.target.value as typeof criaSexo)}
+                        className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+                      >
+                        <option value="femea">Cadastrar fêmea</option>
+                        <option value="macho">Cadastrar macho</option>
+                        <option value="nao">Não cadastrar</option>
+                      </select>
+                    </div>
+                    {criaSexo !== "nao" ? (
+                      <>
+                        <div className="min-w-0 space-y-1.5 sm:min-w-[150px] sm:flex-1">
+                          <Label htmlFor="cria-nome">Nome da cria</Label>
+                          <Input
+                            id="cria-nome"
+                            value={criaNome}
+                            placeholder={
+                              animalSelecionado ? `Cria de ${animalSelecionado.nome}` : "Opcional"
+                            }
+                            onChange={(e) => setCriaNome(e.target.value)}
+                          />
+                        </div>
+                        <div className="min-w-0 space-y-1.5 sm:min-w-[120px] sm:flex-1">
+                          <Label htmlFor="cria-brinco">Brinco</Label>
+                          <Input
+                            id="cria-brinco"
+                            value={criaBrinco}
+                            placeholder="Opcional"
+                            onChange={(e) => setCriaBrinco(e.target.value)}
+                          />
+                        </div>
+                        <div className="min-w-0 space-y-1.5 sm:min-w-[120px] sm:flex-1">
+                          <Label htmlFor="cria-peso">Peso ao nascer (kg)</Label>
+                          <Input
+                            id="cria-peso"
+                            type="number"
+                            step="0.1"
+                            min="0"
+                            value={criaPeso}
+                            placeholder="Opcional"
+                            onChange={(e) => setCriaPeso(e.target.value)}
+                          />
+                        </div>
+                        {criasExtras.map((c, i) => (
+                          <div
+                            key={i}
+                            className="flex w-full min-w-0 flex-wrap items-end gap-3 border-t border-border pt-3"
+                          >
+                            <div className="min-w-0 space-y-1.5 sm:min-w-[120px] sm:flex-1">
+                              <Label htmlFor={`cria-sexo-${i}`}>Cria {i + 2}</Label>
+                              <select
+                                id={`cria-sexo-${i}`}
+                                value={c.sexo}
+                                onChange={(e) =>
+                                  setCriasExtras((l) =>
+                                    l.map((x, j) =>
+                                      j === i
+                                        ? { ...x, sexo: e.target.value as "femea" | "macho" }
+                                        : x,
+                                    ),
+                                  )
+                                }
+                                className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+                              >
+                                <option value="femea">Fêmea</option>
+                                <option value="macho">Macho</option>
+                              </select>
+                            </div>
+                            <div className="min-w-0 space-y-1.5 sm:min-w-[150px] sm:flex-1">
+                              <Label htmlFor={`cria-nome-${i}`}>Nome</Label>
+                              <Input
+                                id={`cria-nome-${i}`}
+                                value={c.nome}
+                                placeholder="Opcional"
+                                onChange={(e) =>
+                                  setCriasExtras((l) =>
+                                    l.map((x, j) => (j === i ? { ...x, nome: e.target.value } : x)),
+                                  )
+                                }
+                              />
+                            </div>
+                            <div className="min-w-0 space-y-1.5 sm:min-w-[100px] sm:flex-1">
+                              <Label htmlFor={`cria-brinco-${i}`}>Brinco</Label>
+                              <Input
+                                id={`cria-brinco-${i}`}
+                                value={c.brinco}
+                                placeholder="Opcional"
+                                onChange={(e) =>
+                                  setCriasExtras((l) =>
+                                    l.map((x, j) =>
+                                      j === i ? { ...x, brinco: e.target.value } : x,
+                                    ),
+                                  )
+                                }
+                              />
+                            </div>
+                            <div className="min-w-0 space-y-1.5 sm:min-w-[100px] sm:flex-1">
+                              <Label htmlFor={`cria-peso-${i}`}>Peso (kg)</Label>
+                              <Input
+                                id={`cria-peso-${i}`}
+                                type="number"
+                                step="0.1"
+                                min="0"
+                                value={c.peso}
+                                placeholder="Opcional"
+                                onChange={(e) =>
+                                  setCriasExtras((l) =>
+                                    l.map((x, j) => (j === i ? { ...x, peso: e.target.value } : x)),
+                                  )
+                                }
+                              />
+                            </div>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => setCriasExtras((l) => l.filter((_, j) => j !== i))}
+                            >
+                              Remover
+                            </Button>
+                          </div>
+                        ))}
+                        <div className="w-full">
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            className="h-7 px-2 text-xs"
+                            onClick={() =>
+                              setCriasExtras((l) => [
+                                ...l,
+                                { sexo: "femea", nome: "", brinco: "", peso: "" },
+                              ])
+                            }
+                          >
+                            + Outra cria (gêmeos)
+                          </Button>
+                        </div>
+                      </>
+                    ) : null}
+                  </>
+                ) : null}
+                <div className="min-w-0 space-y-1.5 sm:min-w-[150px] sm:flex-1">
+                  <Label htmlFor="custo-reproducao">Custo (R$)</Label>
+                  <Input
+                    id="custo-reproducao"
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value={custo}
+                    placeholder="Opcional"
+                    onChange={(e) => setCusto(e.target.value)}
+                  />
+                  <p className="text-xs text-muted-foreground">Sêmen, inseminador, veterinário.</p>
+                </div>
+                <div className="col-span-2 w-full space-y-1.5 sm:w-auto sm:min-w-[150px]">
+                  <Label className="invisible hidden sm:block">Registrar</Label>
+                  <Button
+                    type="submit"
+                    className="w-full"
+                    disabled={salvar.isPending || confirmarLactacao !== null}
+                  >
+                    <Plus className="size-4" aria-hidden="true" />
+                    Registrar
+                  </Button>
                   <Button
                     type="button"
                     variant="ghost"
-                    size="icon"
-                    className="size-7 hover:text-destructive"
-                    aria-label="Excluir registro"
-                    onClick={() =>
-                      setExcluindo({
-                        id: r.id,
-                        texto: `${TIPO_LABEL[r.tipo ?? ""] ?? r.tipo} · ${animal?.nome ?? "Rebanho"} · ${dataCurta(r.data)}`,
-                      })
-                    }
+                    size="sm"
+                    className="w-full"
+                    onClick={() => setFormAberto(false)}
                   >
-                    <Trash2 className="size-3.5" aria-hidden="true" />
+                    Fechar
                   </Button>
-                </span>
-              </li>
-            );
-          })}
-        </ul>
+                </div>
+              </form>
+
+              {confirmarLactacao ? (
+                <p className="mb-3 text-xs text-muted-foreground">
+                  Responda a pergunta abaixo antes de registrar outro parto.
+                </p>
+              ) : null}
+            </>
+          ) : null}
+
+          {confirmarLactacao ? (
+            <div className="mb-5 rounded-xl border border-border bg-card p-4">
+              <p className="text-sm font-medium">
+                Após este parto, {confirmarLactacao.nome} entrou em lactação?
+              </p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Se sim, o status do animal muda pra "lactação" e ele passa a aparecer na lista de
+                registro de leite por vaca.
+              </p>
+              <div className="mt-3 flex gap-2">
+                <Button
+                  size="sm"
+                  disabled={marcarLactacao.isPending}
+                  onClick={() => marcarLactacao.mutate(confirmarLactacao.animalId)}
+                >
+                  Sim
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={marcarLactacao.isPending}
+                  onClick={() => {
+                    const a = animais.data?.find((x) => x.id === confirmarLactacao.animalId);
+                    // Pariu e não entrou em lactação: deixa de ser prenhe/seca.
+                    if (a && (a.status === "prenhe" || a.status === "seca")) {
+                      void db
+                        .from("animais")
+                        .update({ status: "ativo" } as never)
+                        .eq("id", a.id)
+                        .then(() =>
+                          queryClient.invalidateQueries({ queryKey: ["animais-simples"] }),
+                        );
+                    }
+                    setConfirmarLactacao(null);
+                  }}
+                >
+                  Não
+                </Button>
+              </div>
+            </div>
+          ) : null}
+
+          <div className="mb-5 grid gap-4 lg:grid-cols-2">
+            <section
+              id="card-diagnostico"
+              className="scroll-mt-24 rounded-xl border border-border bg-card p-4 transition-shadow"
+            >
+              <h2 className="text-base font-semibold">Aguardando diagnóstico</h2>
+              {situacao.aguardandoDiagnostico.length === 0 ? (
+                <p className="mt-3 text-sm text-muted-foreground">Nada pendente.</p>
+              ) : (
+                <ul className="mt-3 max-h-64 divide-y divide-border overflow-y-auto">
+                  {situacao.aguardandoDiagnostico.map((a) => (
+                    <li
+                      key={a.animalId}
+                      className="flex items-center justify-between gap-3 py-2 text-sm"
+                    >
+                      <span className="min-w-0">
+                        <span className="block truncate font-medium">{a.nome}</span>
+                        <span className="block text-xs text-muted-foreground">
+                          serviço em {dataCurta(a.servico)} ·{" "}
+                          {a.pronto ? (
+                            <span className="font-medium text-primary">já pode diagnosticar</span>
+                          ) : (
+                            `a partir de ${dataCurta(a.aPartir)}`
+                          )}
+                        </span>
+                      </span>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        className="h-7 shrink-0 px-2 text-xs"
+                        onClick={() => preencher("diagnostico", a.animalId)}
+                      >
+                        Registrar diagnóstico
+                      </Button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </section>
+
+            <section
+              id="card-partos"
+              className="scroll-mt-24 rounded-xl border border-border bg-card p-4 transition-shadow"
+            >
+              <h2 className="text-base font-semibold">Partos previstos</h2>
+              {situacao.partos.length === 0 ? (
+                <p className="mt-3 text-sm text-muted-foreground">Nenhuma gestação em andamento.</p>
+              ) : (
+                <ul className="mt-3 max-h-64 divide-y divide-border overflow-y-auto">
+                  {situacao.partos.map((p) => {
+                    const passou = !!p.previsao && p.previsao < situacao.hoje;
+                    return (
+                      <li
+                        key={p.animalId}
+                        className="flex items-center justify-between gap-3 py-2 text-sm"
+                      >
+                        <span className="min-w-0">
+                          <span className="block truncate font-medium">{p.nome}</span>
+                          <span className="block text-xs text-muted-foreground">
+                            {p.origem}
+                            {p.secarAte && !passou ? ` · secar até ${dataCurta(p.secarAte)}` : ""}
+                          </span>
+                        </span>
+                        <span className="flex shrink-0 flex-col items-end gap-1">
+                          <span
+                            className={cn(
+                              "rounded-full px-2 py-0.5 text-xs font-semibold",
+                              passou
+                                ? "bg-destructive/15 text-destructive"
+                                : "bg-accent text-primary",
+                            )}
+                          >
+                            {!p.previsao
+                              ? "Sem previsão"
+                              : passou
+                                ? `Previsto ${dataCurta(p.previsao)}`
+                                : dataCurta(p.previsao)}
+                          </span>
+                          <span className="flex gap-1">
+                            {p.secar ? (
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="outline"
+                                className="h-7 px-2 text-xs"
+                                onClick={() => preencher("secagem", p.animalId)}
+                              >
+                                Secar
+                              </Button>
+                            ) : null}
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              className="h-7 px-2 text-xs"
+                              onClick={() => preencher("parto", p.animalId)}
+                            >
+                              Registrar parto
+                            </Button>
+                          </span>
+                        </span>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+            </section>
+          </div>
+
+          {registrosFiltrados.length === 0 && situacao.vazias.length === 0 ? (
+            <EmptyState
+              icon={Stethoscope}
+              titulo="Nenhum registro reprodutivo"
+              descricao="Registre uma cobertura ou inseminação para calcular a previsão de parto."
+            />
+          ) : (
+            <section
+              id="card-lista"
+              className="scroll-mt-24 rounded-xl border border-border bg-card transition-shadow"
+            >
+              <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border px-4 py-3">
+                <h2 className="text-base font-semibold">Histórico</h2>
+                <div className="flex flex-wrap gap-2">
+                  <select
+                    aria-label="Filtrar por animal"
+                    value={filtroAnimalHist}
+                    onChange={(e) => {
+                      setFiltroAnimalHist(e.target.value);
+                      setLimiteHist(30);
+                    }}
+                    className="h-9 rounded-md border border-input bg-background px-2 text-sm"
+                  >
+                    <option value="">Todos os animais</option>
+                    {animaisDoHistorico.map(([id, nome]) => (
+                      <option key={id} value={id}>
+                        {nome}
+                      </option>
+                    ))}
+                  </select>
+                  <select
+                    aria-label="Filtrar por tipo"
+                    value={filtroTipoHist}
+                    onChange={(e) => {
+                      setFiltroTipoHist(e.target.value);
+                      setLimiteHist(30);
+                    }}
+                    className="h-9 rounded-md border border-input bg-background px-2 text-sm"
+                  >
+                    <option value="">Todos os tipos</option>
+                    {TIPOS.map((t) => (
+                      <option key={t} value={t}>
+                        {TIPO_LABEL[t] ?? t}
+                      </option>
+                    ))}
+                    <option value="vazias">Vazias ({situacao.vazias.length})</option>
+                    {!todasImprodutivas.bloqueado ? (
+                      <option value="improdutivas">
+                        Improdutivas ({improdutivasDaVisao.length})
+                      </option>
+                    ) : null}
+                  </select>
+                </div>
+              </div>
+              {filtroTipoHist === "improdutivas" ? (
+                improdutivasDaVisao.length === 0 ? (
+                  <p className="px-4 py-6 text-sm text-muted-foreground">
+                    Nenhuma fêmea improdutiva nesta espécie.
+                  </p>
+                ) : (
+                  <ul className="divide-y divide-border">
+                    {improdutivasDaVisao
+                      .filter((f) => !filtroAnimalHist || f.animalId === filtroAnimalHist)
+                      .map((f) => (
+                        <li
+                          key={f.animalId}
+                          className="flex items-center justify-between gap-3 px-4 py-3 text-sm"
+                        >
+                          <span className="min-w-0">
+                            <Link
+                              to="/rebanho/$animalId"
+                              params={{ animalId: f.animalId }}
+                              className="block truncate font-medium text-primary hover:underline"
+                            >
+                              {f.nome}
+                            </Link>
+                            <span className="block text-xs text-muted-foreground">
+                              {f.motivos.map((m) => m.texto).join(" · ")}
+                            </span>
+                          </span>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            className="h-7 shrink-0 px-2 text-xs"
+                            onClick={() => preencher("cobertura", f.animalId)}
+                          >
+                            Registrar serviço
+                          </Button>
+                        </li>
+                      ))}
+                  </ul>
+                )
+              ) : filtroTipoHist === "vazias" ? (
+                <>
+                  {situacao.vazias.length === 0 ? (
+                    <p className="px-4 py-6 text-sm text-muted-foreground">
+                      Nenhuma fêmea vazia esperando serviço.
+                    </p>
+                  ) : (
+                    <ul className="divide-y divide-border">
+                      {situacao.vazias
+                        .filter((v) => !filtroAnimalHist || v.animalId === filtroAnimalHist)
+                        .map((v) => (
+                          <li
+                            key={v.animalId}
+                            className="flex items-center justify-between gap-3 px-4 py-3 text-sm"
+                          >
+                            <span className="min-w-0">
+                              <span className="block truncate font-medium">{v.nome}</span>
+                              <span className="block text-xs text-muted-foreground">
+                                {v.dias !== null
+                                  ? `${v.dias} dia${v.dias === 1 ? "" : "s"} · `
+                                  : ""}
+                                {v.motivo}
+                              </span>
+                            </span>
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              className="h-7 shrink-0 px-2 text-xs"
+                              onClick={() => preencher("cobertura", v.animalId)}
+                            >
+                              Registrar serviço
+                            </Button>
+                          </li>
+                        ))}
+                    </ul>
+                  )}
+                </>
+              ) : (
+                <>
+                  {historico.length === 0 ? (
+                    <p className="px-4 py-6 text-sm text-muted-foreground">
+                      {registrosFiltrados.length === 0
+                        ? "Nenhum registro reprodutivo ainda."
+                        : "Nenhum registro com esse filtro."}
+                    </p>
+                  ) : null}
+                  <ul className="divide-y divide-border">
+                    {historico.slice(0, limiteHist).map((r) => {
+                      const animal = (
+                        r as {
+                          animais?: {
+                            nome?: string;
+                            mae?: string;
+                            pai?: string;
+                            nascimento?: string;
+                          } | null;
+                        }
+                      ).animais;
+                      const genealogia = [
+                        animal?.nascimento ? `nascido em ${dataCurta(animal.nascimento)}` : null,
+                        animal?.mae ? `mãe: ${animal.mae}` : null,
+                        animal?.pai ? `pai: ${animal.pai}` : null,
+                      ].filter(Boolean);
+                      return (
+                        <li
+                          key={r.id}
+                          className="flex items-center justify-between gap-3 px-4 py-3 text-sm"
+                        >
+                          <span className="min-w-0 flex-1">
+                            <span>
+                              <span className="font-medium">
+                                {TIPO_LABEL[r.tipo ?? ""] ?? r.tipo}
+                              </span>
+                              {r.tipo === "diagnostico" && r.resultado ? (
+                                <span
+                                  className={cn(
+                                    "ml-1.5 rounded-full px-1.5 py-0.5 text-[11px] font-semibold",
+                                    r.resultado === "positivo"
+                                      ? "bg-success/15 text-success"
+                                      : "bg-muted text-muted-foreground",
+                                  )}
+                                >
+                                  {r.resultado === "positivo" ? "Prenhe" : "Vazia"}
+                                </span>
+                              ) : null}
+                              {" · "}
+                              <span className="text-muted-foreground">
+                                {animal?.nome ?? "Rebanho"}
+                              </span>
+                            </span>
+                            <span className="block text-xs text-muted-foreground">
+                              {dataCurta(r.data)}
+                              {r.previsao_parto
+                                ? ` · previsão de parto ${dataCurta(r.previsao_parto)}`
+                                : ""}
+                            </span>
+                            {genealogia.length > 0 ? (
+                              <span className="flex items-center gap-1 text-xs text-muted-foreground">
+                                <Users className="size-3 shrink-0" aria-hidden="true" />
+                                {genealogia.join(" · ")}
+                              </span>
+                            ) : null}
+                          </span>
+                          <span className="flex shrink-0 items-center gap-1">
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              className="size-7"
+                              aria-label="Editar registro"
+                              onClick={() =>
+                                setEditando({
+                                  id: r.id,
+                                  tipo: r.tipo ?? "",
+                                  animalId: r.animal_id ?? null,
+                                  nome: animal?.nome ?? "Rebanho",
+                                  data: dataISO(r.data),
+                                  touro: r.touro ?? "",
+                                  previsao: r.previsao_parto ? dataISO(r.previsao_parto) : "",
+                                  resultado: r.resultado ?? "positivo",
+                                  resultadoAntes: r.resultado ?? "positivo",
+                                })
+                              }
+                            >
+                              <Pencil className="size-3.5" aria-hidden="true" />
+                            </Button>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              className="size-7 hover:text-destructive"
+                              aria-label="Excluir registro"
+                              onClick={() =>
+                                setExcluindo({
+                                  id: r.id,
+                                  texto: `${TIPO_LABEL[r.tipo ?? ""] ?? r.tipo} · ${animal?.nome ?? "Rebanho"} · ${dataCurta(r.data)}`,
+                                })
+                              }
+                            >
+                              <Trash2 className="size-3.5" aria-hidden="true" />
+                            </Button>
+                          </span>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                  {historico.length > limiteHist ? (
+                    <div className="border-t border-border px-4 py-3 text-center">
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setLimiteHist((n) => n + 30)}
+                      >
+                        Ver mais ({historico.length - limiteHist})
+                      </Button>
+                    </div>
+                  ) : null}
+                </>
+              )}
+            </section>
+          )}
+        </>
       )}
+
+      <Dialog open={loteAberto} onOpenChange={(v) => !v && setLoteAberto(false)}>
+        <DialogContent className="max-h-[90vh] max-w-3xl overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Registrar vários partos</DialogTitle>
+            <DialogDescription>
+              Uma linha por cria. Repita a mãe para gêmeos. Cada cria entra no Rebanho com a raça
+              dos pais.
+            </DialogDescription>
+          </DialogHeader>
+          <form
+            className="space-y-3"
+            onSubmit={(e) => {
+              e.preventDefault();
+              salvarLote.mutate();
+            }}
+          >
+            <div className="max-w-[200px] space-y-1.5">
+              <Label htmlFor="lote-data">Data dos partos</Label>
+              <Input
+                id="lote-data"
+                type="date"
+                value={loteData}
+                max={hojeISO()}
+                onChange={(e) => setLoteData(e.target.value)}
+                required
+              />
+            </div>
+            <ul className="space-y-2">
+              {loteLinhas.map((l, i) => {
+                const mudar = (parte: Partial<LinhaLote>) =>
+                  setLoteLinhas((ls) => ls.map((x, j) => (j === i ? { ...x, ...parte } : x)));
+                return (
+                  <li
+                    key={i}
+                    className="grid grid-cols-2 items-end gap-2 rounded-lg border border-border p-2 sm:grid-cols-[2.4fr_0.9fr_1fr_0.8fr_0.7fr_auto]"
+                  >
+                    <div className="col-span-2 space-y-1 sm:col-span-1">
+                      <Label htmlFor={`lote-mae-${i}`} className="text-xs">
+                        Mãe
+                      </Label>
+                      <select
+                        id={`lote-mae-${i}`}
+                        value={l.animalId}
+                        onChange={(e) => mudar({ animalId: e.target.value })}
+                        className="h-9 w-full rounded-md border border-input bg-background px-2 text-sm"
+                      >
+                        <option value="">Escolha...</option>
+                        {opcoesMaesLote.previstas.length > 0 ? (
+                          <optgroup label="Partos previstos">
+                            {opcoesMaesLote.previstas.map((m) => (
+                              <option key={m.id} value={m.id}>
+                                {m.rotulo}
+                              </option>
+                            ))}
+                          </optgroup>
+                        ) : null}
+                        <optgroup label="Outras fêmeas">
+                          {opcoesMaesLote.outras.map((m) => (
+                            <option key={m.id} value={m.id}>
+                              {m.rotulo}
+                            </option>
+                          ))}
+                        </optgroup>
+                      </select>
+                    </div>
+                    <div className="space-y-1">
+                      <Label htmlFor={`lote-sexo-${i}`} className="text-xs">
+                        Sexo
+                      </Label>
+                      <select
+                        id={`lote-sexo-${i}`}
+                        value={l.sexo}
+                        onChange={(e) => mudar({ sexo: e.target.value as "femea" | "macho" })}
+                        className="h-9 w-full rounded-md border border-input bg-background px-2 text-sm"
+                      >
+                        <option value="femea">Fêmea</option>
+                        <option value="macho">Macho</option>
+                      </select>
+                    </div>
+                    <div className="space-y-1">
+                      <Label htmlFor={`lote-nome-${i}`} className="text-xs">
+                        Nome
+                      </Label>
+                      <Input
+                        id={`lote-nome-${i}`}
+                        className="h-9"
+                        value={l.nome}
+                        placeholder="Opcional"
+                        onChange={(e) => mudar({ nome: e.target.value })}
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <Label htmlFor={`lote-brinco-${i}`} className="text-xs">
+                        Brinco
+                      </Label>
+                      <Input
+                        id={`lote-brinco-${i}`}
+                        className="h-9"
+                        value={l.brinco}
+                        placeholder="Opcional"
+                        onChange={(e) => mudar({ brinco: e.target.value })}
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <Label htmlFor={`lote-peso-${i}`} className="text-xs">
+                        Peso (kg)
+                      </Label>
+                      <Input
+                        id={`lote-peso-${i}`}
+                        className="h-9"
+                        type="number"
+                        step="0.1"
+                        min="0"
+                        value={l.peso}
+                        onChange={(e) => mudar({ peso: e.target.value })}
+                      />
+                    </div>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      disabled={loteLinhas.length === 1}
+                      onClick={() => setLoteLinhas((ls) => ls.filter((_, j) => j !== i))}
+                    >
+                      Remover
+                    </Button>
+                  </li>
+                );
+              })}
+            </ul>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={() => setLoteLinhas((ls) => [...ls, novaLinha()])}
+            >
+              + Adicionar cria
+            </Button>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setLoteAberto(false)}>
+                Cancelar
+              </Button>
+              <Button type="submit" disabled={salvarLote.isPending}>
+                {salvarLote.isPending ? "Registrando..." : "Registrar nascimentos"}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!editando} onOpenChange={(v) => !v && setEditando(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              Editar {editando ? (TIPO_LABEL[editando.tipo] ?? editando.tipo).toLowerCase() : ""}
+              {editando ? ` · ${editando.nome}` : ""}
+            </DialogTitle>
+          </DialogHeader>
+          {editando ? (
+            <form
+              id="form-editar-repro"
+              className="grid gap-3 sm:grid-cols-2"
+              onSubmit={(e) => {
+                e.preventDefault();
+                atualizar.mutate(editando);
+              }}
+            >
+              <div className="space-y-1.5">
+                <Label htmlFor="ed-data">Data</Label>
+                <Input
+                  id="ed-data"
+                  type="date"
+                  value={editando.data}
+                  onChange={(e) => setEditando({ ...editando, data: e.target.value })}
+                  required
+                />
+              </div>
+              {editando.tipo === "diagnostico" ? (
+                <div className="space-y-1.5">
+                  <Label htmlFor="ed-resultado">Resultado</Label>
+                  <select
+                    id="ed-resultado"
+                    value={editando.resultado}
+                    onChange={(e) => setEditando({ ...editando, resultado: e.target.value })}
+                    className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+                  >
+                    <option value="positivo">Prenhe (positivo)</option>
+                    <option value="negativo">Vazia (negativo)</option>
+                  </select>
+                </div>
+              ) : null}
+              {editando.tipo === "cobertura" || editando.tipo === "inseminacao" ? (
+                <>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="ed-touro">{rotuloReprodutor} / sêmen</Label>
+                    <Input
+                      id="ed-touro"
+                      value={editando.touro}
+                      onChange={(e) => setEditando({ ...editando, touro: e.target.value })}
+                      required
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="ed-previsao">Previsão de parto</Label>
+                    <Input
+                      id="ed-previsao"
+                      type="date"
+                      value={editando.previsao}
+                      onChange={(e) => setEditando({ ...editando, previsao: e.target.value })}
+                    />
+                  </div>
+                </>
+              ) : null}
+            </form>
+          ) : null}
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setEditando(null)}>
+              Cancelar
+            </Button>
+            <Button type="submit" form="form-editar-repro" disabled={atualizar.isPending}>
+              {atualizar.isPending ? "Salvando..." : "Salvar"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <AlertDialog open={!!excluindo} onOpenChange={(v) => !v && setExcluindo(null)}>
         <AlertDialogContent>

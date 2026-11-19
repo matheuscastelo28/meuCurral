@@ -169,6 +169,9 @@ create table if not exists animais (
 
 alter table animais add column if not exists pai text;
 
+-- Categoria avança sozinha pela idade (bezerro → novilha → vaca...), se ligado.
+alter table perfis add column if not exists estagio_automatico boolean not null default true;
+
 create table if not exists manejos (
   id uuid primary key default gen_random_uuid(),
   fazenda_id uuid references fazendas(id) on delete cascade,
@@ -214,6 +217,15 @@ create table if not exists reproducao (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
+
+-- Cria nascida de um parto registrado em Reprodução: liga ao registro do parto
+-- e guarda o peso ao nascer (o peso atual muda com as pesagens).
+alter table animais add column if not exists parto_id uuid references reproducao(id) on delete set null;
+alter table animais add column if not exists peso_nascimento numeric;
+update animais a set peso_nascimento = m.valor
+from manejos m
+where m.animal_id = a.id and m.tipo = 'pesagem' and m.descricao = 'Peso ao nascer'
+  and a.peso_nascimento is null;
 
 create table if not exists financeiro_lancamentos (
   id uuid primary key default gen_random_uuid(),
@@ -385,6 +397,19 @@ create index if not exists idx_reproducao_fazenda on reproducao(fazenda_id);
 create index if not exists idx_financeiro_fazenda on financeiro_lancamentos(fazenda_id);
 create index if not exists idx_eventos_fazenda on eventos_agenda(fazenda_id);
 
+-- Intervalos de reforço / manejo periódico da fazenda (ver lib/sanidade).
+-- Sobrepõem os intervalos padrão; intervalo_dias = 0 desliga o padrão.
+create table if not exists regras_sanitarias (
+  id uuid primary key default gen_random_uuid(),
+  fazenda_id uuid references fazendas(id) on delete cascade,
+  produto text not null default '',
+  tipo text,
+  intervalo_dias integer not null,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+create index if not exists idx_regras_sanitarias_fazenda on regras_sanitarias(fazenda_id);
+
 -- Uma conta é a obrigação (o que a fazenda tem a receber ou a pagar);
 -- parcelas são os vencimentos dela. valor_restante some ao longo dos
 -- pagamentos; status 'atrasado' NÃO existe aqui — é sempre calculado a
@@ -447,6 +472,114 @@ create table if not exists assinaturas (
   updated_at timestamptz not null default now()
 );
 create index if not exists idx_assinaturas_fazenda on assinaturas(fazenda_id, created_at);
+
+-- Acesso compartilhado: o dono convida veterinário ou colaborador por e-mail;
+-- ao aceitar, a pessoa vira membro (fazenda_membros) e passa a ver a fazenda.
+create unique index if not exists idx_membros_unico on fazenda_membros(fazenda_id, user_id);
+create index if not exists idx_membros_usuario on fazenda_membros(user_id);
+create table if not exists convites (
+  id uuid primary key default gen_random_uuid(),
+  fazenda_id uuid references fazendas(id) on delete cascade,
+  email text not null,
+  papel text not null, -- veterinario | colaborador
+  token text not null unique,
+  status text not null default 'pendente', -- pendente | aceito | cancelado
+  convidado_por uuid references usuarios(id) on delete set null,
+  aceito_por uuid references usuarios(id) on delete set null,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+create index if not exists idx_convites_fazenda on convites(fazenda_id, status);
+
+-- Avisos fora do sistema (e-mail diário às 6h e notificação no celular).
+-- aviso_email: recebe o e-mail com os compromissos de amanhã (plano que inclui).
+alter table perfis add column if not exists aviso_email boolean not null default true;
+-- Um aparelho (navegador/celular) inscrito em notificações push.
+create table if not exists push_assinaturas (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid references usuarios(id) on delete cascade,
+  endpoint text not null unique,
+  p256dh text not null,
+  auth text not null,
+  user_agent text,
+  created_at timestamptz not null default now()
+);
+create index if not exists idx_push_usuario on push_assinaturas(user_id);
+-- Aviso do dia já enviado (por pessoa e canal): a tarefa agendada pode rodar
+-- de novo sem mandar duas vezes.
+create table if not exists avisos_enviados (
+  user_id uuid references usuarios(id) on delete cascade,
+  dia date not null,
+  canal text not null,
+  created_at timestamptz not null default now(),
+  primary key (user_id, dia, canal)
+);
+-- Chaves do servidor (par VAPID das notificações push, geradas na primeira vez).
+create table if not exists config_servidor (
+  chave text primary key,
+  valor text not null,
+  created_at timestamptz not null default now()
+);
+-- Revisão da tabela de protocolos de vacinação pelo veterinário da fazenda.
+-- "versao" identifica o conteúdo revisado: se a tabela mudar, a revisão perde o efeito.
+create table if not exists protocolos_validacao (
+  fazenda_id uuid not null references fazendas(id) on delete cascade,
+  protocolo_id text not null,
+  versao text not null,
+  status text not null check (status in ('validado', 'ajustar')),
+  nota text,
+  user_id uuid references usuarios(id) on delete set null,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  primary key (fazenda_id, protocolo_id)
+);
+-- Avisos oficiais publicados pelo administrador (ex.: campanha de vacinação do
+-- órgão de defesa do estado). "estados" vazio = todos. Aparecem como faixa no
+-- Início e, se marcado, também por e-mail (uma vez por pessoa).
+create table if not exists avisos_oficiais (
+  id uuid primary key default gen_random_uuid(),
+  titulo text not null,
+  texto text not null,
+  link text,
+  estados text[] not null default '{}',
+  enviar_email boolean not null default false,
+  ativo boolean not null default true,
+  expira_em date,
+  criado_por uuid references usuarios(id) on delete set null,
+  created_at timestamptz not null default now()
+);
+create table if not exists avisos_oficiais_envios (
+  aviso_id uuid not null references avisos_oficiais(id) on delete cascade,
+  user_id uuid not null references usuarios(id) on delete cascade,
+  created_at timestamptz not null default now(),
+  primary key (aviso_id, user_id)
+);
+-- Quem lançou o manejo/registro reprodutivo (atendimentos do veterinário).
+alter table manejos add column if not exists criado_por uuid references usuarios(id) on delete set null;
+alter table reproducao add column if not exists criado_por uuid references usuarios(id) on delete set null;
+-- Registros de antes do acesso compartilhado: só o dono lançava, então o autor
+-- é o dono. Todo registro novo já nasce com autor, então só os antigos entram aqui.
+update manejos m set criado_por = f.dono_id
+  from fazendas f where m.fazenda_id = f.id and m.criado_por is null;
+update reproducao r set criado_por = f.dono_id
+  from fazendas f where r.fazenda_id = f.id and r.criado_por is null;
+
+-- Plano anual (cobrado uma vez por ano) ou mensal.
+alter table assinaturas add column if not exists periodo text not null default 'mensal';
+
+-- O plano Essencial passou a se chamar Caderno.
+update fazendas set plano = 'caderno' where plano = 'essencial';
+update assinaturas set plano = 'caderno' where plano = 'essencial';
+
+-- Cabeçalho do relatório (opcional, texto digitado pelo produtor).
+alter table fazendas add column if not exists proprietario text;
+alter table fazendas add column if not exists dap_caf text;
+alter table fazendas add column if not exists telefone text;
+
+-- Contas criadas até 13/11/2026 (em teste, antes das regras finais dos
+-- planos) ficam livres delas: acesso total, sem limite de cabeças.
+update fazendas set acesso_total = true
+where acesso_total = false and created_at < '2026-11-14T00:00:00-03:00';
 `;
 
 /** Cria as tabelas na primeira vez que o banco é usado. */

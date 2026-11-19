@@ -8,8 +8,9 @@ import { AppShell } from "@/components/AppShell";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { useFazenda, useLimitePlano } from "@/hooks/use-fazenda";
+import { useFazenda, useLimitePlano, useMinhasFazendas } from "@/hooks/use-fazenda";
 import { RecursoBloqueado } from "@/components/RecursoBloqueado";
+import { planoMinimoDo } from "@/lib/planos";
 import { usePerfil } from "@/hooks/use-preferencias";
 import { dataCurta, hojeISO, moeda } from "@/lib/formato";
 import { especiesDasAtividades } from "@/lib/especies";
@@ -64,7 +65,8 @@ function lerIdentificacao(chave: string): Identificacao | null {
 
 function Relatorios() {
   const { data: fazenda } = useFazenda();
-  const { plano, carregando: carregandoPlano } = useLimitePlano();
+  const { plano } = useLimitePlano();
+  const minhas = useMinhasFazendas();
   const { data: perfil } = usePerfil();
   const especies = especiesDasAtividades(fazenda?.atividades);
   const temLeite = especies.includes("bovino");
@@ -108,7 +110,7 @@ function Relatorios() {
 
   const dados = useQuery({
     queryKey: ["relatorio", fazenda?.id, periodo.inicio, periodo.fim, temLeite],
-    enabled: !!fazenda?.id && periodoValido && plano.relatorios,
+    enabled: !!fazenda?.id && periodoValido,
     queryFn: async () => {
       const id = fazenda!.id;
       const [animais, lancamentos, parcelas, contas, manejos, leite] = await Promise.all([
@@ -193,10 +195,11 @@ function Relatorios() {
     return {
       fazenda: fazenda?.nome ?? "",
       municipio: [fazenda?.cidade, fazenda?.estado].filter(Boolean).join("/"),
-      produtor: ident.produtor.trim(),
+      produtor: ident.produtor.trim() || fazenda?.proprietario?.trim() || "",
       documento: ident.documento.trim(),
-      caf: ident.caf.trim(),
+      caf: ident.caf.trim() || fazenda?.dap_caf?.trim() || "",
       inscricao: ident.inscricao.trim(),
+      telefone: fazenda?.telefone?.trim() || "",
     };
   }
 
@@ -234,24 +237,20 @@ function Relatorios() {
     (relatorio?.evolucao ?? []).reduce((s, l) => s + l[campo], 0);
   const resultado = (relatorio?.totalReceitas ?? 0) - (relatorio?.totalDespesas ?? 0);
 
-  // Plano sem relatórios (grátis de conta nova): mostra o que é e como liberar.
-  if (!carregandoPlano && !plano.relatorios) {
-    return (
-      <AppShell titulo="Relatórios">
-        <div className="max-w-xl space-y-4">
-          <RecursoBloqueado recurso="O relatório em PDF" planoNecessario="Essencial" />
-          <Button asChild>
-            <Link to="/config" hash="plano">
-              Ver planos
-            </Link>
-          </Button>
-        </div>
-      </AppShell>
-    );
-  }
+  const completo = plano.recursos.relatoriosCompletos;
+  const souVeterinario = (minhas.data ?? []).some((f) => f.papel === "veterinario");
 
   return (
-    <AppShell titulo="Relatórios">
+    <AppShell
+      titulo="Relatórios"
+      acao={
+        souVeterinario ? (
+          <Button variant="outline" asChild>
+            <Link to="/atendimentos">Relatório do veterinário</Link>
+          </Button>
+        ) : undefined
+      }
+    >
       {/* No celular a prévia (com o botão de baixar) vem logo depois do
           período; no desktop ela ocupa a coluna da direita. */}
       <div className="grid gap-4 lg:grid-cols-[22rem_1fr] lg:grid-rows-[auto_1fr] lg:items-start">
@@ -322,31 +321,47 @@ function Relatorios() {
                   : "Escolha um período válido"}
               </p>
             </div>
-            <div className="flex flex-wrap gap-2">
-              {podeCompartilhar ? (
+            {completo ? (
+              <div className="flex flex-wrap gap-2">
+                {podeCompartilhar ? (
+                  <Button
+                    variant="outline"
+                    onClick={() => gerar(true)}
+                    disabled={!relatorio || gerando}
+                  >
+                    <Share2 className="size-4" aria-hidden="true" />
+                    Compartilhar
+                  </Button>
+                ) : null}
                 <Button
                   variant="outline"
-                  onClick={() => gerar(true)}
+                  onClick={() => gerarExcel()}
                   disabled={!relatorio || gerando}
                 >
-                  <Share2 className="size-4" aria-hidden="true" />
-                  Compartilhar
+                  <FileSpreadsheet className="size-4" aria-hidden="true" />
+                  Baixar Excel
                 </Button>
-              ) : null}
-              <Button
-                variant="outline"
-                onClick={() => gerarExcel()}
-                disabled={!relatorio || gerando}
-              >
-                <FileSpreadsheet className="size-4" aria-hidden="true" />
-                Baixar Excel
-              </Button>
-              <Button onClick={() => gerar(false)} disabled={!relatorio || gerando}>
-                <Download className="size-4" aria-hidden="true" />
-                {gerando ? "Gerando..." : "Baixar PDF"}
+                <Button onClick={() => gerar(false)} disabled={!relatorio || gerando}>
+                  <Download className="size-4" aria-hidden="true" />
+                  {gerando ? "Gerando..." : "Baixar PDF"}
+                </Button>
+              </div>
+            ) : null}
+          </div>
+
+          {!completo ? (
+            <div className="mt-4">
+              <RecursoBloqueado
+                recurso="Baixar o relatório em PDF e Excel"
+                planoNecessario={planoMinimoDo("relatoriosCompletos").nome}
+              />
+              <Button className="mt-3" asChild>
+                <Link to="/config" hash="plano">
+                  Ver planos
+                </Link>
               </Button>
             </div>
-          </div>
+          ) : null}
 
           {dados.isLoading ? (
             <p className="mt-6 text-sm text-muted-foreground">Carregando dados do período...</p>

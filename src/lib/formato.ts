@@ -53,6 +53,11 @@ export function diasAtrasISO(dias: number) {
   return paraDataISO(d);
 }
 
+/** Data daqui a N dias, em "YYYY-MM-DD", no fuso local (não UTC). */
+export function diasAFrenteISO(dias: number) {
+  return diasAtrasISO(-dias);
+}
+
 export function idadeEmMeses(nascimento: string | Date | null | undefined) {
   if (!nascimento) return null;
   const nasc = new Date(nascimento);

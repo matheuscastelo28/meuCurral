@@ -38,6 +38,7 @@ export function gerarRelatorioXLSX(rel: Relatorio, cab: CabecalhoRelatorio): Uin
     ["CPF/CNPJ", cab.documento || "—"],
     ["CAF/DAP", cab.caf || "—"],
     ["Inscrição estadual", cab.inscricao || "—"],
+    ["Telefone", cab.telefone || "—"],
     ["Período do relatório", periodo],
   ];
   const resumo: LinhaXLSX[] = [

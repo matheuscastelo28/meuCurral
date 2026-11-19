@@ -173,3 +173,190 @@ export async function enviarCodigoPorEmail({
     html: emailVerificacaoHtml({ nome, codigo }),
   });
 }
+
+function escapar(t: string) {
+  return t.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
+}
+
+/**
+ * Convite para acessar a fazenda de outra pessoa (veterinário ou
+ * colaborador). Sem RESEND_API_KEY em desenvolvimento, só registra no log.
+ * Devolve se o e-mail saiu e, se não, o motivo em português — o link também
+ * aparece na tela pra quem convidou, então a falha nunca trava o convite.
+ */
+export async function enviarConviteEmail({
+  to,
+  fazenda,
+  papel,
+  quem,
+  link,
+}: {
+  to: string;
+  fazenda: string;
+  papel: string;
+  quem: string | null;
+  link: string;
+}): Promise<{ enviado: boolean; erro: string | null }> {
+  if (!chaveEmail()) {
+    console.warn(`[dev] RESEND_API_KEY não configurada. Convite para ${to}: ${link}`);
+    return { enviado: false, erro: "O envio de e-mail não está configurado neste ambiente." };
+  }
+  const rotulo = papel === "veterinario" ? "veterinário(a)" : "colaborador(a)";
+  const autor = quem ? `${escapar(quem)} convidou você` : "Você foi convidado(a)";
+  try {
+    await enviarEmail({
+      to,
+      subject: `Convite para acessar a fazenda ${fazenda} no Curral Online`,
+      html: `<!doctype html><html lang="pt-BR"><body style="margin:0;padding:24px;background:#f4f3ec;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr><td align="center">
+<table role="presentation" width="100%" style="max-width:480px;background:#fff;border-radius:16px;border:1px solid #e6e4da;">
+<tr><td style="background:#1f6b45;padding:20px 28px;color:#fff;font-weight:800;border-radius:16px 16px 0 0;">Curral Online</td></tr>
+<tr><td style="padding:28px;color:#16241b;font-size:14px;line-height:1.6;">
+<p style="margin:0 0 12px;font-size:18px;font-weight:800;">${autor} para a fazenda ${escapar(fazenda)}</p>
+<p style="margin:0 0 20px;color:#57635b;">Você vai acessar como <strong>${rotulo}</strong>, com o rebanho, o manejo e a reprodução dessa fazenda no seu login. Se ainda não tem conta, crie uma com este mesmo e-mail.</p>
+<p style="margin:0 0 20px;"><a href="${escapar(link)}" style="display:inline-block;background:#1f6b45;color:#fff;text-decoration:none;padding:12px 20px;border-radius:10px;font-weight:700;">Aceitar convite</a></p>
+<p style="margin:0 0 8px;color:#8a948d;font-size:12px;">Se o botão não abrir, copie este endereço no navegador:<br><span style="word-break:break-all;">${escapar(link)}</span></p>
+<p style="margin:0;color:#8a948d;font-size:12px;">Se não esperava este convite, ignore este e-mail.</p>
+</td></tr></table></td></tr></table></body></html>`,
+    });
+    return { enviado: true, erro: null };
+  } catch (e) {
+    console.error("Falha ao enviar convite", e);
+    const msg = e instanceof Error ? e.message : "";
+    // Resend sem domínio verificado só entrega para o dono da conta de e-mail.
+    const semDominio =
+      /only send testing emails to your own|verify a domain|domain is not verified/i.test(msg);
+    return {
+      enviado: false,
+      erro: semDominio
+        ? "O serviço de e-mail ainda não está liberado para enviar a outras pessoas (falta verificar o domínio de envio)."
+        : "O e-mail não saiu agora.",
+    };
+  }
+}
+
+export interface ItemAviso {
+  titulo: string;
+  detalhe: string;
+  tipo: string;
+}
+
+/**
+ * E-mail diário com o que vence amanhã. Sem RESEND_API_KEY em desenvolvimento
+ * só registra no log. Devolve se saiu.
+ */
+export async function enviarAvisoDiarioEmail({
+  to,
+  nome,
+  dataAmanha,
+  fazendas,
+  link,
+}: {
+  to: string;
+  nome: string | null;
+  dataAmanha: string;
+  fazendas: { nome: string; itens: ItemAviso[] }[];
+  link: string;
+}): Promise<{ enviado: boolean; erro: string | null; assunto: string }> {
+  const total = fazendas.reduce((s, f) => s + f.itens.length, 0);
+  const assunto = `Amanhã: ${total} ${total === 1 ? "compromisso" : "compromissos"} no Curral Online`;
+  if (!chaveEmail()) {
+    console.warn(`[dev] RESEND_API_KEY não configurada. Aviso diário para ${to}: ${assunto}`);
+    return { enviado: false, erro: "e-mail não configurado", assunto };
+  }
+  const [a, m, d] = dataAmanha.split("-");
+  const saudacao = primeiroNome(nome) ? `Bom dia, ${escapar(primeiroNome(nome))}!` : "Bom dia!";
+  const blocos = fazendas
+    .map(
+      (
+        f,
+      ) => `<p style="margin:18px 0 6px;font-size:13px;font-weight:800;color:#1f6b45;">${escapar(f.nome)}</p>
+<ul style="margin:0;padding:0 0 0 18px;color:#16241b;font-size:14px;line-height:1.55;">${f.itens
+        .map(
+          (i) =>
+            `<li style="margin:0 0 6px;"><strong>${escapar(i.titulo)}</strong><br><span style="color:#57635b;font-size:13px;">${escapar(i.detalhe)}</span></li>`,
+        )
+        .join("")}</ul>`,
+    )
+    .join("");
+  try {
+    await enviarEmail({
+      to,
+      subject: assunto,
+      html: `<!doctype html><html lang="pt-BR"><body style="margin:0;padding:24px;background:#f4f3ec;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr><td align="center">
+<table role="presentation" width="100%" style="max-width:480px;background:#fff;border-radius:16px;border:1px solid #e6e4da;">
+<tr><td style="background:#1f6b45;padding:20px 28px;color:#fff;font-weight:800;border-radius:16px 16px 0 0;">Curral Online</td></tr>
+<tr><td style="padding:28px;font-size:14px;line-height:1.6;color:#16241b;">
+<p style="margin:0 0 4px;font-size:18px;font-weight:800;">${saudacao}</p>
+<p style="margin:0;color:#57635b;">O que vence amanhã, ${d}/${m}/${a}:</p>
+${blocos}
+<p style="margin:24px 0 0;"><a href="${escapar(link)}" style="display:inline-block;background:#1f6b45;color:#fff;text-decoration:none;padding:12px 20px;border-radius:10px;font-weight:700;">Abrir o Curral Online</a></p>
+<p style="margin:20px 0 0;color:#8a948d;font-size:12px;">Você recebe este aviso todo dia às 6h quando há algo para o dia seguinte. Para parar, desligue em Configurações → Preferências.</p>
+</td></tr></table></td></tr></table></body></html>`,
+    });
+    return { enviado: true, erro: null, assunto };
+  } catch (e) {
+    console.error("Falha ao enviar aviso diário", e);
+    return { enviado: false, erro: "e-mail não saiu", assunto };
+  }
+}
+
+export interface AvisoOficialEmail {
+  titulo: string;
+  texto: string;
+  link: string | null;
+  estados: string[];
+}
+
+/**
+ * Manda um aviso oficial para várias pessoas de uma vez (envio em lote do
+ * Resend, até 100 por chamada). Devolve os endereços que o Resend aceitou.
+ */
+export async function enviarAvisoOficialEmLote(
+  aviso: AvisoOficialEmail,
+  destinos: { email: string; nome: string | null }[],
+  linkSistema: string,
+): Promise<string[]> {
+  if (destinos.length === 0) return [];
+  const chave = chaveEmail();
+  if (!chave) {
+    console.warn(
+      `[dev] RESEND_API_KEY não configurada. Aviso oficial "${aviso.titulo}" para ${destinos.length} pessoa(s)`,
+    );
+    return [];
+  }
+  const para = aviso.estados.length > 0 ? aviso.estados.join(", ") : "todos os estados";
+  const html = (
+    nome: string | null,
+  ) => `<!doctype html><html lang="pt-BR"><body style="margin:0;padding:24px;background:#f4f3ec;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr><td align="center">
+<table role="presentation" width="100%" style="max-width:480px;background:#fff;border-radius:16px;border:1px solid #e6e4da;">
+<tr><td style="background:#1f6b45;padding:20px 28px;color:#fff;font-weight:800;border-radius:16px 16px 0 0;">Curral Online</td></tr>
+<tr><td style="padding:28px;font-size:14px;line-height:1.6;color:#16241b;">
+<p style="margin:0 0 4px;color:#8a948d;font-size:12px;">Aviso para produtores de: ${escapar(para)}</p>
+<p style="margin:0 0 10px;font-size:18px;font-weight:800;">${escapar(aviso.titulo)}</p>
+<p style="margin:0;white-space:pre-line;">${escapar(aviso.texto)}</p>
+${aviso.link ? `<p style="margin:20px 0 0;"><a href="${escapar(aviso.link)}" style="display:inline-block;background:#1f6b45;color:#fff;text-decoration:none;padding:12px 20px;border-radius:10px;font-weight:700;">Saiba mais</a></p>` : ""}
+<p style="margin:24px 0 0;color:#8a948d;font-size:12px;">${primeiroNome(nome) ? `${escapar(primeiroNome(nome))}, ` : ""}este aviso também aparece no início do <a href="${escapar(linkSistema)}" style="color:#1f6b45;">Curral Online</a>. É informativo; confirme sempre com o órgão responsável. Para não receber avisos por e-mail, desligue em Configurações → Preferências.</p>
+</td></tr></table></td></tr></table></body></html>`;
+  const aceitos: string[] = [];
+  for (let i = 0; i < destinos.length; i += 100) {
+    const parte = destinos.slice(i, i + 100);
+    const resposta = await fetch(`${RESEND_ENDPOINT}/batch`, {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization: `Bearer ${chave}` },
+      body: JSON.stringify(
+        parte.map((d) => ({
+          from: remetenteEmail(),
+          to: [d.email],
+          subject: `Aviso: ${aviso.titulo}`,
+          html: html(d.nome),
+        })),
+      ),
+    });
+    if (resposta.ok) aceitos.push(...parte.map((d) => d.email));
+    else console.error("Falha no lote de avisos", resposta.status);
+  }
+  return aceitos;
+}

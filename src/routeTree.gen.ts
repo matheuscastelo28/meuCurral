@@ -13,20 +13,25 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as AuthenticatedRouteRouteImport } from './routes/_authenticated/route'
 import { Route as AuthRouteImport } from './routes/auth'
 import { Route as CadastroRouteImport } from './routes/cadastro'
+import { Route as ConviteRouteImport } from './routes/convite'
 import { Route as PrivacidadeRouteImport } from './routes/privacidade'
 import { Route as TermosRouteImport } from './routes/termos'
 import { Route as VerificarEmailRouteImport } from './routes/verificar-email'
+import { Route as AuthenticatedAdminRouteImport } from './routes/_authenticated/admin'
+import { Route as AuthenticatedAtendimentosRouteImport } from './routes/_authenticated/atendimentos'
 import { Route as AuthenticatedCalendarioRouteImport } from './routes/_authenticated/calendario'
 import { Route as AuthenticatedConfigRouteImport } from './routes/_authenticated/config'
 import { Route as AuthenticatedEngordaRouteImport } from './routes/_authenticated/engorda'
 import { Route as AuthenticatedFinanceiroRouteImport } from './routes/_authenticated/financeiro'
 import { Route as AuthenticatedInicioRouteImport } from './routes/_authenticated/inicio'
 import { Route as AuthenticatedLeiteRouteImport } from './routes/_authenticated/leite'
+import { Route as AuthenticatedNotificacoesRouteImport } from './routes/_authenticated/notificacoes'
 import { Route as AuthenticatedPesagemRouteImport } from './routes/_authenticated/pesagem'
 import { Route as AuthenticatedPlanosRouteImport } from './routes/_authenticated/planos'
 import { Route as AuthenticatedRebanhoRouteImport } from './routes/_authenticated/rebanho'
 import { Route as AuthenticatedRelatoriosRouteImport } from './routes/_authenticated/relatorios'
 import { Route as AuthenticatedReproducaoRouteImport } from './routes/_authenticated/reproducao'
+import { Route as ApiCronAvisosRouteImport } from './routes/api/cron-avisos'
 import { Route as ApiSaudeBancoRouteImport } from './routes/api/saude-banco'
 import { Route as AuthenticatedRebanhoAnimalIdRouteImport } from './routes/_authenticated/rebanho_.$animalId'
 import { Route as ApiMercadopagoWebhookRouteImport } from './routes/api/mercadopago/webhook'
@@ -50,6 +55,11 @@ const CadastroRoute = CadastroRouteImport.update({
   path: '/cadastro',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ConviteRoute = ConviteRouteImport.update({
+  id: '/convite',
+  path: '/convite',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const PrivacidadeRoute = PrivacidadeRouteImport.update({
   id: '/privacidade',
   path: '/privacidade',
@@ -65,6 +75,17 @@ const VerificarEmailRoute = VerificarEmailRouteImport.update({
   path: '/verificar-email',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AuthenticatedAdminRoute = AuthenticatedAdminRouteImport.update({
+  id: '/admin',
+  path: '/admin',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
+const AuthenticatedAtendimentosRoute =
+  AuthenticatedAtendimentosRouteImport.update({
+    id: '/atendimentos',
+    path: '/atendimentos',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 const AuthenticatedCalendarioRoute = AuthenticatedCalendarioRouteImport.update({
   id: '/calendario',
   path: '/calendario',
@@ -95,6 +116,12 @@ const AuthenticatedLeiteRoute = AuthenticatedLeiteRouteImport.update({
   path: '/leite',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
+const AuthenticatedNotificacoesRoute =
+  AuthenticatedNotificacoesRouteImport.update({
+    id: '/notificacoes',
+    path: '/notificacoes',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 const AuthenticatedPesagemRoute = AuthenticatedPesagemRouteImport.update({
   id: '/pesagem',
   path: '/pesagem',
@@ -120,6 +147,11 @@ const AuthenticatedReproducaoRoute = AuthenticatedReproducaoRouteImport.update({
   path: '/reproducao',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
+const ApiCronAvisosRoute = ApiCronAvisosRouteImport.update({
+  id: '/api/cron-avisos',
+  path: '/api/cron-avisos',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiSaudeBancoRoute = ApiSaudeBancoRouteImport.update({
   id: '/api/saude-banco',
   path: '/api/saude-banco',
@@ -141,20 +173,25 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/auth': typeof AuthRoute
   '/cadastro': typeof CadastroRoute
+  '/convite': typeof ConviteRoute
   '/privacidade': typeof PrivacidadeRoute
   '/termos': typeof TermosRoute
   '/verificar-email': typeof VerificarEmailRoute
+  '/admin': typeof AuthenticatedAdminRoute
+  '/atendimentos': typeof AuthenticatedAtendimentosRoute
   '/calendario': typeof AuthenticatedCalendarioRoute
   '/config': typeof AuthenticatedConfigRoute
   '/engorda': typeof AuthenticatedEngordaRoute
   '/financeiro': typeof AuthenticatedFinanceiroRoute
   '/inicio': typeof AuthenticatedInicioRoute
   '/leite': typeof AuthenticatedLeiteRoute
+  '/notificacoes': typeof AuthenticatedNotificacoesRoute
   '/pesagem': typeof AuthenticatedPesagemRoute
   '/planos': typeof AuthenticatedPlanosRoute
   '/rebanho': typeof AuthenticatedRebanhoRoute
   '/relatorios': typeof AuthenticatedRelatoriosRoute
   '/reproducao': typeof AuthenticatedReproducaoRoute
+  '/api/cron-avisos': typeof ApiCronAvisosRoute
   '/api/saude-banco': typeof ApiSaudeBancoRoute
   '/rebanho/$animalId': typeof AuthenticatedRebanhoAnimalIdRoute
   '/api/mercadopago/webhook': typeof ApiMercadopagoWebhookRoute
@@ -163,20 +200,25 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/auth': typeof AuthRoute
   '/cadastro': typeof CadastroRoute
+  '/convite': typeof ConviteRoute
   '/privacidade': typeof PrivacidadeRoute
   '/termos': typeof TermosRoute
   '/verificar-email': typeof VerificarEmailRoute
+  '/admin': typeof AuthenticatedAdminRoute
+  '/atendimentos': typeof AuthenticatedAtendimentosRoute
   '/calendario': typeof AuthenticatedCalendarioRoute
   '/config': typeof AuthenticatedConfigRoute
   '/engorda': typeof AuthenticatedEngordaRoute
   '/financeiro': typeof AuthenticatedFinanceiroRoute
   '/inicio': typeof AuthenticatedInicioRoute
   '/leite': typeof AuthenticatedLeiteRoute
+  '/notificacoes': typeof AuthenticatedNotificacoesRoute
   '/pesagem': typeof AuthenticatedPesagemRoute
   '/planos': typeof AuthenticatedPlanosRoute
   '/rebanho': typeof AuthenticatedRebanhoRoute
   '/relatorios': typeof AuthenticatedRelatoriosRoute
   '/reproducao': typeof AuthenticatedReproducaoRoute
+  '/api/cron-avisos': typeof ApiCronAvisosRoute
   '/api/saude-banco': typeof ApiSaudeBancoRoute
   '/rebanho/$animalId': typeof AuthenticatedRebanhoAnimalIdRoute
   '/api/mercadopago/webhook': typeof ApiMercadopagoWebhookRoute
@@ -187,20 +229,25 @@ export interface FileRoutesById {
   '/_authenticated': typeof AuthenticatedRouteRouteWithChildren
   '/auth': typeof AuthRoute
   '/cadastro': typeof CadastroRoute
+  '/convite': typeof ConviteRoute
   '/privacidade': typeof PrivacidadeRoute
   '/termos': typeof TermosRoute
   '/verificar-email': typeof VerificarEmailRoute
+  '/_authenticated/admin': typeof AuthenticatedAdminRoute
+  '/_authenticated/atendimentos': typeof AuthenticatedAtendimentosRoute
   '/_authenticated/calendario': typeof AuthenticatedCalendarioRoute
   '/_authenticated/config': typeof AuthenticatedConfigRoute
   '/_authenticated/engorda': typeof AuthenticatedEngordaRoute
   '/_authenticated/financeiro': typeof AuthenticatedFinanceiroRoute
   '/_authenticated/inicio': typeof AuthenticatedInicioRoute
   '/_authenticated/leite': typeof AuthenticatedLeiteRoute
+  '/_authenticated/notificacoes': typeof AuthenticatedNotificacoesRoute
   '/_authenticated/pesagem': typeof AuthenticatedPesagemRoute
   '/_authenticated/planos': typeof AuthenticatedPlanosRoute
   '/_authenticated/rebanho': typeof AuthenticatedRebanhoRoute
   '/_authenticated/relatorios': typeof AuthenticatedRelatoriosRoute
   '/_authenticated/reproducao': typeof AuthenticatedReproducaoRoute
+  '/api/cron-avisos': typeof ApiCronAvisosRoute
   '/api/saude-banco': typeof ApiSaudeBancoRoute
   '/_authenticated/rebanho_/$animalId': typeof AuthenticatedRebanhoAnimalIdRoute
   '/api/mercadopago/webhook': typeof ApiMercadopagoWebhookRoute
@@ -211,20 +258,25 @@ export interface FileRouteTypes {
     | '/'
     | '/auth'
     | '/cadastro'
+    | '/convite'
     | '/privacidade'
     | '/termos'
     | '/verificar-email'
+    | '/admin'
+    | '/atendimentos'
     | '/calendario'
     | '/config'
     | '/engorda'
     | '/financeiro'
     | '/inicio'
     | '/leite'
+    | '/notificacoes'
     | '/pesagem'
     | '/planos'
     | '/rebanho'
     | '/relatorios'
     | '/reproducao'
+    | '/api/cron-avisos'
     | '/api/saude-banco'
     | '/rebanho/$animalId'
     | '/api/mercadopago/webhook'
@@ -233,20 +285,25 @@ export interface FileRouteTypes {
     | '/'
     | '/auth'
     | '/cadastro'
+    | '/convite'
     | '/privacidade'
     | '/termos'
     | '/verificar-email'
+    | '/admin'
+    | '/atendimentos'
     | '/calendario'
     | '/config'
     | '/engorda'
     | '/financeiro'
     | '/inicio'
     | '/leite'
+    | '/notificacoes'
     | '/pesagem'
     | '/planos'
     | '/rebanho'
     | '/relatorios'
     | '/reproducao'
+    | '/api/cron-avisos'
     | '/api/saude-banco'
     | '/rebanho/$animalId'
     | '/api/mercadopago/webhook'
@@ -256,20 +313,25 @@ export interface FileRouteTypes {
     | '/_authenticated'
     | '/auth'
     | '/cadastro'
+    | '/convite'
     | '/privacidade'
     | '/termos'
     | '/verificar-email'
+    | '/_authenticated/admin'
+    | '/_authenticated/atendimentos'
     | '/_authenticated/calendario'
     | '/_authenticated/config'
     | '/_authenticated/engorda'
     | '/_authenticated/financeiro'
     | '/_authenticated/inicio'
     | '/_authenticated/leite'
+    | '/_authenticated/notificacoes'
     | '/_authenticated/pesagem'
     | '/_authenticated/planos'
     | '/_authenticated/rebanho'
     | '/_authenticated/relatorios'
     | '/_authenticated/reproducao'
+    | '/api/cron-avisos'
     | '/api/saude-banco'
     | '/_authenticated/rebanho_/$animalId'
     | '/api/mercadopago/webhook'
@@ -280,9 +342,11 @@ export interface RootRouteChildren {
   AuthenticatedRouteRoute: typeof AuthenticatedRouteRouteWithChildren
   AuthRoute: typeof AuthRoute
   CadastroRoute: typeof CadastroRoute
+  ConviteRoute: typeof ConviteRoute
   PrivacidadeRoute: typeof PrivacidadeRoute
   TermosRoute: typeof TermosRoute
   VerificarEmailRoute: typeof VerificarEmailRoute
+  ApiCronAvisosRoute: typeof ApiCronAvisosRoute
   ApiSaudeBancoRoute: typeof ApiSaudeBancoRoute
   ApiMercadopagoWebhookRoute: typeof ApiMercadopagoWebhookRoute
 }
@@ -317,6 +381,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof CadastroRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/convite': {
+      id: '/convite'
+      path: '/convite'
+      fullPath: '/convite'
+      preLoaderRoute: typeof ConviteRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/privacidade': {
       id: '/privacidade'
       path: '/privacidade'
@@ -337,6 +408,20 @@ declare module '@tanstack/react-router' {
       fullPath: '/verificar-email'
       preLoaderRoute: typeof VerificarEmailRouteImport
       parentRoute: typeof rootRouteImport
+    }
+    '/_authenticated/admin': {
+      id: '/_authenticated/admin'
+      path: '/admin'
+      fullPath: '/admin'
+      preLoaderRoute: typeof AuthenticatedAdminRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/atendimentos': {
+      id: '/_authenticated/atendimentos'
+      path: '/atendimentos'
+      fullPath: '/atendimentos'
+      preLoaderRoute: typeof AuthenticatedAtendimentosRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
     }
     '/_authenticated/calendario': {
       id: '/_authenticated/calendario'
@@ -380,6 +465,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedLeiteRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/notificacoes': {
+      id: '/_authenticated/notificacoes'
+      path: '/notificacoes'
+      fullPath: '/notificacoes'
+      preLoaderRoute: typeof AuthenticatedNotificacoesRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/pesagem': {
       id: '/_authenticated/pesagem'
       path: '/pesagem'
@@ -415,6 +507,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedReproducaoRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/api/cron-avisos': {
+      id: '/api/cron-avisos'
+      path: '/api/cron-avisos'
+      fullPath: '/api/cron-avisos'
+      preLoaderRoute: typeof ApiCronAvisosRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/saude-banco': {
       id: '/api/saude-banco'
       path: '/api/saude-banco'
@@ -440,12 +539,15 @@ declare module '@tanstack/react-router' {
 }
 
 interface AuthenticatedRouteRouteChildren {
+  AuthenticatedAdminRoute: typeof AuthenticatedAdminRoute
+  AuthenticatedAtendimentosRoute: typeof AuthenticatedAtendimentosRoute
   AuthenticatedCalendarioRoute: typeof AuthenticatedCalendarioRoute
   AuthenticatedConfigRoute: typeof AuthenticatedConfigRoute
   AuthenticatedEngordaRoute: typeof AuthenticatedEngordaRoute
   AuthenticatedFinanceiroRoute: typeof AuthenticatedFinanceiroRoute
   AuthenticatedInicioRoute: typeof AuthenticatedInicioRoute
   AuthenticatedLeiteRoute: typeof AuthenticatedLeiteRoute
+  AuthenticatedNotificacoesRoute: typeof AuthenticatedNotificacoesRoute
   AuthenticatedPesagemRoute: typeof AuthenticatedPesagemRoute
   AuthenticatedPlanosRoute: typeof AuthenticatedPlanosRoute
   AuthenticatedRebanhoRoute: typeof AuthenticatedRebanhoRoute
@@ -455,12 +557,15 @@ interface AuthenticatedRouteRouteChildren {
 }
 
 const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
+  AuthenticatedAdminRoute: AuthenticatedAdminRoute,
+  AuthenticatedAtendimentosRoute: AuthenticatedAtendimentosRoute,
   AuthenticatedCalendarioRoute: AuthenticatedCalendarioRoute,
   AuthenticatedConfigRoute: AuthenticatedConfigRoute,
   AuthenticatedEngordaRoute: AuthenticatedEngordaRoute,
   AuthenticatedFinanceiroRoute: AuthenticatedFinanceiroRoute,
   AuthenticatedInicioRoute: AuthenticatedInicioRoute,
   AuthenticatedLeiteRoute: AuthenticatedLeiteRoute,
+  AuthenticatedNotificacoesRoute: AuthenticatedNotificacoesRoute,
   AuthenticatedPesagemRoute: AuthenticatedPesagemRoute,
   AuthenticatedPlanosRoute: AuthenticatedPlanosRoute,
   AuthenticatedRebanhoRoute: AuthenticatedRebanhoRoute,
@@ -477,9 +582,11 @@ const rootRouteChildren: RootRouteChildren = {
   AuthenticatedRouteRoute: AuthenticatedRouteRouteWithChildren,
   AuthRoute: AuthRoute,
   CadastroRoute: CadastroRoute,
+  ConviteRoute: ConviteRoute,
   PrivacidadeRoute: PrivacidadeRoute,
   TermosRoute: TermosRoute,
   VerificarEmailRoute: VerificarEmailRoute,
+  ApiCronAvisosRoute: ApiCronAvisosRoute,
   ApiSaudeBancoRoute: ApiSaudeBancoRoute,
   ApiMercadopagoWebhookRoute: ApiMercadopagoWebhookRoute,
 }

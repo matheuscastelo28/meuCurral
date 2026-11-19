@@ -283,10 +283,6 @@ export function PlanejamentoSanitario({
 
   return (
     <div className="space-y-4">
-      <p className="text-sm text-muted-foreground">
-        Marque as vacinas da fazenda e o sistema coloca as datas na Agenda. Exigências mudam de
-        estado para estado — confirme com seu veterinário.
-      </p>
       <ul className="space-y-3">
         {modelosDaFazenda.map((m) => {
           const itens = porModelo(m.id);

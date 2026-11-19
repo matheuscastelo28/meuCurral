@@ -21,6 +21,8 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { db } from "@/lib/local-db";
 import { useLimitePlano } from "@/hooks/use-fazenda";
 import { usoCabecasTexto } from "@/lib/planos";
+import { SeletorFazenda } from "@/components/SeletorFazenda";
+import { SinoNotificacoes } from "@/components/SinoNotificacoes";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
@@ -172,6 +174,7 @@ export function AppShell({
               </span>
             ) : null}
           </Link>
+          <SinoNotificacoes />
           <Button
             variant="ghost"
             size="icon"
@@ -187,6 +190,7 @@ export function AppShell({
             )}
           </Button>
         </div>
+        {!colapsada ? <SeletorFazenda className="border-b border-border px-3 py-2" /> : null}
 
         <nav aria-label="Seções" className="flex-1 space-y-1 overflow-y-auto px-2 py-3">
           {nav.map((entry) => {
@@ -336,12 +340,10 @@ export function AppShell({
               >
                 {usoCabecasTexto(usados, limite)} · {plano.nome}
               </Link>
-              <Button variant="ghost" size="sm" onClick={sair} aria-label="Sair da conta">
-                <LogOut className="size-4" aria-hidden="true" />
-                <span className="hidden sm:inline">Sair</span>
-              </Button>
+              <SinoNotificacoes />
             </div>
           </div>
+          <SeletorFazenda className="px-4 pb-2" />
         </header>
 
         <main className="mx-auto max-w-6xl px-4 py-6">

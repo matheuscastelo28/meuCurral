@@ -6,6 +6,7 @@ import {
   Baby,
   BadgeDollarSign,
   Coins,
+  Lightbulb,
   Milk,
   Pencil,
   Scale,
@@ -19,6 +20,8 @@ import { Area, AreaChart, CartesianGrid, XAxis, YAxis } from "recharts";
 import { db } from "@/lib/local-db";
 import { AppShell } from "@/components/AppShell";
 import { DialogManejoSanitario } from "@/components/DialogManejoSanitario";
+import { BlocoPartos } from "@/components/rebanho/BlocoPartos";
+import { SugestoesVacina } from "@/components/SugestoesVacina";
 import { DialogVenderAnimal, type AnimalParaVenda } from "@/components/DialogVenderAnimal";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -42,7 +45,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart";
-import { useFazenda } from "@/hooks/use-fazenda";
+import { useFazenda, useLimitePlano } from "@/hooks/use-fazenda";
 import {
   dataCurta,
   dataISO,
@@ -117,9 +120,11 @@ function Ficha() {
   const [editando, setEditando] = useState<EntradaHistorico | null>(null);
   const [excluindo, setExcluindo] = useState<EntradaHistorico | null>(null);
   const [sanidadeAberto, setSanidadeAberto] = useState(false);
+  const [sugestoesAberto, setSugestoesAberto] = useState(false);
   const [vendendo, setVendendo] = useState<AnimalParaVenda | null>(null);
   const [estornando, setEstornando] = useState<EntradaHistorico | null>(null);
   const { data: fazenda } = useFazenda();
+  const { plano } = useLimitePlano();
 
   const animal = useQuery({
     queryKey: ["animal-ficha", animalId],
@@ -210,6 +215,8 @@ function Ficha() {
     queryClient.invalidateQueries({ queryKey: ["ficha-leite", animalId] });
     queryClient.invalidateQueries({ queryKey: ["ficha-manejos", animalId] });
     queryClient.invalidateQueries({ queryKey: ["ficha-reproducao", animalId] });
+    queryClient.invalidateQueries({ queryKey: ["ficha-partos"] });
+    queryClient.invalidateQueries({ queryKey: ["ficha-crias"] });
     queryClient.invalidateQueries({ queryKey: ["leite"] });
     queryClient.invalidateQueries({ queryKey: ["pesagens-engorda"] });
     queryClient.invalidateQueries({ queryKey: ["animais-engorda"] });
@@ -400,6 +407,10 @@ function Ficha() {
                 <Syringe className="size-4" aria-hidden="true" />
                 Vacinas e manejo
               </Button>
+              <Button variant="outline" onClick={() => setSugestoesAberto(true)}>
+                <Lightbulb className="size-4" aria-hidden="true" />
+                Vacinas sugeridas
+              </Button>
               <Button variant="outline" onClick={() => setVendendo(a)}>
                 <BadgeDollarSign className="size-4" aria-hidden="true" />
                 Vender
@@ -421,12 +432,17 @@ function Ficha() {
         onFechar={() => setVendendo(null)}
         moeda={moeda}
       />
+      <SugestoesVacina
+        animal={a}
+        aberto={sugestoesAberto}
+        onFechar={() => setSugestoesAberto(false)}
+      />
       <DialogManejoSanitario
         aberto={sanidadeAberto}
         onFechar={() => setSanidadeAberto(false)}
         animalIdInicial={a.id}
       />
-      <div className="grid items-start gap-4 lg:grid-cols-[320px_1fr]">
+      <div className="grid grid-cols-[minmax(0,1fr)] items-start gap-4 lg:grid-cols-[320px_minmax(0,1fr)]">
         <div className="rounded-xl border border-border bg-card p-5">
           <div className="flex items-center gap-3">
             <span className="flex size-16 shrink-0 items-center justify-center rounded-xl bg-accent text-xl font-extrabold text-primary">
@@ -451,7 +467,9 @@ function Ficha() {
             <LinhaResumo rotulo="Idade" valor={idadeTexto(a.nascimento)} />
             <LinhaResumo rotulo="Peso atual" valor={pesoTexto(a.peso_kg, prefs.unidade_peso)} />
             <LinhaResumo rotulo="Lote" valor={a.lote || "—"} />
+            <LinhaResumo rotulo="Raça" valor={a.raca || "—"} />
             <LinhaResumo rotulo="Mãe" valor={a.mae || "—"} />
+            <LinhaResumo rotulo="Pai" valor={a.pai || "—"} />
             <LinhaResumo rotulo="Entrada no rebanho" valor={dataCurta(a.created_at)} />
             {custos.data?.compra ? (
               <LinhaResumo rotulo="Valor de compra" valor={moeda(custos.data.compra)} />
@@ -468,6 +486,9 @@ function Ficha() {
         </div>
 
         <div className="space-y-4">
+          {a.sexo === "femea" && plano.recursos.reproducaoCompleta ? (
+            <BlocoPartos femea={a} fazendaId={fazenda?.id} unidadePeso={prefs.unidade_peso} />
+          ) : null}
           <div className="rounded-xl border border-border bg-card p-4">
             <p className="mb-2 text-xs font-semibold text-muted-foreground">Período</p>
             <div className="flex flex-wrap gap-2">

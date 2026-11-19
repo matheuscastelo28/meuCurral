@@ -1,3 +1,4 @@
+import { FaixaAvisos } from "@/components/FaixaAvisos";
 import { useState } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -21,7 +22,13 @@ import { AppShell } from "@/components/AppShell";
 import { EmptyState } from "@/components/EmptyState";
 import { Button } from "@/components/ui/button";
 import { useFazenda } from "@/hooks/use-fazenda";
-import { dataCurta, diasAtrasISO, hojeISO, moeda as formatarMoeda } from "@/lib/formato";
+import {
+  dataCurta,
+  diasAFrenteISO,
+  diasAtrasISO,
+  hojeISO,
+  moeda as formatarMoeda,
+} from "@/lib/formato";
 import { rotuloCategoria } from "@/lib/rotulos";
 import { especieDoAnimal, especiesDasAtividades } from "@/lib/especies";
 import { usePreferencias } from "@/hooks/use-preferencias";
@@ -68,7 +75,9 @@ function Inicio() {
       const [animais, atrasados, proximos, leite] = await Promise.all([
         db.from("animais").select("id, categoria, especie, status").eq("fazenda_id", fazendaId!),
         pendentes().lte("data", diasAtrasISO(1)).order("data").limit(8),
-        pendentes().gte("data", hoje).order("data").limit(5),
+        // Só o próximo mês: lembrete de daqui a um ano (ex.: dose anual) não
+        // fica aqui com "Concluir" ao lado, onde poderia ser marcado sem querer.
+        pendentes().gte("data", hoje).lte("data", diasAFrenteISO(30)).order("data").limit(5),
         db
           .from("producao_leite")
           .select("litros")
@@ -172,7 +181,7 @@ function Inicio() {
       </div>
       {(resumo.data?.atrasados.length ?? 0) === 0 && (resumo.data?.proximos.length ?? 0) === 0 ? (
         <p className="mt-4 text-sm text-muted-foreground">
-          Nada agendado. Ao registrar uma vacina com próxima dose, ela aparece aqui.
+          Nada nos próximos 30 dias. O que estiver mais longe fica no calendário.
         </p>
       ) : (
         <ul className="mt-4 space-y-3">
@@ -228,6 +237,7 @@ function Inicio() {
         evento={cumprindo}
         onFechar={() => setCumprindo(null)}
       />
+      <FaixaAvisos />
       {animais.length === 0 && !resumo.isLoading ? (
         <EmptyState
           icon={Beef}

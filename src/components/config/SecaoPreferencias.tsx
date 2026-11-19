@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -7,6 +7,7 @@ import { Switch } from "@/components/ui/switch";
 import { usePerfil, useSalvarPerfil, PREFERENCIAS_PADRAO } from "@/hooks/use-preferencias";
 import { useFazenda } from "@/hooks/use-fazenda";
 import { CartaoConfig } from "./CartaoConfig";
+import { AvisosForaDoSistema } from "./AvisosForaDoSistema";
 
 export function SecaoPreferencias() {
   const { data: perfil } = usePerfil();
@@ -18,8 +19,15 @@ export function SecaoPreferencias() {
   const salvar = useSalvarPerfil();
   const [valores, setValores] = useState(PREFERENCIAS_PADRAO);
 
+  // Copia o perfil para o formulário só na primeira carga (e se a fazenda
+  // mudar de ovino para bovino): o e-mail diário salva ao tocar e recarrega o
+  // perfil, e recopiar aí apagaria o que ainda não foi salvo nos outros campos.
+  const carregadoPara = useRef<string | null>(null);
   useEffect(() => {
     if (!perfil) return;
+    const chave = `${perfil.id}:${soOvino}`;
+    if (carregadoPara.current === chave) return;
+    carregadoPara.current = chave;
     setValores({
       unidade_peso: soOvino ? "kg" : (perfil.unidade_peso ?? "kg"),
       moeda: perfil.moeda ?? "BRL",
@@ -27,6 +35,8 @@ export function SecaoPreferencias() {
       alerta_vacina: perfil.alerta_vacina ?? true,
       alerta_pesagem: perfil.alerta_pesagem ?? true,
       alerta_parto: perfil.alerta_parto ?? true,
+      estagio_automatico: perfil.estagio_automatico ?? true,
+      aviso_email: perfil.aviso_email ?? true,
     });
   }, [perfil, soOvino]);
 
@@ -105,6 +115,40 @@ export function SecaoPreferencias() {
             ))}
           </div>
         </fieldset>
+
+        <div className="flex items-start justify-between gap-3 rounded-lg border border-border p-3">
+          <Label htmlFor="estagio_automatico" className="font-normal">
+            Atualizar a categoria pela idade
+            <span className="mt-0.5 block text-xs text-muted-foreground">
+              Bezerro → novilha/garrote → vaca/boi; cordeiro → borrega/borrego → ovelha.
+            </span>
+          </Label>
+          <Switch
+            id="estagio_automatico"
+            checked={valores.estagio_automatico}
+            onCheckedChange={(v) => setValores((atual) => ({ ...atual, estagio_automatico: v }))}
+          />
+        </div>
+
+        <AvisosForaDoSistema
+          avisoEmail={valores.aviso_email}
+          onAvisoEmail={(v) => {
+            // Salva na hora, como os botões do celular ao lado: desligar e
+            // sair sem "Salvar preferências" não deixa o e-mail chegando.
+            setValores((atual) => ({ ...atual, aviso_email: v }));
+            salvar.mutate(
+              { aviso_email: v },
+              {
+                onSuccess: () =>
+                  toast.success(v ? "E-mail diário ligado." : "E-mail diário desligado."),
+                onError: () => {
+                  setValores((atual) => ({ ...atual, aviso_email: !v }));
+                  toast.error("Não conseguimos salvar agora.");
+                },
+              },
+            );
+          }}
+        />
 
         <Button type="submit" disabled={salvar.isPending}>
           {salvar.isPending ? <Loader2 className="size-4 animate-spin" aria-hidden="true" /> : null}

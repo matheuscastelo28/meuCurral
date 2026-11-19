@@ -9,6 +9,7 @@ export type CabecalhoRelatorio = {
   documento: string;
   caf: string;
   inscricao: string;
+  telefone?: string;
 };
 
 const VERDE: [number, number, number] = [29, 122, 69];
@@ -80,6 +81,8 @@ export async function gerarRelatorioPDF(rel: Relatorio, cab: CabecalhoRelatorio)
     ["CPF/CNPJ", cab.documento],
     ["CAF/DAP", cab.caf],
     ["Inscrição estadual", cab.inscricao],
+    ["Telefone", cab.telefone ?? ""],
+    ["", ""],
   ];
   autoTable(doc, {
     startY: 36,
@@ -90,7 +93,7 @@ export async function gerarRelatorioPDF(rel: Relatorio, cab: CabecalhoRelatorio)
       0: { fontStyle: "bold", cellWidth: 32, textColor: CINZA },
       2: { fontStyle: "bold", cellWidth: 32, textColor: CINZA },
     },
-    body: [0, 2, 4].map((i) => [
+    body: [0, 2, 4, 6].map((i) => [
       identificacao[i]![0],
       identificacao[i]![1] || "—",
       identificacao[i + 1]![0],

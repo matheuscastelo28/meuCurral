@@ -29,6 +29,10 @@ import {
   criarConta,
   marcarParcelaPaga,
   cancelarConta,
+  editarLancamento,
+  editarConta,
+  editarParcela,
+  atualizarEstagios,
   type FiltroRemoto,
 } from "@/lib/dados.functions";
 import {
@@ -37,6 +41,31 @@ import {
   minhaAssinatura,
   sincronizarAssinatura,
 } from "@/lib/assinatura.functions";
+import {
+  souAdmin,
+  avisosParaMim,
+  listarAvisosAdmin,
+  publicarAviso,
+  encerrarAviso,
+} from "@/lib/avisos-oficiais.functions";
+import { listarValidacoes, validarProtocolo } from "@/lib/protocolos.functions";
+import {
+  statusPush,
+  salvarAssinaturaPush,
+  removerAssinaturaPush,
+  testarPush,
+} from "@/lib/push.functions";
+import {
+  minhasFazendas,
+  listarEquipe,
+  convidarMembro,
+  cancelarConvite,
+  reenviarConvite,
+  removerMembro,
+  verConvite,
+  aceitarConvite,
+  relatorioVeterinario,
+} from "@/lib/equipe.functions";
 
 const CHAVE_TOKEN = "mcd:pg-token";
 
@@ -53,6 +82,8 @@ const PADROES: Record<string, () => Registro> = {
     alerta_vacina: true,
     alerta_pesagem: true,
     alerta_parto: true,
+    estagio_automatico: true,
+    aviso_email: true,
   }),
   fazendas: () => ({
     cidade: null,
@@ -486,7 +517,7 @@ export const db = {
     minha() {
       return minhaAssinatura({ data: { token: tokenSessao() } });
     },
-    iniciar(params: { plano: string; email: string }) {
+    iniciar(params: { plano: string; email: string; periodo?: "mensal" | "anual" }) {
       return iniciarAssinatura({ data: { token: tokenSessao(), ...params } });
     },
     sincronizar() {
@@ -496,7 +527,96 @@ export const db = {
       return cancelarAssinatura({ data: { token: tokenSessao() } });
     },
   },
+  avisosOficiais: {
+    souAdmin() {
+      return souAdmin({ data: { token: tokenSessao() } });
+    },
+    paraMim(fazendaId: string) {
+      return avisosParaMim({ data: { token: tokenSessao(), fazendaId } });
+    },
+    listar() {
+      return listarAvisosAdmin({ data: { token: tokenSessao() } });
+    },
+    publicar(params: {
+      titulo: string;
+      texto: string;
+      link?: string | null;
+      estados: string[];
+      enviarEmail: boolean;
+      expiraEm?: string | null;
+    }) {
+      return publicarAviso({ data: { token: tokenSessao(), ...params } });
+    },
+    encerrar(id: string) {
+      return encerrarAviso({ data: { token: tokenSessao(), id } });
+    },
+  },
+  protocolos: {
+    validacoes(fazendaId: string) {
+      return listarValidacoes({ data: { token: tokenSessao(), fazendaId } });
+    },
+    validar(params: {
+      fazendaId: string;
+      protocoloId: string;
+      status: "validado" | "ajustar" | "limpar";
+      nota?: string | null;
+    }) {
+      return validarProtocolo({ data: { token: tokenSessao(), ...params } });
+    },
+  },
+  push: {
+    status(endpoint?: string | null) {
+      return statusPush({ data: { token: tokenSessao(), endpoint: endpoint ?? null } });
+    },
+    salvar(params: { endpoint: string; p256dh: string; auth: string; userAgent?: string | null }) {
+      return salvarAssinaturaPush({ data: { token: tokenSessao(), ...params } });
+    },
+    remover(endpoint: string) {
+      return removerAssinaturaPush({ data: { token: tokenSessao(), endpoint } });
+    },
+    testar() {
+      return testarPush({ data: { token: tokenSessao() } });
+    },
+  },
+  equipe: {
+    minhasFazendas() {
+      return minhasFazendas({ data: { token: tokenSessao() } });
+    },
+    listar(fazendaId: string) {
+      return listarEquipe({ data: { token: tokenSessao(), fazendaId } });
+    },
+    convidar(params: { fazendaId: string; email: string; papel: string }) {
+      return convidarMembro({ data: { token: tokenSessao(), ...params } });
+    },
+    reenviarConvite(params: { fazendaId: string; conviteId: string }) {
+      return reenviarConvite({ data: { token: tokenSessao(), ...params } });
+    },
+    cancelarConvite(params: { fazendaId: string; conviteId: string }) {
+      return cancelarConvite({ data: { token: tokenSessao(), ...params } });
+    },
+    /** Sem membroId: a própria pessoa sai da fazenda. */
+    remover(params: { fazendaId: string; membroId?: string | null }) {
+      return removerMembro({ data: { token: tokenSessao(), ...params } });
+    },
+    verConvite(conviteToken: string) {
+      return verConvite({ data: { conviteToken } });
+    },
+    aceitarConvite(conviteToken: string) {
+      return aceitarConvite({ data: { token: tokenSessao(), conviteToken } });
+    },
+    relatorioVeterinario(mes: string) {
+      return relatorioVeterinario({ data: { token: tokenSessao(), mes } });
+    },
+  },
   rebanho: {
+    /** Avança a categoria (bezerro → novilha → vaca...) pela idade. */
+    async atualizarEstagios(params: {
+      fazendaId: string;
+      animalIds?: string[] | null;
+      recalcular?: boolean;
+    }) {
+      return atualizarEstagios({ data: { token: tokenSessao(), ...params } });
+    },
     /** Venda de um animal de qualquer situação, já com a receita no Financeiro. */
     async venderAnimal(params: {
       fazendaId: string;
@@ -545,6 +665,47 @@ export const db = {
       formaPagamento?: string | null;
     }) {
       return marcarParcelaPaga({ data: { token: tokenSessao(), ...params } });
+    },
+    /** Edita o lançamento; se veio de uma venda, a venda acompanha. */
+    async editarLancamento(params: {
+      fazendaId: string;
+      id: string;
+      descricao: string;
+      valor: number;
+      data: string;
+      categoria?: string | null;
+      formaPagamento?: string | null;
+      parcelas?: number | null;
+      status?: "recebido" | "a_receber" | null;
+      comprador?: string | null | undefined;
+    }) {
+      return editarLancamento({ data: { token: tokenSessao(), ...params } });
+    },
+    /** Edita a conta; mudar o valor redistribui nas parcelas pendentes. */
+    async editarConta(params: {
+      fazendaId: string;
+      contaId: string;
+      descricao: string;
+      valorTotal: number;
+      dataEmissao: string;
+      categoria?: string | null;
+      pessoa?: string | null;
+      formaPagamento?: string | null;
+      observacoes?: string | null;
+    }) {
+      return editarConta({ data: { token: tokenSessao(), ...params } });
+    },
+    /** Edita vencimento/valor/pagamento de uma parcela, ou a reabre. */
+    async editarParcela(params: {
+      fazendaId: string;
+      parcelaId: string;
+      vencimento?: string | null;
+      valor?: number | null;
+      pagoEm?: string | null;
+      formaPagamento?: string | null;
+      reabrir?: boolean;
+    }) {
+      return editarParcela({ data: { token: tokenSessao(), ...params } });
     },
     /** Cancela a conta e todas as parcelas ainda pendentes dela. */
     async cancelarConta(params: { fazendaId: string; contaId: string }) {

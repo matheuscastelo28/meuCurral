@@ -30,6 +30,7 @@ async function contexto(token: string | null): Promise<Contexto | null> {
 type AssinaturaResumo = {
   id: string;
   plano: string;
+  periodo: string;
   valor: number;
   status: string;
   initPoint: string | null;
@@ -44,13 +45,14 @@ async function ultimaAssinatura(
   const linhas: {
     id: string;
     plano: string;
+    periodo: string;
     valor: string;
     status: string;
     init_point: string | null;
     mp_preapproval_id: string | null;
     created_at: Date;
   }[] = await sql`
-    select id, plano, valor, status, init_point, mp_preapproval_id, created_at
+    select id, plano, periodo, valor, status, init_point, mp_preapproval_id, created_at
     from assinaturas where fazenda_id = ${fazendaId}
     order by (status = 'ativa') desc, created_at desc
     limit 1`;
@@ -59,6 +61,7 @@ async function ultimaAssinatura(
     ? {
         id: a.id,
         plano: a.plano,
+        periodo: a.periodo,
         valor: Number(a.valor),
         status: a.status,
         initPoint: a.init_point,
@@ -73,6 +76,7 @@ function semMpId(a: (AssinaturaResumo & { mpId: string | null }) | null): Assina
   return {
     id: a.id,
     plano: a.plano,
+    periodo: a.periodo,
     valor: a.valor,
     status: a.status,
     initPoint: a.initPoint,
@@ -108,7 +112,10 @@ export const minhaAssinatura = createServerFn({ method: "POST" })
 
 /** Cria a assinatura no Mercado Pago e devolve o link do checkout. */
 export const iniciarAssinatura = createServerFn({ method: "POST" })
-  .inputValidator((dados: { token: string | null; plano: string; email: string }) => dados)
+  .inputValidator(
+    (dados: { token: string | null; plano: string; email: string; periodo?: "mensal" | "anual" }) =>
+      dados,
+  )
   .handler(async ({ data }) => {
     try {
       const ctx = await contexto(data.token);
@@ -118,6 +125,9 @@ export const iniciarAssinatura = createServerFn({ method: "POST" })
       if (plano.id !== data.plano || !plano.valorMensal) {
         return erro("Esse plano não tem assinatura online.");
       }
+      const anual = data.periodo === "anual";
+      const valor = anual ? plano.valorAnual : plano.valorMensal;
+      if (!valor) return erro("Esse plano não tem cobrança anual.");
       const email = data.email.trim().toLowerCase();
       if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return erro("Informe um e-mail válido.");
 
@@ -130,10 +140,11 @@ export const iniciarAssinatura = createServerFn({ method: "POST" })
       const { conexao } = await import("./pg.server");
       const sql = await conexao();
       const pre = await mercadoPago.criarAssinatura({
-        motivo: `Curral Online — Plano ${plano.nome}`,
+        motivo: `Curral Online — Plano ${plano.nome}${anual ? " (anual)" : ""}`,
         referencia: `fazenda:${ctx.fazendaId};plano:${plano.id}`,
         email,
-        valor: plano.valorMensal,
+        valor,
+        anual,
         voltarPara: `${urlDoSistema()}/config?assinatura=retorno`,
       });
       if (!pre.init_point) return erro("O Mercado Pago não devolveu o link de pagamento.");
@@ -154,9 +165,9 @@ export const iniciarAssinatura = createServerFn({ method: "POST" })
         update assinaturas set status = 'cancelada', updated_at = now()
         where fazenda_id = ${ctx.fazendaId} and status = 'pendente'`;
       await sql`
-        insert into assinaturas (fazenda_id, plano, valor, mp_preapproval_id, init_point, payer_email, status)
-        values (${ctx.fazendaId}, ${plano.id}, ${plano.valorMensal}, ${pre.id}, ${pre.init_point},
-                ${email}, 'pendente')`;
+        insert into assinaturas (fazenda_id, plano, periodo, valor, mp_preapproval_id, init_point, payer_email, status)
+        values (${ctx.fazendaId}, ${plano.id}, ${anual ? "anual" : "mensal"}, ${valor}, ${pre.id},
+                ${pre.init_point}, ${email}, 'pendente')`;
       return { data: { initPoint: pre.init_point }, error: null };
     } catch (e) {
       return erro(e instanceof Error ? e.message : "Erro ao iniciar a assinatura.");
