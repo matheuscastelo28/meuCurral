@@ -1,4 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { ParcelasCartao } from "@/components/ParcelasCartao";
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -1266,21 +1267,12 @@ function Leite() {
                     ) : null}
 
                     {vendaAvulsaPago && vendaAvulsaFormaPagamento === "cartao" ? (
-                      <div className="space-y-1.5">
-                        <Label htmlFor="va-parcelas">Parcelas</Label>
-                        <select
-                          id="va-parcelas"
-                          value={vendaAvulsaParcelas}
-                          onChange={(e) => setVendaAvulsaParcelas(e.target.value)}
-                          className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
-                        >
-                          {[1, 2, 3].map((n) => (
-                            <option key={n} value={n}>
-                              {n}x de {moeda(vendaAvulsaTotal / n)}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
+                      <ParcelasCartao
+                        id="va-parcelas"
+                        total={vendaAvulsaTotal}
+                        value={vendaAvulsaParcelas}
+                        onChange={setVendaAvulsaParcelas}
+                      />
                     ) : null}
 
                     <div className="flex gap-2 sm:col-span-2">
@@ -1425,21 +1417,12 @@ function Leite() {
                     ) : null}
 
                     {vendaLaticinioPago && vendaLaticinioFormaPagamento === "cartao" ? (
-                      <div className="space-y-1.5">
-                        <Label htmlFor="vl-parcelas">Parcelas</Label>
-                        <select
-                          id="vl-parcelas"
-                          value={vendaLaticinioParcelas}
-                          onChange={(e) => setVendaLaticinioParcelas(e.target.value)}
-                          className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
-                        >
-                          {[1, 2, 3].map((n) => (
-                            <option key={n} value={n}>
-                              {n}x de {moeda(vendaLaticinioTotal / n)}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
+                      <ParcelasCartao
+                        id="vl-parcelas"
+                        total={vendaLaticinioTotal}
+                        value={vendaLaticinioParcelas}
+                        onChange={setVendaLaticinioParcelas}
+                      />
                     ) : null}
 
                     <div className="flex gap-2 sm:col-span-2">

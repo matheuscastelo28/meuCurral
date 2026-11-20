@@ -1,4 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
+import { ParcelasCartao } from "@/components/ParcelasCartao";
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -1518,21 +1519,12 @@ function Engorda() {
                   ) : null}
 
                   {vendaAvulsaPago && vendaAvulsaFormaPagamento === "cartao" ? (
-                    <div className="space-y-1.5">
-                      <Label htmlFor="venda-boi-parcelas">Parcelas</Label>
-                      <select
-                        id="venda-boi-parcelas"
-                        value={vendaAvulsaParcelas}
-                        onChange={(ev) => setVendaAvulsaParcelas(ev.target.value)}
-                        className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
-                      >
-                        {[1, 2, 3].map((n) => (
-                          <option key={n} value={n}>
-                            {n}x de {moeda(vendaAvulsaTotal / n)}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
+                    <ParcelasCartao
+                      id="venda-boi-parcelas"
+                      total={vendaAvulsaTotal}
+                      value={vendaAvulsaParcelas}
+                      onChange={setVendaAvulsaParcelas}
+                    />
                   ) : null}
 
                   <div className="flex gap-2 sm:col-span-2">
@@ -1880,6 +1872,7 @@ function DialogVenderLote({
   }, [aberto, precoSugerido]);
 
   const valorEstimado = lote && Number(preco) > 0 ? lote.arrobasTotais * Number(preco) : 0;
+  const [parcelas, setParcelas] = useState("1");
 
   const salvar = useMutation({
     mutationFn: async () => {
@@ -1892,6 +1885,7 @@ function DialogVenderLote({
         data,
         pago,
         formaPagamento,
+        parcelas: pago && formaPagamento === "cartao" ? Number(parcelas) || 1 : null,
         produto,
         unidade,
       });
@@ -1997,6 +1991,14 @@ function DialogVenderLote({
                 <option value="transferencia">Transferência</option>
               </select>
             </div>
+          ) : null}
+          {pago && formaPagamento === "cartao" ? (
+            <ParcelasCartao
+              id="vl-parcelas"
+              total={valorEstimado}
+              value={parcelas}
+              onChange={setParcelas}
+            />
           ) : null}
         </form>
         <DialogFooter>

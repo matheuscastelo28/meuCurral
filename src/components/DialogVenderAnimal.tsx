@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { ParcelasCartao } from "@/components/ParcelasCartao";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { db } from "@/lib/local-db";
@@ -201,17 +202,12 @@ export function DialogVenderAnimal({
                 </select>
               </div>
               {forma === "cartao" ? (
-                <div className="space-y-1.5">
-                  <Label htmlFor="venda-parcelas">Parcelas</Label>
-                  <Input
-                    id="venda-parcelas"
-                    type="number"
-                    min="1"
-                    max="12"
-                    value={parcelas}
-                    onChange={(e) => setParcelas(e.target.value)}
-                  />
-                </div>
+                <ParcelasCartao
+                  id="venda-parcelas"
+                  total={Number(valor)}
+                  value={parcelas}
+                  onChange={setParcelas}
+                />
               ) : null}
             </>
           ) : (

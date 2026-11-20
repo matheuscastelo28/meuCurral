@@ -88,3 +88,6 @@ export function statusUnificadoLancamento(
   if (l.status === "recebido") return "pago";
   return dataISO(l.data) < hoje ? "atrasado" : "pendente";
 }
+
+/** Máximo de parcelas no cartão oferecido em todo o sistema. */
+export const MAX_PARCELAS_CARTAO = 12;

@@ -141,6 +141,27 @@ async function bloqueioDePlano(
   return `Esse recurso faz parte do plano ${planoMinimoDo(recurso).nome}. Seu plano atual (${plano.nome}) não inclui.`;
 }
 
+/**
+ * Parcelas de um recebimento/pagamento no cartão, iguais em todo o sistema:
+ * só vale para cartão, fica entre 1 e MAX_PARCELAS_CARTAO e parcelar (mais de
+ * 1x) faz parte do Financeiro completo.
+ */
+async function parcelasDoCartao(
+  sql: Sql,
+  fazendaId: string,
+  formaPagamento: string | null | undefined,
+  parcelas: number | null | undefined,
+): Promise<{ parcelas: number | null; erro: string | null }> {
+  if (formaPagamento !== "cartao") return { parcelas: null, erro: null };
+  const { MAX_PARCELAS_CARTAO } = await import("./parcelamento");
+  const n = Math.min(MAX_PARCELAS_CARTAO, Math.max(1, Math.floor(Number(parcelas) || 1)));
+  if (n > 1) {
+    const bloqueio = await bloqueioDePlano(sql, fazendaId, "financeiroCompleto");
+    if (bloqueio) return { parcelas: null, erro: bloqueio };
+  }
+  return { parcelas: n, erro: null };
+}
+
 function contarPorFazenda(linhas: Record<string, unknown>[]): Map<string, number> {
   const mapa = new Map<string, number>();
   for (const l of linhas) {
@@ -1364,7 +1385,14 @@ export const registrarVenda = createServerFn({ method: "POST" })
       const categoria = derivado ? "venda_derivados" : `venda_${produto}`;
       const status = data.pago ? "recebido" : "a_receber";
       const formaPagamento = data.pago ? (data.formaPagamento ?? "dinheiro") : "dinheiro";
-      const parcelas = data.pago && formaPagamento === "cartao" ? (data.parcelas ?? 1) : null;
+      const cartao = await parcelasDoCartao(
+        sql,
+        data.fazendaId,
+        data.pago ? formaPagamento : null,
+        data.parcelas,
+      );
+      if (cartao.erro) return { data: null, error: { message: cartao.erro } };
+      const parcelas = cartao.parcelas;
 
       const venda = await sql.begin(async (tx) => {
         const financeiros: { id: string }[] = await tx`
@@ -1508,7 +1536,14 @@ export const venderAnimal = createServerFn({ method: "POST" })
         const comprador = data.comprador?.trim() || null;
         const status = data.pago ? "recebido" : "a_receber";
         const formaPagamento = data.pago ? (data.formaPagamento ?? "dinheiro") : "dinheiro";
-        const parcelas = data.pago && formaPagamento === "cartao" ? (data.parcelas ?? 1) : null;
+        const cartao = await parcelasDoCartao(
+          tx as unknown as Sql,
+          data.fazendaId,
+          data.pago ? formaPagamento : null,
+          data.parcelas,
+        );
+        if (cartao.erro) throw new Error(cartao.erro);
+        const parcelas = cartao.parcelas;
         const nome = `${animal.nome ?? "animal"}${animal.brinco ? ` (${animal.brinco})` : ""}`;
         const descricao = `Venda de ${nome}${comprador ? ` — ${comprador}` : ""}`;
 
@@ -1710,6 +1745,7 @@ export const registrarVendaLote = createServerFn({ method: "POST" })
       data: string;
       pago?: boolean;
       formaPagamento?: string;
+      parcelas?: number | null;
       // "boi"/"arroba" (padrão, mantém o comportamento de sempre) ou
       // "ovino"/"kg" pra fazenda que não usa arroba.
       produto?: string;
@@ -1752,12 +1788,19 @@ export const registrarVendaLote = createServerFn({ method: "POST" })
         const valorTotal = Math.round(arrobas * data.precoUnitario * 100) / 100;
         const status = data.pago ? "recebido" : "a_receber";
         const formaPagamento = data.pago ? (data.formaPagamento ?? "dinheiro") : "dinheiro";
+        const cartao = await parcelasDoCartao(
+          tx as unknown as Sql,
+          data.fazendaId,
+          data.pago ? formaPagamento : null,
+          data.parcelas,
+        );
+        if (cartao.erro) throw new Error(cartao.erro);
         const nomeLote = /^lote\b/i.test(data.lote.trim()) ? data.lote.trim() : `lote ${data.lote}`;
         const descricao = `Venda do ${nomeLote}${data.comprador ? ` — ${data.comprador}` : ""} (${animaisLote.length} cab)`;
 
         const financeiros: { id: string }[] = await tx`
-          insert into financeiro_lancamentos (fazenda_id, tipo, descricao, valor, data, categoria, status, forma_pagamento, lote)
-          values (${data.fazendaId}, 'receita', ${descricao}, ${valorTotal}, ${data.data}, ${`venda_${produto}`}, ${status}, ${formaPagamento}, ${data.lote})
+          insert into financeiro_lancamentos (fazenda_id, tipo, descricao, valor, data, categoria, status, forma_pagamento, parcelas, lote)
+          values (${data.fazendaId}, 'receita', ${descricao}, ${valorTotal}, ${data.data}, ${`venda_${produto}`}, ${status}, ${formaPagamento}, ${cartao.parcelas}, ${data.lote})
           returning id`;
         const financeiroId = financeiros[0]!.id;
 
@@ -2089,8 +2132,14 @@ export const editarLancamento = createServerFn({ method: "POST" })
         const lanc = linhas[0];
         if (!lanc) throw new Error("Lançamento não encontrado.");
         const forma = formaValida(data.formaPagamento, lanc.forma_pagamento ?? "dinheiro");
-        const parcelas =
-          forma === "cartao" ? Math.max(1, Math.floor(Number(data.parcelas) || 1)) : null;
+        const cartao = await parcelasDoCartao(
+          tx as unknown as Sql,
+          data.fazendaId,
+          forma,
+          data.parcelas,
+        );
+        if (cartao.erro) throw new Error(cartao.erro);
+        const parcelas = cartao.parcelas;
         // Só receita alterna entre "a receber" e "recebido"; despesa fica como está.
         // Receita alterna recebido/a receber. Despesa "a pagar" (dias futuros
         // da rotina de alimentação) só pode ser quitada aqui; despesa comum

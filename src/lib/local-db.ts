@@ -507,6 +507,7 @@ export const db = {
       data: string;
       pago?: boolean;
       formaPagamento?: string;
+      parcelas?: number | null;
       produto?: string;
       unidade?: string;
     }) {

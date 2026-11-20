@@ -1,4 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
+import { ParcelasCartao } from "@/components/ParcelasCartao";
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Ban, CircleCheck, FileText, Pencil, Plus, Trash2, Undo2, Wallet } from "lucide-react";
@@ -280,7 +281,7 @@ function Financeiro() {
         data: edData,
         categoria: edCategoria || null,
         formaPagamento: edForma,
-        parcelas: edForma === "cartao" && completo ? Number(edParcelas) || 1 : null,
+        parcelas: edForma === "cartao" ? Number(edParcelas) || 1 : null,
         status:
           l.tipo === "receita"
             ? edRecebido
@@ -541,6 +542,8 @@ function Financeiro() {
   const [pessoa, setPessoa] = useState("");
   const [parcelado, setParcelado] = useState(false);
   const [numParcelas, setNumParcelas] = useState("2");
+  // Pago no cartão: parcelas no padrão de todo o sistema (1x, 2x… de R$).
+  const [parcelasCartao, setParcelasCartao] = useState("1");
   const [primeiroVencimento, setPrimeiroVencimento] = useState(hoje);
   const [intervaloDias, setIntervaloDias] = useState("30");
   const [categoria, setCategoria] = useState("");
@@ -575,13 +578,16 @@ function Financeiro() {
     setPessoa("");
     setParcelado(false);
     setNumParcelas("2");
+    setParcelasCartao("1");
     setPrimeiroVencimento(hoje);
     setIntervaloDias("30");
     setCategoria("");
     setLoteLanc("");
   }
 
-  const vaiVirarConta = parcelado || !jaAconteceu;
+  // Já pago no cartão: um lançamento só, com as parcelas do cartão (não vira conta).
+  const cartaoPago = formaPagamento === "cartao" && jaAconteceu;
+  const vaiVirarConta = (parcelado && !cartaoPago) || !jaAconteceu;
 
   const previewParcelas = useMemo(() => {
     if (!vaiVirarConta) return [];
@@ -625,7 +631,7 @@ function Financeiro() {
           valor: valorNum,
           data,
           forma_pagamento: formaPagamento,
-          parcelas: null,
+          parcelas: cartaoPago ? Number(parcelasCartao) || 1 : null,
           categoria: categoria || null,
           lote: tipo === "despesa" && loteLanc ? loteLanc : null,
           ...(tipo === "receita" ? { status: "recebido" } : {}),
@@ -1075,6 +1081,15 @@ function Financeiro() {
                   ))}
                 </select>
               </div>
+              {cartaoPago ? (
+                <ParcelasCartao
+                  id="parcelas-cartao"
+                  total={Number(valor)}
+                  value={parcelasCartao}
+                  onChange={setParcelasCartao}
+                  className="min-w-[160px] flex-1"
+                />
+              ) : null}
               <div className="min-w-[200px] flex-1 space-y-1.5">
                 <Label htmlFor="pessoa-lanc">
                   {tipo === "receita" ? "Comprador (opcional)" : "Fornecedor (opcional)"}
@@ -1088,7 +1103,7 @@ function Financeiro() {
               </div>
             </div>
 
-            <div className="mt-4 border-t border-border pt-4">
+            <div className={cn("mt-4 border-t border-border pt-4", cartaoPago && "hidden")}>
               <Label>Pagamento</Label>
               <div className="mt-1.5 flex gap-2">
                 <Button
@@ -1502,18 +1517,13 @@ function Financeiro() {
                           ))}
                         </select>
                       </div>
-                      {edForma === "cartao" && completo ? (
-                        <div className="space-y-1.5">
-                          <Label htmlFor="ed-parcelas">Parcelas no cartão</Label>
-                          <Input
-                            id="ed-parcelas"
-                            type="number"
-                            min="1"
-                            max="24"
-                            value={edParcelas}
-                            onChange={(e) => setEdParcelas(e.target.value)}
-                          />
-                        </div>
+                      {edForma === "cartao" ? (
+                        <ParcelasCartao
+                          id="ed-parcelas"
+                          total={Number(edValor)}
+                          value={edParcelas}
+                          onChange={setEdParcelas}
+                        />
                       ) : null}
                       {venda ? (
                         <div className="col-span-2 space-y-1.5">
