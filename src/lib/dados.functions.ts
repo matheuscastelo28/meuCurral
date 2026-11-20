@@ -1380,8 +1380,10 @@ export const marcarLancamentosRecebidos = createServerFn({ method: "POST" })
       if (data.ids.length === 0) return { data: [], error: null };
 
       const atualizados: any[] = await sql`
-        update financeiro_lancamentos set status = 'recebido', updated_at = now()
-        where id = any(${data.ids}) and status = 'a_receber'
+        update financeiro_lancamentos
+        set status = case when status = 'a_receber' then 'recebido' else 'confirmado' end,
+            updated_at = now()
+        where id = any(${data.ids}) and status in ('a_receber', 'a_pagar')
           and fazenda_id in (
             select id from fazendas where dono_id = ${userId}
             union
@@ -2011,7 +2013,7 @@ export const editarLancamento = createServerFn({ method: "POST" })
       categoria?: string | null;
       formaPagamento?: string | null;
       parcelas?: number | null;
-      status?: "recebido" | "a_receber" | null;
+      status?: "recebido" | "a_receber" | "confirmado" | "a_pagar" | null;
       comprador?: string | null | undefined;
     }) => dados,
   )
@@ -2040,10 +2042,15 @@ export const editarLancamento = createServerFn({ method: "POST" })
         const parcelas =
           forma === "cartao" ? Math.max(1, Math.floor(Number(data.parcelas) || 1)) : null;
         // Só receita alterna entre "a receber" e "recebido"; despesa fica como está.
+        // Receita alterna recebido/a receber. Despesa "a pagar" (dias futuros
+        // da rotina de alimentação) só pode ser quitada aqui; despesa comum
+        // não vira "a pagar" pela edição (isso é conta, plano Caderno).
         const status =
           lanc.tipo === "receita" && (data.status === "recebido" || data.status === "a_receber")
             ? data.status
-            : lanc.status;
+            : lanc.tipo === "despesa" && lanc.status === "a_pagar" && data.status === "confirmado"
+              ? "confirmado"
+              : lanc.status;
 
         await tx`
           update financeiro_lancamentos set

@@ -101,9 +101,10 @@ export function useResumoFinanceiro(fazendaId: string | undefined) {
       .filter((c) => c.tipo === "a_receber")
       .reduce((s, c) => s + (Number(c.valor_total) - Number(c.valor_restante)), 0);
 
+  // Despesa "a pagar" (dias futuros da rotina de alimentação) ainda não saiu do caixa.
   const despesas =
     (lancamentos.data ?? [])
-      .filter((l) => l.tipo === "despesa")
+      .filter((l) => l.tipo === "despesa" && l.status !== "a_pagar")
       .reduce((s, l) => s + Number(l.valor), 0) +
     (contas.data ?? [])
       .filter((c) => c.tipo === "a_pagar")
@@ -125,8 +126,14 @@ export function useResumoFinanceiro(fazendaId: string | undefined) {
       .filter((l) => l.tipo === "receita" && l.status === "a_receber")
       .reduce((s, l) => s + Number(l.valor), 0) + aReceberContas;
 
+  const pendente = (l: { tipo: string; status: string }) =>
+    (l.tipo === "receita" && l.status === "a_receber") ||
+    (l.tipo === "despesa" && l.status === "a_pagar");
+  const aPagarLancamentos = (lancamentos.data ?? [])
+    .filter((l) => l.tipo === "despesa" && l.status === "a_pagar")
+    .reduce((s, l) => s + Number(l.valor), 0);
   const emAtrasoLancamentos = (lancamentos.data ?? [])
-    .filter((l) => l.tipo === "receita" && l.status === "a_receber" && dataISO(l.data) < hoje)
+    .filter((l) => pendente(l) && dataISO(l.data) < hoje)
     .reduce((s, l) => s + Number(l.valor), 0);
   const emAtrasoContas = (parcelas.data ?? [])
     .filter((p) => statusExibicaoParcela(p) === "atrasado")
@@ -136,7 +143,7 @@ export function useResumoFinanceiro(fazendaId: string | undefined) {
     recebido,
     despesas,
     aReceber,
-    aPagar: aPagarContas,
+    aPagar: aPagarContas + aPagarLancamentos,
     saldoRealizado: recebido - despesas,
     emAtraso: emAtrasoContas + emAtrasoLancamentos,
   };

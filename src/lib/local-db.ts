@@ -676,7 +676,7 @@ export const db = {
       categoria?: string | null;
       formaPagamento?: string | null;
       parcelas?: number | null;
-      status?: "recebido" | "a_receber" | null;
+      status?: "recebido" | "a_receber" | "confirmado" | "a_pagar" | null;
       comprador?: string | null | undefined;
     }) {
       return editarLancamento({ data: { token: tokenSessao(), ...params } });
