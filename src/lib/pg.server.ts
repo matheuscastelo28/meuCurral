@@ -554,6 +554,19 @@ create table if not exists avisos_oficiais_envios (
   created_at timestamptz not null default now(),
   primary key (aviso_id, user_id)
 );
+-- Registros de acesso (Marco Civil, art. 15): guardados 6 meses, em sigilo.
+-- Sem chave estrangeira de propósito: precisam sobreviver à exclusão da conta.
+create table if not exists registros_acesso (
+  id bigserial primary key,
+  user_id uuid,
+  email text,
+  evento text not null,
+  ip text,
+  navegador text,
+  created_at timestamptz not null default now()
+);
+create index if not exists registros_acesso_data on registros_acesso (created_at);
+create index if not exists registros_acesso_usuario on registros_acesso (user_id, created_at);
 -- Quem lançou o manejo/registro reprodutivo (atendimentos do veterinário).
 alter table manejos add column if not exists criado_por uuid references usuarios(id) on delete set null;
 alter table reproducao add column if not exists criado_por uuid references usuarios(id) on delete set null;

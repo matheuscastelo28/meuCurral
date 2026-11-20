@@ -1,5 +1,6 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import type { ReactNode } from "react";
+import { EMPRESA } from "@/lib/empresa";
 
 export const Route = createFileRoute("/privacidade")({
   head: () => ({
@@ -20,17 +21,10 @@ export const Route = createFileRoute("/privacidade")({
   component: Privacidade,
 });
 
-const VERSAO = "2.0";
+const VERSAO = "2.1";
 const ATUALIZACAO = "novembro de 2026";
-const CONTATO = "contato@curralonline.com";
-
-// Dados do controlador, conforme o Certificado de Inova Simples (emitido em
-// 10/11/2026). Só dados públicos da empresa: não colocar CPF do titular.
-const CONTROLADOR = {
-  razaoSocial: "CURRAL ONLINE TECNOLOGIA E GESTÃO RURAL INOVA SIMPLES (I.S.)",
-  cnpj: "69.195.116/0001-20",
-  endereco: "Avenida Jesus Maria José, 2495, Jardim dos Monólitos, Quixadá/CE, CEP 63909-006",
-};
+const CONTATO = EMPRESA.contato;
+const CONTROLADOR = EMPRESA;
 
 function Titulo({ id, children }: { id: string; children: ReactNode }) {
   return (
@@ -71,7 +65,7 @@ const SECOES = [
   ["seguranca", "10. Segurança e incidentes"],
   ["cookies", "11. Cookies e armazenamento no navegador"],
   ["menores", "12. Menores de idade"],
-  ["encarregado", "13. Encarregado e contato"],
+  ["encarregado", "13. Canal de privacidade (encarregado)"],
   ["alteracoes", "14. Alterações desta política"],
   ["lei", "15. Lei aplicável e foro"],
 ] as const;
@@ -83,6 +77,14 @@ const BASES: [string, string][] = [
   ],
   [
     "Enviar e-mails do próprio serviço: código de confirmação, avisos de conta, segurança e assinatura",
+    "Execução de contrato (art. 7º, V)",
+  ],
+  [
+    "Avisar os compromissos do dia seguinte por e-mail e por notificação no celular, e repassar avisos oficiais do seu estado (você desliga em Configurações → Preferências)",
+    "Execução de contrato (art. 7º, V)",
+  ],
+  [
+    "Dar acesso à fazenda às pessoas que você convida (veterinário ou colaborador) e mostrar quem lançou cada registro",
     "Execução de contrato (art. 7º, V)",
   ],
   [
@@ -206,9 +208,21 @@ function Privacidade() {
             </>,
             <>
               <strong className="text-foreground">Dados técnicos:</strong> identificador da sessão
-              (que mantém você conectado), endereço IP, data e hora de acesso, navegador e
-              dispositivo, registrados pelo sistema e pelos provedores de hospedagem; e códigos de
-              confirmação de e-mail, que são temporários.
+              (que mantém você conectado); registros de acesso (data e hora, endereço IP, navegador
+              e o tipo de acesso: cadastro, entrada, uso, saída, troca de senha ou de e-mail e
+              exclusão da conta), exigidos pelo Marco Civil da Internet; registros técnicos dos
+              provedores de hospedagem; e códigos de confirmação de e-mail, que são temporários.
+            </>,
+            <>
+              <strong className="text-foreground">Avisos e notificações:</strong> sua escolha de
+              receber ou não o e-mail diário e, se você ativar a notificação no celular, o endereço
+              técnico que o navegador do aparelho gera para receber os avisos. Ao desativar, esse
+              endereço é apagado.
+            </>,
+            <>
+              <strong className="text-foreground">Acesso compartilhado:</strong> quando você convida
+              um veterinário ou colaborador, guardamos o e-mail convidado, o papel dele e quem
+              lançou cada manejo e registro de reprodução.
             </>,
             <>
               <strong className="text-foreground">Dados que ficam só no seu aparelho:</strong> os
@@ -266,8 +280,14 @@ function Privacidade() {
             "Amazon Web Services (AWS) — banco de dados e cópias de segurança.",
             "Resend — envio dos e-mails do serviço, como o código de confirmação.",
             "Mercado Pago — processamento da assinatura e dos pagamentos dos planos.",
+            "Serviço de notificações do navegador do seu aparelho (Google, Apple ou Mozilla, conforme o aparelho) — só se você ativar a notificação no celular; recebe o texto do aviso para entregá-lo.",
           ]}
         />
+        <p>
+          Dentro do sistema, as pessoas que você convida para a sua fazenda (veterinário ou
+          colaborador) passam a ver e lançar os dados dela. Você escolhe quem convida e pode remover
+          o acesso a qualquer momento em Configurações → Equipe e veterinário.
+        </p>
         <p>
           Também podemos fornecer dados quando houver obrigação legal, ordem judicial ou requisição
           de autoridade competente, ou para proteger direitos do Curral Online e dos usuários. Se
@@ -290,7 +310,8 @@ function Privacidade() {
             "Em Configurações você pode apagar os registros da fazenda ou excluir a conta. A exclusão apaga na hora, do banco de dados principal, a conta, a fazenda e todos os registros ligados a ela.",
             "Cópias de segurança automáticas do banco são eliminadas no ciclo do provedor, em até 35 dias.",
             "Cadastros não confirmados e códigos de confirmação expiram e são descartados.",
-            "Dados que a lei obriga a guardar (por exemplo, registros de acesso por 6 meses pelo Marco Civil e documentos fiscais da assinatura pelo prazo da legislação tributária) são mantidos só por esse prazo e só para essa finalidade.",
+            "Registros de acesso são guardados por 6 meses, em sigilo e em ambiente controlado, como exige o Marco Civil da Internet (art. 15), inclusive depois da exclusão da conta. Depois desse prazo são eliminados automaticamente. Só são fornecidos mediante ordem judicial (arts. 10 e 22 do Marco Civil).",
+            "Documentos fiscais da assinatura são mantidos pelo prazo da legislação tributária, só para essa finalidade.",
           ]}
         />
 
@@ -320,7 +341,8 @@ function Privacidade() {
           itens={[
             "Toda comunicação com o sistema usa conexão criptografada (HTTPS).",
             "Cada fazenda só acessa os próprios dados. Essa regra é aplicada no servidor, não apenas na tela.",
-            "Senhas são guardadas apenas em forma de hash, nunca em texto.",
+            "Senhas são guardadas com scrypt, um algoritmo feito para resistir a tentativas de adivinhação, com um valor aleatório (sal) diferente para cada conta. Nunca ficam guardadas em texto.",
+            "Registros de acesso permitem identificar e investigar uso indevido da conta. Em Configurações → Segurança você pode sair de todos os aparelhos.",
             "Credenciais do sistema ficam em ambiente protegido do provedor, com acesso restrito a quem precisa.",
             "O banco de dados tem cópias de segurança automáticas.",
           ]}
@@ -347,10 +369,17 @@ function Privacidade() {
           identificarmos um cadastro assim, ele será excluído.
         </p>
 
-        <Titulo id="encarregado">13. Encarregado pelo tratamento de dados e contato</Titulo>
+        <Titulo id="encarregado">13. Canal de privacidade (encarregado)</Titulo>
         <p>
-          O canal de comunicação com o encarregado e para qualquer assunto de privacidade é{" "}
-          <Email />, com o assunto “Privacidade”.
+          O Curral Online é uma startup enquadrada no Inova Simples e se considera agente de
+          tratamento de pequeno porte. Por isso, nos termos do art. 11 da Resolução CD/ANPD nº
+          2/2022, está dispensado de indicar um encarregado pelo tratamento de dados pessoais e
+          mantém, no lugar dele, um canal de comunicação com o titular.
+        </p>
+        <p>
+          Esse canal é o e-mail <Email />, com o assunto “Privacidade”. Por ele você exerce os
+          direitos do item 9, tira dúvidas sobre esta política e faz reclamações. Ele é atendido
+          pelos responsáveis pela empresa, que respondem em até 15 dias.
         </p>
 
         <Titulo id="alteracoes">14. Alterações desta política</Titulo>

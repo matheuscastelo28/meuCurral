@@ -543,7 +543,7 @@ export const consultar = createServerFn({ method: "POST" })
   });
 
 // ---------------------------------------------------------------------------
-// Autenticação (senha com hash SHA-256, sessão por token)
+// Autenticação (senha com scrypt em senha.server, sessão por token)
 // ---------------------------------------------------------------------------
 
 async function hashComPepper(prefixo: string, texto: string): Promise<string> {
@@ -552,10 +552,6 @@ async function hashComPepper(prefixo: string, texto: string): Promise<string> {
   return Array.from(new Uint8Array(digest))
     .map((b) => b.toString(16).padStart(2, "0"))
     .join("");
-}
-
-async function hashSenha(senha: string): Promise<string> {
-  return hashComPepper("mcd:", senha);
 }
 
 async function hashCodigo(codigo: string): Promise<string> {
@@ -658,7 +654,8 @@ export const cadastrar = createServerFn({ method: "POST" })
         await sql`delete from usuarios where id = ${existente.id}`;
       }
 
-      const senhaHash = await hashSenha(data.senha);
+      const { gerarHashSenha } = await import("./senha.server");
+      const senhaHash = await gerarHashSenha(data.senha);
       const nome = data.nome ?? null;
       const objetivo = data.objetivo ?? null;
       const codigo = gerarCodigo();
@@ -722,11 +719,15 @@ export const entrar = createServerFn({ method: "POST" })
       const { conexao } = await import("./pg.server");
       const sql = await conexao();
       const email = data.email.trim().toLowerCase();
-      const senhaHash = await hashSenha(data.senha);
-      const usuarios: any[] = await sql`
-        select id, email, nome, objetivo, email_verificado from usuarios
-        where email = ${email} and senha_hash = ${senhaHash} limit 1`;
-      const usuario = usuarios[0];
+      const { conferirSenha, gerarHashSenha, gastarTempoDeConferencia } =
+        await import("./senha.server");
+      const encontrados: any[] = await sql`
+        select id, email, nome, objetivo, email_verificado, senha_hash from usuarios
+        where email = ${email} limit 1`;
+      const conferido = encontrados[0]
+        ? await conferirSenha(data.senha, encontrados[0]["senha_hash"])
+        : null;
+      const usuario = conferido?.ok ? encontrados[0] : undefined;
 
       if (!usuario) {
         // Sem conta confirmada com essa senha — mas pode existir um
@@ -736,10 +737,17 @@ export const entrar = createServerFn({ method: "POST" })
           nome: string | null;
           expira_em: Date;
           enviado_em: Date;
+          senha_hash: string;
         }[] = await sql`
-            select email, nome, expira_em, enviado_em from cadastros_pendentes
-            where email = ${email} and senha_hash = ${senhaHash} limit 1`;
-        const pendente = pendentes[0];
+            select email, nome, expira_em, enviado_em, senha_hash from cadastros_pendentes
+            where email = ${email} limit 1`;
+        // E-mail sem conta nem cadastro: gasta o mesmo tempo, para a resposta
+        // não denunciar quais e-mails têm conta.
+        if (!encontrados[0] && !pendentes[0]) await gastarTempoDeConferencia(data.senha);
+        const pendente =
+          pendentes[0] && (await conferirSenha(data.senha, pendentes[0].senha_hash)).ok
+            ? pendentes[0]
+            : undefined;
         if (!pendente) {
           return {
             data: { user: null, session: null },
@@ -785,8 +793,15 @@ export const entrar = createServerFn({ method: "POST" })
         };
       }
 
+      // Senha antiga (SHA-256 sem sal): refaz em scrypt agora que temos o texto.
+      if (conferido?.atualizar) {
+        await sql`update usuarios set senha_hash = ${await gerarHashSenha(data.senha)},
+                  updated_at = now() where id = ${usuario["id"]}`;
+      }
       const token = crypto.randomUUID();
       await sql`insert into sessoes (token, user_id) values (${token}, ${usuario["id"]})`;
+      const { registrarAcesso } = await import("./acesso.server");
+      await registrarAcesso(sql, { userId: usuario["id"], email, evento: "login" });
       const user = paraSessao(usuario);
       return { data: { user, session: { user, access_token: token } }, error: null };
     } catch (erro) {
@@ -959,6 +974,12 @@ export const verificarCodigoEmail = createServerFn({ method: "POST" })
 
       const token = crypto.randomUUID();
       await sql`insert into sessoes (token, user_id) values (${token}, ${resultado.usuario.id})`;
+      const { registrarAcesso } = await import("./acesso.server");
+      await registrarAcesso(sql, {
+        userId: resultado.usuario.id,
+        email: resultado.usuario.email,
+        evento: "cadastro",
+      });
       const user = paraSessao(resultado.usuario);
       return { data: { user, session: { user, access_token: token } }, error: null };
     } catch (erro) {
@@ -981,6 +1002,10 @@ export const usuarioAtual = createServerFn({ method: "POST" })
         from sessoes s join usuarios u on u.id = s.user_id
         where s.token = ${data.token} limit 1`;
       const usuario = usuarios[0];
+      if (usuario) {
+        const { registrarAcesso } = await import("./acesso.server");
+        await registrarAcesso(sql, { userId: usuario.id, email: usuario.email, evento: "uso" });
+      }
       return { data: { user: usuario ? paraSessao(usuario) : null }, error: null };
     } catch (erro) {
       return {
@@ -997,6 +1022,14 @@ export const sair = createServerFn({ method: "POST" })
       try {
         const { conexao } = await import("./pg.server");
         const sql = await conexao();
+        const quem = await usuarioIdDaSessao(sql, data.token);
+        if (quem) {
+          const { registrarAcesso } = await import("./acesso.server");
+          await registrarAcesso(sql, {
+            userId: quem,
+            evento: data.escopo === "global" ? "logout_todos" : "logout",
+          });
+        }
         if (data.escopo === "global") {
           // "Sair de todos os aparelhos": apaga todas as sessões do usuário,
           // não só a que fez a chamada.
@@ -1027,12 +1060,20 @@ export const atualizarUsuario = createServerFn({ method: "POST" })
         await sql`select user_id from sessoes where token = ${data.token} limit 1`;
       const sessao = sessoes[0];
       if (!sessao) return { data: { user: null }, error: { message: "Sem sessão ativa." } };
+      const { registrarAcesso } = await import("./acesso.server");
       if (data.password) {
-        const senhaHash = await hashSenha(data.password);
+        const { gerarHashSenha } = await import("./senha.server");
+        const senhaHash = await gerarHashSenha(data.password);
         await sql`update usuarios set senha_hash = ${senhaHash}, updated_at = now() where id = ${sessao["user_id"]}`;
+        await registrarAcesso(sql, { userId: sessao["user_id"], evento: "troca_senha" });
       }
       if (data.email) {
         await sql`update usuarios set email = ${data.email.trim().toLowerCase()}, updated_at = now() where id = ${sessao["user_id"]}`;
+        await registrarAcesso(sql, {
+          userId: sessao["user_id"],
+          email: data.email.trim().toLowerCase(),
+          evento: "troca_email",
+        });
       }
       const usuarios: any[] =
         await sql`select id, email, nome, objetivo from usuarios where id = ${sessao["user_id"]}`;
@@ -1057,6 +1098,15 @@ export const excluirConta = createServerFn({ method: "POST" })
         await sql`select user_id from sessoes where token = ${data.token} limit 1`;
       const sessao = sessoes[0];
       if (sessao) {
+        // O registro de acesso fica (obrigação legal de 6 meses); o resto sai.
+        const dono: { email: string }[] =
+          await sql`select email from usuarios where id = ${sessao["user_id"]}`;
+        const { registrarAcesso } = await import("./acesso.server");
+        await registrarAcesso(sql, {
+          userId: sessao["user_id"],
+          email: dono[0]?.email ?? null,
+          evento: "exclusao_conta",
+        });
         // O cascade apaga perfil, sessões, fazendas e tudo que é da fazenda.
         await sql`delete from usuarios where id = ${sessao["user_id"]}`;
       }
