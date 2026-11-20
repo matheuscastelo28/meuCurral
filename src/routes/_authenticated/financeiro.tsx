@@ -792,7 +792,7 @@ function Financeiro() {
       </div>
 
       {despesasPorCategoria.length > 0 ? (
-        <div className="mb-5 grid gap-4 md:grid-cols-2">
+        <div className="mb-5 grid grid-cols-[minmax(0,1fr)] gap-4 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
           <section className="rounded-xl border border-border bg-card p-4">
             <h2 className="text-base font-semibold">Para onde foi o dinheiro</h2>
             <ul className="mt-3 space-y-2.5">
@@ -805,7 +805,9 @@ function Financeiro() {
                         className="size-2.5 shrink-0 rounded-full"
                         style={{ background: cor }}
                       />
-                      <span className="truncate">{rotulo}</span>
+                      <span className="truncate" title={rotulo}>
+                        {rotulo}
+                      </span>
                     </span>
                     <span className="shrink-0 font-semibold tabular-nums">
                       {moeda(valor)}
