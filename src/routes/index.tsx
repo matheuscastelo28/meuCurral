@@ -11,7 +11,7 @@ import {
   ShieldCheck,
   Weight,
 } from "lucide-react";
-import { PLANOS } from "@/lib/planos";
+import { INCLUIDO_EM_TODOS, mesesGratisNoAnual, PLANOS } from "@/lib/planos";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
@@ -266,6 +266,9 @@ function Landing() {
                       currency: "BRL",
                     })}{" "}
                     por ano
+                    {mesesGratisNoAnual(plano) > 0
+                      ? ` (${mesesGratisNoAnual(plano)} meses grátis)`
+                      : null}
                   </p>
                 ) : null}
                 <ul className="mt-4 space-y-2">
@@ -279,6 +282,17 @@ function Landing() {
               </article>
             );
           })}
+        </div>
+        <div className="mt-6 rounded-xl border border-border bg-card p-5">
+          <h3 className="text-sm font-semibold">Em todos os planos</h3>
+          <ul className="mt-3 grid gap-2 sm:grid-cols-2">
+            {INCLUIDO_EM_TODOS.map((item) => (
+              <li key={item} className="flex gap-2 text-sm text-muted-foreground">
+                <Check className="mt-0.5 size-4 shrink-0 text-primary" aria-hidden="true" />
+                {item}
+              </li>
+            ))}
+          </ul>
         </div>
       </section>
 
