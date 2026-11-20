@@ -80,6 +80,9 @@ export const Route = createFileRoute("/_authenticated/leite")({
       { name: "robots", content: "noindex" },
     ],
   }),
+  // ?novo=1 (atalho "Leite" do Início) já abre o formulário de produção.
+  validateSearch: (search: Record<string, unknown>): { novo?: boolean } =>
+    search["novo"] === true || search["novo"] === "1" ? { novo: true } : {},
   component: Leite,
 });
 
@@ -91,6 +94,10 @@ function Leite() {
   const queryClient = useQueryClient();
   const hoje = hojeISO();
   const [todosIndices, setTodosIndices] = useState(false);
+  // O formulário de produção fica recolhido atrás do botão "Registrar produção".
+  // Continua aberto depois de salvar, para lançar uma vaca atrás da outra.
+  const { novo: novoNaUrl } = Route.useSearch();
+  const [registroAberto, setRegistroAberto] = useState(!!novoNaUrl);
   const [modoRegistro, setModoRegistro] = useState<"vaca" | "lote">("vaca");
   const [data, setData] = useState(hoje);
   const [litros, setLitros] = useState("");
@@ -624,202 +631,224 @@ function Leite() {
   const nomePlanoIndicadores = planoMinimoDo("indicadores").nome;
 
   return (
-    <AppShell titulo="Leite">
-      <div className="mb-5 rounded-xl border border-border bg-card p-4">
-        <h2 className="text-base font-semibold">Registrar produção de leite</h2>
-        <div className="mt-3 flex gap-2">
-          <Button
-            type="button"
-            size="sm"
-            variant={modoRegistro === "vaca" ? "default" : "outline"}
-            onClick={() => setModoRegistro("vaca")}
-          >
-            Por vaca
+    <AppShell
+      titulo="Leite"
+      acao={
+        registroAberto ? undefined : (
+          <Button onClick={() => setRegistroAberto(true)}>
+            <Plus className="size-4" aria-hidden="true" />
+            Registrar produção
           </Button>
-          <Button
-            type="button"
-            size="sm"
-            variant={modoRegistro === "lote" ? "default" : "outline"}
-            onClick={() => setModoRegistro("lote")}
-          >
-            Por lote
-          </Button>
+        )
+      }
+    >
+      {registroAberto ? (
+        <div className="mb-5 rounded-xl border border-border bg-card p-4">
+          <div className="flex items-center justify-between gap-3">
+            <h2 className="text-base font-semibold">Registrar produção de leite</h2>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={() => setRegistroAberto(false)}
+            >
+              Fechar
+            </Button>
+          </div>
+          <div className="mt-3 flex gap-2">
+            <Button
+              type="button"
+              size="sm"
+              variant={modoRegistro === "vaca" ? "default" : "outline"}
+              onClick={() => setModoRegistro("vaca")}
+            >
+              Por vaca
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant={modoRegistro === "lote" ? "default" : "outline"}
+              onClick={() => setModoRegistro("lote")}
+            >
+              Por lote
+            </Button>
+          </div>
+
+          {misturaIndividualELote ? (
+            <p className="mt-3 rounded-lg bg-warning/10 px-3 py-2 text-xs text-warning">
+              Hoje já tem produção registrada por vaca e por lote — confira se não é a mesma
+              produção contada duas vezes.
+            </p>
+          ) : null}
+
+          {modoRegistro === "vaca" ? (
+            <form
+              className="mt-4 grid gap-3 sm:grid-cols-4"
+              onSubmit={(e) => {
+                e.preventDefault();
+                salvar.mutate();
+              }}
+            >
+              <div className="space-y-1.5">
+                <Label htmlFor="animal">Vaca</Label>
+                <select
+                  id="animal"
+                  value={animalId}
+                  onChange={(e) => setAnimalId(e.target.value)}
+                  className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+                  required
+                >
+                  <option value="" disabled>
+                    Selecione
+                  </option>
+                  {(animaisLactantes.data ?? []).map((a) => (
+                    <option key={a.id} value={a.id}>
+                      {a.nome || a.brinco || "Sem nome"}
+                      {a.nome && a.brinco ? ` (${a.brinco})` : ""}
+                    </option>
+                  ))}
+                </select>
+                {(animaisLactantes.data ?? []).length === 0 ? (
+                  <p className="text-xs text-muted-foreground">
+                    Nenhuma vaca com status "lactação" cadastrada.
+                  </p>
+                ) : null}
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="data">Data</Label>
+                <Input
+                  id="data"
+                  type="date"
+                  value={data}
+                  onChange={(e) => setData(e.target.value)}
+                  required
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="litros">Quantidade (L)</Label>
+                <Input
+                  id="litros"
+                  type="number"
+                  step="0.1"
+                  min="0"
+                  value={litros}
+                  onChange={(e) => setLitros(e.target.value)}
+                  required
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="turno">Turno</Label>
+                <select
+                  id="turno"
+                  value={turno}
+                  onChange={(e) => setTurno(e.target.value)}
+                  className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+                >
+                  <option value="manha">Manhã</option>
+                  <option value="tarde">Tarde</option>
+                  <option value="noite">Noite</option>
+                </select>
+              </div>
+              <div className="flex items-end sm:col-span-4">
+                <Button type="submit" disabled={salvar.isPending}>
+                  <Plus className="size-4" aria-hidden="true" />
+                  Registrar
+                </Button>
+              </div>
+              <p className="text-xs text-muted-foreground sm:col-span-4">
+                Total registrado hoje: {totalHoje.toLocaleString("pt-BR")} L
+              </p>
+            </form>
+          ) : (
+            <form
+              className="mt-4 grid gap-3 sm:grid-cols-5"
+              onSubmit={(e) => {
+                e.preventDefault();
+                salvar.mutate();
+              }}
+            >
+              <div className="space-y-1.5">
+                <Label htmlFor="lote">Lote</Label>
+                <select
+                  id="lote"
+                  value={loteSelecionado}
+                  onChange={(e) => setLoteSelecionado(e.target.value)}
+                  className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+                  required
+                >
+                  <option value="" disabled>
+                    Selecione
+                  </option>
+                  {lotesDisponiveis.map((l) => (
+                    <option key={l} value={l}>
+                      {l}
+                    </option>
+                  ))}
+                </select>
+                {lotesDisponiveis.length === 0 ? (
+                  <p className="text-xs text-muted-foreground">
+                    Nenhum lote com vaca em lactação ou seca — defina o lote e a situação no
+                    cadastro dos animais.
+                  </p>
+                ) : null}
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="lote-litros">Quantidade total (L)</Label>
+                <Input
+                  id="lote-litros"
+                  type="number"
+                  step="0.1"
+                  min="0"
+                  value={loteLitros}
+                  onChange={(e) => setLoteLitros(e.target.value)}
+                  required
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="lote-data">Data</Label>
+                <Input
+                  id="lote-data"
+                  type="date"
+                  value={loteData}
+                  onChange={(e) => setLoteData(e.target.value)}
+                  required
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="lote-turno">Turno</Label>
+                <select
+                  id="lote-turno"
+                  value={loteTurno}
+                  onChange={(e) => setLoteTurno(e.target.value)}
+                  className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+                >
+                  <option value="manha">Manhã</option>
+                  <option value="tarde">Tarde</option>
+                  <option value="noite">Noite</option>
+                </select>
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="lote-observacao">Observação</Label>
+                <Input
+                  id="lote-observacao"
+                  value={loteObservacao}
+                  onChange={(e) => setLoteObservacao(e.target.value)}
+                  placeholder="Opcional"
+                />
+              </div>
+              <div className="flex items-end sm:col-span-5">
+                <Button type="submit" disabled={salvar.isPending || lotesDisponiveis.length === 0}>
+                  <Plus className="size-4" aria-hidden="true" />
+                  Registrar
+                </Button>
+              </div>
+              <p className="text-xs text-muted-foreground sm:col-span-5">
+                Total registrado hoje: {totalHoje.toLocaleString("pt-BR")} L
+              </p>
+            </form>
+          )}
         </div>
-
-        {misturaIndividualELote ? (
-          <p className="mt-3 rounded-lg bg-warning/10 px-3 py-2 text-xs text-warning">
-            Hoje já tem produção registrada por vaca e por lote — confira se não é a mesma produção
-            contada duas vezes.
-          </p>
-        ) : null}
-
-        {modoRegistro === "vaca" ? (
-          <form
-            className="mt-4 grid gap-3 sm:grid-cols-4"
-            onSubmit={(e) => {
-              e.preventDefault();
-              salvar.mutate();
-            }}
-          >
-            <div className="space-y-1.5">
-              <Label htmlFor="animal">Vaca</Label>
-              <select
-                id="animal"
-                value={animalId}
-                onChange={(e) => setAnimalId(e.target.value)}
-                className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
-                required
-              >
-                <option value="" disabled>
-                  Selecione
-                </option>
-                {(animaisLactantes.data ?? []).map((a) => (
-                  <option key={a.id} value={a.id}>
-                    {a.nome || a.brinco || "Sem nome"}
-                    {a.nome && a.brinco ? ` (${a.brinco})` : ""}
-                  </option>
-                ))}
-              </select>
-              {(animaisLactantes.data ?? []).length === 0 ? (
-                <p className="text-xs text-muted-foreground">
-                  Nenhuma vaca com status "lactação" cadastrada.
-                </p>
-              ) : null}
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="data">Data</Label>
-              <Input
-                id="data"
-                type="date"
-                value={data}
-                onChange={(e) => setData(e.target.value)}
-                required
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="litros">Quantidade (L)</Label>
-              <Input
-                id="litros"
-                type="number"
-                step="0.1"
-                min="0"
-                value={litros}
-                onChange={(e) => setLitros(e.target.value)}
-                required
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="turno">Turno</Label>
-              <select
-                id="turno"
-                value={turno}
-                onChange={(e) => setTurno(e.target.value)}
-                className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
-              >
-                <option value="manha">Manhã</option>
-                <option value="tarde">Tarde</option>
-                <option value="noite">Noite</option>
-              </select>
-            </div>
-            <div className="flex items-end sm:col-span-4">
-              <Button type="submit" disabled={salvar.isPending}>
-                <Plus className="size-4" aria-hidden="true" />
-                Registrar
-              </Button>
-            </div>
-            <p className="text-xs text-muted-foreground sm:col-span-4">
-              Total registrado hoje: {totalHoje.toLocaleString("pt-BR")} L
-            </p>
-          </form>
-        ) : (
-          <form
-            className="mt-4 grid gap-3 sm:grid-cols-5"
-            onSubmit={(e) => {
-              e.preventDefault();
-              salvar.mutate();
-            }}
-          >
-            <div className="space-y-1.5">
-              <Label htmlFor="lote">Lote</Label>
-              <select
-                id="lote"
-                value={loteSelecionado}
-                onChange={(e) => setLoteSelecionado(e.target.value)}
-                className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
-                required
-              >
-                <option value="" disabled>
-                  Selecione
-                </option>
-                {lotesDisponiveis.map((l) => (
-                  <option key={l} value={l}>
-                    {l}
-                  </option>
-                ))}
-              </select>
-              {lotesDisponiveis.length === 0 ? (
-                <p className="text-xs text-muted-foreground">
-                  Nenhum lote com vaca em lactação ou seca — defina o lote e a situação no cadastro
-                  dos animais.
-                </p>
-              ) : null}
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="lote-litros">Quantidade total (L)</Label>
-              <Input
-                id="lote-litros"
-                type="number"
-                step="0.1"
-                min="0"
-                value={loteLitros}
-                onChange={(e) => setLoteLitros(e.target.value)}
-                required
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="lote-data">Data</Label>
-              <Input
-                id="lote-data"
-                type="date"
-                value={loteData}
-                onChange={(e) => setLoteData(e.target.value)}
-                required
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="lote-turno">Turno</Label>
-              <select
-                id="lote-turno"
-                value={loteTurno}
-                onChange={(e) => setLoteTurno(e.target.value)}
-                className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
-              >
-                <option value="manha">Manhã</option>
-                <option value="tarde">Tarde</option>
-                <option value="noite">Noite</option>
-              </select>
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="lote-observacao">Observação</Label>
-              <Input
-                id="lote-observacao"
-                value={loteObservacao}
-                onChange={(e) => setLoteObservacao(e.target.value)}
-                placeholder="Opcional"
-              />
-            </div>
-            <div className="flex items-end sm:col-span-5">
-              <Button type="submit" disabled={salvar.isPending || lotesDisponiveis.length === 0}>
-                <Plus className="size-4" aria-hidden="true" />
-                Registrar
-              </Button>
-            </div>
-            <p className="text-xs text-muted-foreground sm:col-span-5">
-              Total registrado hoje: {totalHoje.toLocaleString("pt-BR")} L
-            </p>
-          </form>
-        )}
-      </div>
+      ) : null}
 
       {/* Os 5 números do dia a dia à vista; o resto fica em "Ver todos". */}
       <div className="mb-3 grid auto-rows-fr grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5 [&>*:last-child:nth-child(odd)]:col-span-2 sm:[&>*:last-child:nth-child(odd)]:col-span-1">
