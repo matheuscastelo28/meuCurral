@@ -579,6 +579,10 @@ update reproducao r set criado_por = f.dono_id
 
 -- Plano anual (cobrado uma vez por ano) ou mensal.
 alter table assinaturas add column if not exists periodo text not null default 'mensal';
+-- Quando a assinatura ficou ativa e, se cancelada, até quando o período já
+-- pago vale (o plano só volta ao Grátis depois dessa data).
+alter table assinaturas add column if not exists ativada_em timestamptz;
+alter table assinaturas add column if not exists acesso_ate timestamptz;
 
 -- O plano Essencial passou a se chamar Caderno.
 update fazendas set plano = 'caderno' where plano = 'essencial';

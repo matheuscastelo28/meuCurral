@@ -45,7 +45,19 @@ export const Route = createFileRoute("/api/cron-avisos")({
             const { eliminarRegistrosVencidos } = await import("@/lib/acesso.server");
             registrosEliminados = await eliminarRegistrosVencidos(sql);
           }
-          return json({ ok: true, ...resumo, avisosOficiais, registrosEliminados });
+          // Assinaturas canceladas cujo período pago acabou voltam ao Grátis.
+          let periodosEncerrados = 0;
+          if (url.searchParams.get("dry") !== "1") {
+            const { encerrarPeriodosVencidos } = await import("@/lib/mercadopago.server");
+            periodosEncerrados = await encerrarPeriodosVencidos(sql);
+          }
+          return json({
+            ok: true,
+            ...resumo,
+            avisosOficiais,
+            registrosEliminados,
+            periodosEncerrados,
+          });
         } catch (e) {
           console.error("cron-avisos falhou", e);
           return json({ ok: false, erro: "falha ao enviar os avisos" }, 500);

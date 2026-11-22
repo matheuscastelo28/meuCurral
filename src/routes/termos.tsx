@@ -93,9 +93,9 @@ function Termos() {
         </p>
         <p>
           Você pode cancelar a qualquer momento em Configurações → Plano e uso, sem multa. O
-          cancelamento interrompe as próximas cobranças e a conta volta ao plano Grátis, com todos
-          os seus dados preservados. Se você cancelar no meio de um período já pago, escreva para{" "}
-          <Email /> para combinarmos o acesso até o fim do período ou a devolução proporcional.
+          cancelamento interrompe as próximas cobranças, e você continua usando o plano até o fim do
+          período já pago (o mês ou o ano). Depois disso a conta volta ao plano Grátis, com todos os
+          seus dados preservados.
         </p>
         <p>
           Nas contratações pela internet você pode desistir em até 7 dias da contratação, com a
