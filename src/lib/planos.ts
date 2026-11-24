@@ -21,6 +21,8 @@ export interface Recursos {
   alertasEmail: boolean;
   /** Exportar os próprios dados: direito do titular (LGPD), vale para todos. */
   exportarDados: boolean;
+  /** Convidar veterinário (até 2 por fazenda) com relatório mensal de atendimentos. */
+  veterinarioConvidado: boolean;
   geolocalizacao: boolean;
 }
 
@@ -51,6 +53,7 @@ const TUDO: Recursos = {
   relatoriosCompletos: true,
   alertasEmail: true,
   exportarDados: true,
+  veterinarioConvidado: true,
   geolocalizacao: false,
 };
 
@@ -72,6 +75,7 @@ export const PLANOS: Plano[] = [
       relatoriosCompletos: false,
       alertasEmail: false,
       exportarDados: true,
+      veterinarioConvidado: false,
       geolocalizacao: false,
     },
     beneficios: [
@@ -103,6 +107,7 @@ export const PLANOS: Plano[] = [
       "Indicadores (GMD, DEL, taxa de prenhez) e índices avançados",
       "Financeiro completo: contas, parcelas e custo por lote e animal",
       "Relatórios em PDF e Excel com cabeçalho da fazenda",
+      "Veterinário convidado (até 2), com relatório mensal de atendimentos",
       "Alertas no app, por e-mail às 6h e no celular",
     ],
   },
@@ -126,6 +131,7 @@ export const PLANOS: Plano[] = [
       "Confinamento completo: GMD, conversão, custo/kg e arroba",
       "Financeiro completo: contas, parcelas e custo por lote",
       "Relatórios em PDF e Excel com cabeçalho da fazenda",
+      "Veterinário convidado (até 2), com relatório mensal de atendimentos",
       "Alertas no app, por e-mail às 6h e no celular",
     ],
   },
@@ -143,6 +149,7 @@ export const PLANOS: Plano[] = [
       "Usuários ilimitados na mesma fazenda",
       "Tudo do Profissional: reprodução, confinamento e financeiro completos",
       "Relatórios em PDF e Excel com cabeçalho da fazenda",
+      "Veterinário convidado (até 2), com relatório mensal de atendimentos",
       "Alertas no app, por e-mail às 6h e no celular",
       "Suporte prioritário",
       "Implantação acompanhada pela nossa equipe",
@@ -152,11 +159,10 @@ export const PLANOS: Plano[] = [
 
 /**
  * O que vale em todos os planos (aparece uma vez, abaixo dos cartões, em vez
- * de repetir em cada um): convite de veterinário (até 2 por fazenda, com
- * relatório mensal), vacinas sugeridas, avisos oficiais e exportação dos dados.
+ * de repetir em cada um): vacinas sugeridas, avisos oficiais e exportação
+ * dos dados.
  */
 export const INCLUIDO_EM_TODOS = [
-  "Veterinário convidado (até 2 por fazenda), com relatório mensal de atendimentos",
   "Vacinas sugeridas por espécie, idade e categoria",
   "Avisos oficiais do seu estado",
   "Exportação dos seus dados a qualquer momento",

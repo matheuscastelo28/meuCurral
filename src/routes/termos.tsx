@@ -67,12 +67,13 @@ function Termos() {
 
         <Titulo>2. Acesso compartilhado</Titulo>
         <p>
-          O dono da fazenda pode convidar um veterinário ou colaboradores, dentro do limite do
-          plano. Quem aceita o convite passa a ver e lançar dados da fazenda, e o sistema mostra
-          quem lançou cada manejo e registro de reprodução. O dono escolhe quem convida, responde
-          pelo uso que essas pessoas fazem da conta e pode remover o acesso a qualquer momento em
-          Configurações → Equipe e veterinário. Cada fazenda acessa só os próprios dados, nunca os
-          de outra conta.
+          Nos planos que incluem esse recurso, o dono da fazenda pode convidar até 2 veterinários (a
+          partir do plano Caderno) e colaboradores (a partir do plano Profissional, dentro do limite
+          de usuários do plano). Quem aceita o convite passa a ver e lançar dados da fazenda, e o
+          sistema mostra quem lançou cada manejo e registro de reprodução. O dono escolhe quem
+          convida, responde pelo uso que essas pessoas fazem da conta e pode remover o acesso a
+          qualquer momento em Configurações → Equipe e veterinário. Cada fazenda acessa só os
+          próprios dados, nunca os de outra conta.
         </p>
 
         <Titulo>3. Fase de testes</Titulo>

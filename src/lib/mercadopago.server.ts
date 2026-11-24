@@ -11,6 +11,7 @@
  * um aviso de webhook só diz "olhe a assinatura X", e é a resposta da API
  * que decide o plano da fazenda. Assim um aviso forjado não libera nada.
  */
+import type { TransactionSql } from "postgres";
 import type { Sql } from "./pg.server";
 
 export type Preapproval = {
@@ -271,6 +272,26 @@ type LinhaAssinatura = {
 };
 
 /**
+ * A fazenda volta ao plano Grátis. Como o Grátis não inclui veterinário
+ * convidado, os veterinários saem da fazenda e os convites pendentes deles
+ * são cancelados (colaboradores e dados da fazenda ficam como estavam).
+ * Se o dono assinar de novo, é só convidar outra vez.
+ */
+async function voltarAoGratis(
+  tx: TransactionSql,
+  fazendaId: string,
+  planoAnterior: string,
+): Promise<void> {
+  const mudou = await tx`
+    update fazendas set plano = 'gratis', updated_at = now()
+    where id = ${fazendaId} and plano = ${planoAnterior} returning id`;
+  if (mudou.length === 0) return;
+  await tx`delete from fazenda_membros where fazenda_id = ${fazendaId} and papel = 'veterinario'`;
+  await tx`update convites set status = 'cancelado', updated_at = now()
+           where fazenda_id = ${fazendaId} and papel = 'veterinario' and status = 'pendente'`;
+}
+
+/**
  * Leva o status que o Mercado Pago informou pra assinatura e pro plano da
  * fazenda: ativa → plano da assinatura; pausada (cobrança falhou) → volta ao
  * Grátis; cancelada → o plano continua até o fim do período já pago
@@ -321,8 +342,7 @@ export async function aplicarPreapproval(sql: Sql, pre: Preapproval): Promise<st
         select count(*)::int as n from assinaturas
         where fazenda_id = ${assinatura.fazenda_id} and status = 'ativa' and id <> ${assinatura.id}`;
       if ((outras[0]?.n ?? 0) === 0) {
-        await tx`update fazendas set plano = 'gratis', updated_at = now()
-                 where id = ${assinatura.fazenda_id} and plano = ${assinatura.plano}`;
+        await voltarAoGratis(tx, assinatura.fazenda_id, assinatura.plano);
       }
     }
   });
@@ -345,8 +365,7 @@ export async function encerrarPeriodosVencidos(sql: Sql, fazendaId?: string): Pr
         select count(*)::int as n from assinaturas
         where fazenda_id = ${a.fazenda_id} and status = 'ativa' and id <> ${a.id}`;
       if ((outras[0]?.n ?? 0) === 0) {
-        await tx`update fazendas set plano = 'gratis', updated_at = now()
-                 where id = ${a.fazenda_id} and plano = ${a.plano}`;
+        await voltarAoGratis(tx, a.fazenda_id, a.plano);
       }
       await tx`update assinaturas set acesso_ate = null, updated_at = now() where id = ${a.id}`;
     });

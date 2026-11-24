@@ -146,6 +146,7 @@ export function SecaoPlano() {
     },
     { rotulo: "Relatórios em PDF e Excel com cabeçalho da fazenda", tem: r.relatoriosCompletos },
     { rotulo: "Alertas por e-mail", tem: r.alertasEmail },
+    { rotulo: "Veterinário convidado, com relatório mensal", tem: r.veterinarioConvidado },
     { rotulo: "Exportar seus dados", tem: r.exportarDados },
     {
       rotulo: `${Number.isFinite(plano.limiteUsuarios) ? plano.limiteUsuarios : "Vários"} ${plano.limiteUsuarios === 1 ? "usuário" : "usuários"} na fazenda`,
