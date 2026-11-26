@@ -216,7 +216,9 @@ function Inicio() {
   }[] = [
     { rotulo: "Pesagem", icon: Weight, to: "/pesagem" },
     { rotulo: "Vacina", icon: Syringe, to: "/rebanho", search: { sanidade: true } },
-    ...(soOvino ? [] : [{ rotulo: "Leite", icon: Milk, to: "/leite" as const }]),
+    ...(soOvino
+      ? []
+      : [{ rotulo: "Leite", icon: Milk, to: "/leite" as const, search: { novo: true } }]),
     { rotulo: "Lançamento", icon: Receipt, to: "/financeiro", search: { novo: true } },
   ];
 

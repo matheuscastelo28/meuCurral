@@ -45,12 +45,25 @@ export function SecaoEquipe() {
 
   const atualizar = () => queryClient.invalidateQueries({ queryKey: ["equipe"] });
 
+  // Quem pode ser convidado depende do plano: veterinário (Caderno em diante)
+  // e colaborador (planos com mais de 1 usuário).
+  const limites = equipe.data?.limites;
+  const papeisLiberados = limites
+    ? [
+        ...(limites.veterinarios.liberado ? ["veterinario"] : []),
+        ...(limites.colaboradores.max === null || limites.colaboradores.max > 0
+          ? ["colaborador"]
+          : []),
+      ]
+    : ["veterinario", "colaborador"];
+  const papelEfetivo = papeisLiberados.includes(papel) ? papel : (papeisLiberados[0] ?? papel);
+
   const convidar = useMutation({
     mutationFn: async () => {
       const { data, error } = await db.equipe.convidar({
         fazendaId: fazenda!.id,
         email,
-        papel,
+        papel: papelEfetivo,
       });
       if (error) throw new Error(error.message);
       return data!;
@@ -114,44 +127,64 @@ export function SecaoEquipe() {
 
   return (
     <CartaoConfig id="equipe" titulo="Equipe e veterinário">
-      <form
-        className="grid gap-3 sm:grid-cols-[1fr_auto_auto] sm:items-end"
-        onSubmit={(e) => {
-          e.preventDefault();
-          convidar.mutate();
-        }}
-      >
-        <div className="space-y-1.5">
-          <Label htmlFor="convite-email">E-mail de quem vai acessar</Label>
-          <Input
-            id="convite-email"
-            type="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            required
-          />
+      {limites && papeisLiberados.length === 0 ? (
+        <div className="rounded-lg border border-border bg-accent p-3 text-sm">
+          <p className="font-medium">Convidar pessoas faz parte dos planos pagos</p>
+          <p className="mt-1 text-xs text-muted-foreground">
+            O veterinário convidado (com relatório mensal de atendimentos) faz parte do plano{" "}
+            {limites.veterinarios.planoMinimo}, e os colaboradores fazem parte do plano
+            Profissional. Seu plano atual é o {d?.plano}.{" "}
+            <a href="#plano" className="text-primary underline underline-offset-4">
+              Ver planos
+            </a>
+          </p>
         </div>
-        <div className="space-y-1.5">
-          <Label htmlFor="convite-papel">Como</Label>
-          <select
-            id="convite-papel"
-            value={papel}
-            onChange={(e) => setPapel(e.target.value)}
-            className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
-          >
-            <option value="veterinario">Veterinário</option>
-            <option value="colaborador">Colaborador</option>
-          </select>
-        </div>
-        <Button type="submit" disabled={convidar.isPending}>
-          <UserPlus className="size-4" aria-hidden="true" />
-          {convidar.isPending ? "Convidando..." : "Convidar"}
-        </Button>
-      </form>
-      {lim ? (
+      ) : (
+        <form
+          className="grid gap-3 sm:grid-cols-[1fr_auto_auto] sm:items-end"
+          onSubmit={(e) => {
+            e.preventDefault();
+            convidar.mutate();
+          }}
+        >
+          <div className="space-y-1.5">
+            <Label htmlFor="convite-email">E-mail de quem vai acessar</Label>
+            <Input
+              id="convite-email"
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              required
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="convite-papel">Como</Label>
+            <select
+              id="convite-papel"
+              value={papelEfetivo}
+              onChange={(e) => setPapel(e.target.value)}
+              className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+            >
+              {papeisLiberados.includes("veterinario") ? (
+                <option value="veterinario">Veterinário</option>
+              ) : null}
+              {papeisLiberados.includes("colaborador") ? (
+                <option value="colaborador">Colaborador</option>
+              ) : null}
+            </select>
+          </div>
+          <Button type="submit" disabled={convidar.isPending}>
+            <UserPlus className="size-4" aria-hidden="true" />
+            {convidar.isPending ? "Convidando..." : "Convidar"}
+          </Button>
+        </form>
+      )}
+      {lim && papeisLiberados.length > 0 ? (
         <p className="mt-2 text-xs text-muted-foreground">
-          Veterinários: {lim.veterinarios.usados} de {lim.veterinarios.max} · Colaboradores:{" "}
-          {lim.colaboradores.usados} de{" "}
+          {lim.veterinarios.liberado
+            ? `Veterinários: ${lim.veterinarios.usados} de ${lim.veterinarios.max}`
+            : `Veterinário convidado: a partir do plano ${lim.veterinarios.planoMinimo}`}
+          {" · "}Colaboradores: {lim.colaboradores.usados} de{" "}
           {lim.colaboradores.max === null ? "sem limite" : lim.colaboradores.max} (plano {d?.plano})
         </p>
       ) : null}

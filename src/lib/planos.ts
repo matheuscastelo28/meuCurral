@@ -21,6 +21,8 @@ export interface Recursos {
   alertasEmail: boolean;
   /** Exportar os próprios dados: direito do titular (LGPD), vale para todos. */
   exportarDados: boolean;
+  /** Convidar veterinário (até 2 por fazenda) com relatório mensal de atendimentos. */
+  veterinarioConvidado: boolean;
   geolocalizacao: boolean;
 }
 
@@ -51,6 +53,7 @@ const TUDO: Recursos = {
   relatoriosCompletos: true,
   alertasEmail: true,
   exportarDados: true,
+  veterinarioConvidado: true,
   geolocalizacao: false,
 };
 
@@ -72,6 +75,7 @@ export const PLANOS: Plano[] = [
       relatoriosCompletos: false,
       alertasEmail: false,
       exportarDados: true,
+      veterinarioConvidado: false,
       geolocalizacao: false,
     },
     beneficios: [
@@ -103,7 +107,8 @@ export const PLANOS: Plano[] = [
       "Indicadores (GMD, DEL, taxa de prenhez) e índices avançados",
       "Financeiro completo: contas, parcelas e custo por lote e animal",
       "Relatórios em PDF e Excel com cabeçalho da fazenda",
-      "Alertas dentro do app e por e-mail",
+      "Veterinário convidado (até 2), com relatório mensal de atendimentos",
+      "Alertas no app, por e-mail às 6h e no celular",
     ],
   },
   {
@@ -114,24 +119,60 @@ export const PLANOS: Plano[] = [
     // Mesma lógica do Caderno (10 mensalidades no ano). Confirmar o valor.
     valorAnual: 799,
     periodo: "por mês",
-    resumo: "Para quem divide o manejo com a equipe.",
+    resumo: "Para quem divide o manejo da fazenda com a equipe.",
     limiteAnimais: 250,
     limiteUsuarios: 3,
     recursos: { ...TUDO },
-    beneficios: ["Até 250 cabeças", "Tudo do Caderno", "2 a 3 usuários na mesma fazenda"],
+    beneficios: [
+      "Até 250 cabeças",
+      "Até 3 usuários na mesma fazenda: você e 2 colaboradores",
+      "Colaboradores lançam manejo, pesagem e reprodução no dia a dia",
+      "Reprodução completa, com histórico de partos e índices",
+      "Confinamento completo: GMD, conversão, custo/kg e arroba",
+      "Financeiro completo: contas, parcelas e custo por lote",
+      "Relatórios em PDF e Excel com cabeçalho da fazenda",
+      "Veterinário convidado (até 2), com relatório mensal de atendimentos",
+      "Alertas no app, por e-mail às 6h e no celular",
+    ],
   },
   {
     id: "fazenda_grande",
     nome: "Fazenda Grande",
     preco: "Sob consulta",
     periodo: "anual",
-    resumo: "Para operações com vários retiros e integrações.",
+    resumo: "Para rebanhos grandes e equipes maiores.",
     limiteAnimais: Number.POSITIVE_INFINITY,
     limiteUsuarios: Number.POSITIVE_INFINITY,
     recursos: { ...TUDO },
-    beneficios: ["Cabeças ilimitadas", "Suporte prioritário", "Onboarding assistido"],
+    beneficios: [
+      "Cabeças ilimitadas",
+      "Usuários ilimitados na mesma fazenda",
+      "Tudo do Profissional: reprodução, confinamento e financeiro completos",
+      "Relatórios em PDF e Excel com cabeçalho da fazenda",
+      "Veterinário convidado (até 2), com relatório mensal de atendimentos",
+      "Alertas no app, por e-mail às 6h e no celular",
+      "Suporte prioritário",
+      "Implantação acompanhada pela nossa equipe",
+    ],
   },
 ];
+
+/**
+ * O que vale em todos os planos (aparece uma vez, abaixo dos cartões, em vez
+ * de repetir em cada um): vacinas sugeridas, avisos oficiais e exportação
+ * dos dados.
+ */
+export const INCLUIDO_EM_TODOS = [
+  "Vacinas sugeridas por espécie, idade e categoria",
+  "Avisos oficiais do seu estado",
+  "Exportação dos seus dados a qualquer momento",
+];
+
+/** Meses grátis do anual em relação a 12 mensalidades (ex.: 599 = 10 × 59,90 → 2). */
+export function mesesGratisNoAnual(plano: Pick<Plano, "valorMensal" | "valorAnual">): number {
+  if (!plano.valorMensal || !plano.valorAnual) return 0;
+  return Math.round((plano.valorMensal * 12 - plano.valorAnual) / plano.valorMensal);
+}
 
 /**
  * Plano das fazendas que já existiam quando os planos foram ligados

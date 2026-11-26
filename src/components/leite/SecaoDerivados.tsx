@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { ParcelasCartao } from "@/components/ParcelasCartao";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Factory, Package, Plus, ShoppingCart, Tag, Trash2 } from "lucide-react";
 import { toast } from "sonner";
@@ -657,17 +658,12 @@ export function SecaoDerivados({
                   </select>
                 </div>
                 {venForma === "cartao" ? (
-                  <div className="space-y-1.5">
-                    <Label htmlFor="ven-parcelas">Parcelas</Label>
-                    <Input
-                      id="ven-parcelas"
-                      type="number"
-                      min="1"
-                      max="12"
-                      value={venParcelas}
-                      onChange={(e) => setVenParcelas(e.target.value)}
-                    />
-                  </div>
+                  <ParcelasCartao
+                    id="ven-parcelas"
+                    total={totalVenda}
+                    value={venParcelas}
+                    onChange={setVenParcelas}
+                  />
                 ) : null}
               </>
             ) : null}

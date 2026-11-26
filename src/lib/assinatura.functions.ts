@@ -35,6 +35,8 @@ type AssinaturaResumo = {
   status: string;
   initPoint: string | null;
   criadaEm: string;
+  /** Cancelada: o plano continua até esta data (fim do período já pago). */
+  acessoAte: string | null;
 };
 
 async function ultimaAssinatura(
@@ -51,8 +53,9 @@ async function ultimaAssinatura(
     init_point: string | null;
     mp_preapproval_id: string | null;
     created_at: Date;
+    acesso_ate: Date | null;
   }[] = await sql`
-    select id, plano, periodo, valor, status, init_point, mp_preapproval_id, created_at
+    select id, plano, periodo, valor, status, init_point, mp_preapproval_id, created_at, acesso_ate
     from assinaturas where fazenda_id = ${fazendaId}
     order by (status = 'ativa') desc, created_at desc
     limit 1`;
@@ -67,6 +70,7 @@ async function ultimaAssinatura(
         initPoint: a.init_point,
         mpId: a.mp_preapproval_id,
         criadaEm: new Date(a.created_at).toISOString(),
+        acessoAte: a.acesso_ate ? new Date(a.acesso_ate).toISOString() : null,
       }
     : null;
 }
@@ -81,6 +85,7 @@ function semMpId(a: (AssinaturaResumo & { mpId: string | null }) | null): Assina
     status: a.status,
     initPoint: a.initPoint,
     criadaEm: a.criadaEm,
+    acessoAte: a.acessoAte,
   };
 }
 
@@ -95,7 +100,11 @@ export const minhaAssinatura = createServerFn({ method: "POST" })
     try {
       const ctx = await contexto(data.token);
       if (!ctx) return erro("Não autenticado.");
-      const { mercadoPagoConfigurado } = await import("./mercadopago.server");
+      const { mercadoPagoConfigurado, encerrarPeriodosVencidos } =
+        await import("./mercadopago.server");
+      // Período pago de uma assinatura cancelada acabou? Volta ao Grátis já.
+      const { conexao } = await import("./pg.server");
+      await encerrarPeriodosVencidos(await conexao(), ctx.fazendaId);
       return {
         data: {
           configurado: mercadoPagoConfigurado(),
@@ -204,11 +213,25 @@ export const cancelarAssinatura = createServerFn({ method: "POST" })
       if (!atual?.mpId || (atual.status !== "ativa" && atual.status !== "pausada")) {
         return erro("Não há assinatura ativa para cancelar.");
       }
-      const { mercadoPago, aplicarPreapproval } = await import("./mercadopago.server");
+      const { mercadoPago, aplicarPreapproval, fimDoPeriodoPago } =
+        await import("./mercadopago.server");
       const { conexao } = await import("./pg.server");
+      const sql = await conexao();
+      // Antes de cancelar: a data da próxima cobrança some depois do cancelamento.
+      if (atual.status === "ativa") {
+        const antes = await mercadoPago.buscar(atual.mpId).catch(() => null);
+        const linha: { periodo: string; ativada_em: Date | null; created_at: Date }[] = await sql`
+          select periodo, ativada_em, created_at from assinaturas where id = ${atual.id}`;
+        const fim = linha[0] ? fimDoPeriodoPago(antes, linha[0]) : null;
+        if (fim) {
+          await sql`update assinaturas set acesso_ate = ${fim}, updated_at = now()
+                    where id = ${atual.id}`;
+        }
+      }
       const pre = await mercadoPago.cancelar(atual.mpId);
-      const status = await aplicarPreapproval(await conexao(), pre);
-      return { data: { status }, error: null };
+      const status = await aplicarPreapproval(sql, pre);
+      const depois = await ultimaAssinatura(ctx.fazendaId);
+      return { data: { status, acessoAte: depois?.acessoAte ?? null }, error: null };
     } catch (e) {
       return erro(e instanceof Error ? e.message : "Erro ao cancelar a assinatura.");
     }

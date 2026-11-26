@@ -5,13 +5,18 @@
  * (usuários do plano − o dono); veterinário não conta nesse limite.
  */
 import { createServerFn } from "@tanstack/react-start";
-import { planoDaFazenda } from "./planos";
+import { planoDaFazenda, planoMinimoDo } from "./planos";
 import type { Sql } from "./pg.server";
 
 export const PAPEIS = ["veterinario", "colaborador"] as const;
 export type PapelMembro = (typeof PAPEIS)[number];
 /** Veterinários por fazenda, em qualquer plano. */
 const MAX_VETERINARIOS = 2;
+
+/** Mensagem de quando o plano da fazenda não inclui o veterinário convidado. */
+function semVeterinarioNoPlano(nomePlano: string) {
+  return `Convidar veterinário faz parte do plano ${planoMinimoDo("veterinarioConvidado").nome}. Seu plano atual (${nomePlano}) não inclui.`;
+}
 
 function erro(mensagem: string) {
   return { data: null, error: { message: mensagem } };
@@ -117,7 +122,12 @@ export const listarEquipe = createServerFn({ method: "POST" })
               usados: conta("colaborador"),
               max: Number.isFinite(plano.limiteUsuarios) ? plano.limiteUsuarios - 1 : null,
             },
-            veterinarios: { usados: conta("veterinario"), max: MAX_VETERINARIOS },
+            veterinarios: {
+              usados: conta("veterinario"),
+              max: plano.recursos.veterinarioConvidado ? MAX_VETERINARIOS : 0,
+              liberado: plano.recursos.veterinarioConvidado,
+              planoMinimo: planoMinimoDo("veterinarioConvidado").nome,
+            },
           },
           plano: plano.nome,
         },
@@ -141,6 +151,10 @@ export const convidarMembro = createServerFn({ method: "POST" })
       if (!fazenda) return erro("Só o dono da fazenda pode convidar.");
       const papel = data.papel as PapelMembro;
       if (!PAPEIS.includes(papel)) return erro("Escolha veterinário ou colaborador.");
+      if (papel === "veterinario") {
+        const p = planoDaFazenda(fazenda);
+        if (!p.recursos.veterinarioConvidado) return erro(semVeterinarioNoPlano(p.nome));
+      }
       const email = data.email.trim().toLowerCase();
       if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return erro("Informe um e-mail válido.");
       if (email === u.email.toLowerCase()) return erro("Esse é o seu próprio e-mail.");
@@ -231,6 +245,10 @@ export const reenviarConvite = createServerFn({ method: "POST" })
         select email, papel, token from convites
         where id = ${data.conviteId} and fazenda_id = ${fazenda.id} and status = 'pendente'`;
       if (!c[0]) return erro("Convite não encontrado ou já respondido.");
+      if (c[0].papel === "veterinario") {
+        const p = planoDaFazenda(fazenda);
+        if (!p.recursos.veterinarioConvidado) return erro(semVeterinarioNoPlano(p.nome));
+      }
       const { urlDoSistema } = await import("./mercadopago.server");
       const link = `${urlDoSistema()}/convite?token=${c[0].token}`;
       const { enviarConviteEmail } = await import("./email.server");
@@ -344,6 +362,15 @@ export const aceitarConvite = createServerFn({ method: "POST" })
           );
         }
         if (c.dono_id === u.id) throw new Error("Você já é o dono desta fazenda.");
+        if (c.papel === "veterinario") {
+          const fs: { plano: string | null; acesso_total: boolean | null }[] = await tx`
+            select plano, acesso_total from fazendas where id = ${c.fazenda_id}`;
+          if (!planoDaFazenda(fs[0]).recursos.veterinarioConvidado) {
+            throw new Error(
+              "O plano atual desta fazenda não inclui veterinário convidado. Peça para quem convidou você atualizar o plano.",
+            );
+          }
+        }
         await tx`
           insert into fazenda_membros (fazenda_id, user_id, papel)
           values (${c.fazenda_id}, ${u.id}, ${c.papel})

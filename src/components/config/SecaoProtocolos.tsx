@@ -52,7 +52,9 @@ export function SecaoProtocolos() {
         <strong className="text-foreground">
           {validados} de {PROTOCOLOS.length} validados.
         </strong>
-        {ehVet ? null : " Convide o seu veterinário em Equipe e veterinário para revisar."}
+        {ehVet
+          ? null
+          : " Convide o seu veterinário em Equipe e veterinário (a partir do plano Caderno) para revisar."}
       </p>
       <ul className="space-y-2">
         {PROTOCOLOS.map((p) => {

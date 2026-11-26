@@ -1,4 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
+import { ParcelasCartao } from "@/components/ParcelasCartao";
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Ban, CircleCheck, FileText, Pencil, Plus, Trash2, Undo2, Wallet } from "lucide-react";
@@ -269,7 +270,7 @@ function Financeiro() {
   });
 
   const salvarEdicao = useMutation({
-    mutationFn: async (l: { id: string; tipo: string; venda: boolean }) => {
+    mutationFn: async (l: { id: string; tipo: string; venda: boolean; statusOriginal: string }) => {
       if (!edDescricao.trim()) throw new Error("Informe a descrição.");
       if (!(Number(edValor) > 0)) throw new Error("Informe um valor maior que zero.");
       const { error } = await db.financeiro.editarLancamento({
@@ -280,8 +281,17 @@ function Financeiro() {
         data: edData,
         categoria: edCategoria || null,
         formaPagamento: edForma,
-        parcelas: edForma === "cartao" && completo ? Number(edParcelas) || 1 : null,
-        status: l.tipo === "receita" ? (edRecebido ? "recebido" : "a_receber") : null,
+        parcelas: edForma === "cartao" ? Number(edParcelas) || 1 : null,
+        status:
+          l.tipo === "receita"
+            ? edRecebido
+              ? "recebido"
+              : "a_receber"
+            : l.statusOriginal === "a_pagar"
+              ? edRecebido
+                ? "confirmado"
+                : "a_pagar"
+              : null,
         comprador: l.venda ? edComprador : undefined,
       });
       if (error) throw new Error(error.message);
@@ -314,7 +324,7 @@ function Financeiro() {
       if (error) throw new Error(error.message);
     },
     onSuccess: () => {
-      toast.success("Lançamentos marcados como recebidos.");
+      toast.success("Pronto: marcado como pago/recebido.");
       setSelecionados(new Set());
       setLancamentoDetalhe(null);
       queryClient.invalidateQueries({ queryKey: ["financeiro"] });
@@ -436,9 +446,10 @@ function Financeiro() {
       .filter((c) => c.tipo === "a_receber")
       .reduce((s, c) => s + (Number(c.valor_total) - Number(c.valor_restante)), 0);
 
+  // Despesa "a pagar" (dias futuros da rotina de alimentação) ainda não saiu do caixa.
   const despesasUnificado =
     (lancamentos.data ?? [])
-      .filter((l) => l.tipo === "despesa")
+      .filter((l) => l.tipo === "despesa" && l.status !== "a_pagar")
       .reduce((s, l) => s + Number(l.valor), 0) +
     contasComDados
       .filter((c) => c.tipo === "a_pagar")
@@ -455,6 +466,10 @@ function Financeiro() {
       (c) => c.tipo === "a_pagar" && c.statusExibido !== "cancelado" && c.statusExibido !== "pago",
     )
     .reduce((s, c) => s + Number(c.valor_restante), 0);
+  const aPagarUnificado =
+    (lancamentos.data ?? [])
+      .filter((l) => l.tipo === "despesa" && l.status === "a_pagar")
+      .reduce((s, l) => s + Number(l.valor), 0) + aPagarContas;
   const aReceberUnificado =
     (lancamentos.data ?? [])
       .filter((l) => l.tipo === "receita" && l.status === "a_receber")
@@ -467,7 +482,7 @@ function Financeiro() {
   const despesasPorCategoria = useMemo(() => {
     const mapa = new Map<string, number>();
     for (const l of lancamentos.data ?? []) {
-      if (l.tipo !== "despesa") continue;
+      if (l.tipo !== "despesa" || l.status === "a_pagar") continue;
       const chave = l.categoria || "";
       mapa.set(chave, (mapa.get(chave) ?? 0) + Number(l.valor));
     }
@@ -498,7 +513,12 @@ function Financeiro() {
   }, [lancamentos.data, contasComDados]);
 
   const emAtrasoLancamentos = (lancamentos.data ?? [])
-    .filter((l) => l.tipo === "receita" && l.status === "a_receber" && dataISO(l.data) < hoje)
+    .filter(
+      (l) =>
+        ((l.tipo === "receita" && l.status === "a_receber") ||
+          (l.tipo === "despesa" && l.status === "a_pagar")) &&
+        dataISO(l.data) < hoje,
+    )
     .reduce((s, l) => s + Number(l.valor), 0);
   const emAtrasoContas = (parcelasConta.data ?? [])
     .filter((p) => statusExibicaoParcela(p) === "atrasado")
@@ -522,6 +542,8 @@ function Financeiro() {
   const [pessoa, setPessoa] = useState("");
   const [parcelado, setParcelado] = useState(false);
   const [numParcelas, setNumParcelas] = useState("2");
+  // Pago no cartão: parcelas no padrão de todo o sistema (1x, 2x… de R$).
+  const [parcelasCartao, setParcelasCartao] = useState("1");
   const [primeiroVencimento, setPrimeiroVencimento] = useState(hoje);
   const [intervaloDias, setIntervaloDias] = useState("30");
   const [categoria, setCategoria] = useState("");
@@ -556,13 +578,16 @@ function Financeiro() {
     setPessoa("");
     setParcelado(false);
     setNumParcelas("2");
+    setParcelasCartao("1");
     setPrimeiroVencimento(hoje);
     setIntervaloDias("30");
     setCategoria("");
     setLoteLanc("");
   }
 
-  const vaiVirarConta = parcelado || !jaAconteceu;
+  // Já pago no cartão: um lançamento só, com as parcelas do cartão (não vira conta).
+  const cartaoPago = formaPagamento === "cartao" && jaAconteceu;
+  const vaiVirarConta = (parcelado && !cartaoPago) || !jaAconteceu;
 
   const previewParcelas = useMemo(() => {
     if (!vaiVirarConta) return [];
@@ -606,7 +631,7 @@ function Financeiro() {
           valor: valorNum,
           data,
           forma_pagamento: formaPagamento,
-          parcelas: null,
+          parcelas: cartaoPago ? Number(parcelasCartao) || 1 : null,
           categoria: categoria || null,
           lote: tipo === "despesa" && loteLanc ? loteLanc : null,
           ...(tipo === "receita" ? { status: "recebido" } : {}),
@@ -786,13 +811,13 @@ function Financeiro() {
         <Resumo rotulo="Recebido" valor={moeda(recebidoUnificado)} classe="text-success" />
         <Resumo rotulo="A receber" valor={moeda(aReceberUnificado)} classe="text-warning" />
         <Resumo rotulo="Despesas" valor={moeda(despesasUnificado)} classe="text-destructive" />
-        <Resumo rotulo="A pagar" valor={moeda(aPagarContas)} classe="text-warning" />
+        <Resumo rotulo="A pagar" valor={moeda(aPagarUnificado)} classe="text-warning" />
         <Resumo rotulo="Saldo realizado" valor={moeda(saldoRealizadoUnificado)} classe="" />
         <Resumo rotulo="Em atraso" valor={moeda(emAtrasoUnificado)} classe="text-destructive" />
       </div>
 
       {despesasPorCategoria.length > 0 ? (
-        <div className="mb-5 grid gap-4 md:grid-cols-2">
+        <div className="mb-5 grid grid-cols-[minmax(0,1fr)] gap-4 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
           <section className="rounded-xl border border-border bg-card p-4">
             <h2 className="text-base font-semibold">Para onde foi o dinheiro</h2>
             <ul className="mt-3 space-y-2.5">
@@ -805,7 +830,9 @@ function Financeiro() {
                         className="size-2.5 shrink-0 rounded-full"
                         style={{ background: cor }}
                       />
-                      <span className="truncate">{rotulo}</span>
+                      <span className="truncate" title={rotulo}>
+                        {rotulo}
+                      </span>
                     </span>
                     <span className="shrink-0 font-semibold tabular-nums">
                       {moeda(valor)}
@@ -897,7 +924,7 @@ function Financeiro() {
             onClick={() => marcarRecebido.mutate(Array.from(selecionados))}
           >
             <CircleCheck className="size-4" aria-hidden="true" />
-            Marcar como recebido
+            Dar baixa (pago/recebido)
           </Button>
         </div>
       ) : null}
@@ -1054,6 +1081,15 @@ function Financeiro() {
                   ))}
                 </select>
               </div>
+              {cartaoPago ? (
+                <ParcelasCartao
+                  id="parcelas-cartao"
+                  total={Number(valor)}
+                  value={parcelasCartao}
+                  onChange={setParcelasCartao}
+                  className="min-w-[160px] flex-1"
+                />
+              ) : null}
               <div className="min-w-[200px] flex-1 space-y-1.5">
                 <Label htmlFor="pessoa-lanc">
                   {tipo === "receita" ? "Comprador (opcional)" : "Fornecedor (opcional)"}
@@ -1067,7 +1103,7 @@ function Financeiro() {
               </div>
             </div>
 
-            <div className="mt-4 border-t border-border pt-4">
+            <div className={cn("mt-4 border-t border-border pt-4", cartaoPago && "hidden")}>
               <Label>Pagamento</Label>
               <div className="mt-1.5 flex gap-2">
                 <Button
@@ -1240,7 +1276,8 @@ function Financeiro() {
                     className="flex flex-wrap items-center justify-between gap-3 p-4"
                   >
                     <div className="flex min-w-0 flex-1 items-center gap-3">
-                      {linha.lancamento.status === "a_receber" ? (
+                      {linha.lancamento.status === "a_receber" ||
+                      linha.lancamento.status === "a_pagar" ? (
                         <input
                           type="checkbox"
                           checked={selecionados.has(linha.lancamento.id)}
@@ -1414,6 +1451,7 @@ function Financeiro() {
                           id: lancamentoSelecionado.id,
                           tipo: lancamentoSelecionado.tipo,
                           venda: !!venda,
+                          statusOriginal: lancamentoSelecionado.status,
                         });
                       }}
                     >
@@ -1479,18 +1517,13 @@ function Financeiro() {
                           ))}
                         </select>
                       </div>
-                      {edForma === "cartao" && completo ? (
-                        <div className="space-y-1.5">
-                          <Label htmlFor="ed-parcelas">Parcelas no cartão</Label>
-                          <Input
-                            id="ed-parcelas"
-                            type="number"
-                            min="1"
-                            max="24"
-                            value={edParcelas}
-                            onChange={(e) => setEdParcelas(e.target.value)}
-                          />
-                        </div>
+                      {edForma === "cartao" ? (
+                        <ParcelasCartao
+                          id="ed-parcelas"
+                          total={Number(edValor)}
+                          value={edParcelas}
+                          onChange={setEdParcelas}
+                        />
                       ) : null}
                       {venda ? (
                         <div className="col-span-2 space-y-1.5">
@@ -1502,14 +1535,17 @@ function Financeiro() {
                           />
                         </div>
                       ) : null}
-                      {lancamentoSelecionado.tipo === "receita" ? (
+                      {lancamentoSelecionado.tipo === "receita" ||
+                      lancamentoSelecionado.status === "a_pagar" ? (
                         <label className="col-span-2 flex items-center gap-2 text-sm">
                           <input
                             type="checkbox"
                             checked={edRecebido}
                             onChange={(e) => setEdRecebido(e.target.checked)}
                           />
-                          Já recebi este valor
+                          {lancamentoSelecionado.tipo === "receita"
+                            ? "Já recebi este valor"
+                            : "Já paguei este valor"}
                         </label>
                       ) : null}
                       {venda ? (
@@ -1636,7 +1672,10 @@ function Financeiro() {
                               setEdCategoria(lancamentoSelecionado.categoria ?? "");
                               setEdForma(lancamentoSelecionado.forma_pagamento ?? "dinheiro");
                               setEdParcelas(String(lancamentoSelecionado.parcelas ?? 1));
-                              setEdRecebido(lancamentoSelecionado.status !== "a_receber");
+                              setEdRecebido(
+                                lancamentoSelecionado.status !== "a_receber" &&
+                                  lancamentoSelecionado.status !== "a_pagar",
+                              );
                               setEdComprador(venda?.comprador ?? "");
                               setAcaoLancamento("edicao");
                             }}
@@ -1646,14 +1685,17 @@ function Financeiro() {
                           </Button>
                         </>
                       }
-                      {lancamentoSelecionado.status === "a_receber" ? (
+                      {lancamentoSelecionado.status === "a_receber" ||
+                      lancamentoSelecionado.status === "a_pagar" ? (
                         <Button
                           type="button"
                           disabled={marcarRecebido.isPending}
                           onClick={() => marcarRecebido.mutate([lancamentoSelecionado.id])}
                         >
                           <CircleCheck className="size-4" aria-hidden="true" />
-                          Marcar como recebido
+                          {lancamentoSelecionado.status === "a_pagar"
+                            ? "Marcar como pago"
+                            : "Marcar como recebido"}
                         </Button>
                       ) : null}
                     </DialogFooter>

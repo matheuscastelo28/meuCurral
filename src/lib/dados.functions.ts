@@ -141,6 +141,27 @@ async function bloqueioDePlano(
   return `Esse recurso faz parte do plano ${planoMinimoDo(recurso).nome}. Seu plano atual (${plano.nome}) não inclui.`;
 }
 
+/**
+ * Parcelas de um recebimento/pagamento no cartão, iguais em todo o sistema:
+ * só vale para cartão, fica entre 1 e MAX_PARCELAS_CARTAO e parcelar (mais de
+ * 1x) faz parte do Financeiro completo.
+ */
+async function parcelasDoCartao(
+  sql: Sql,
+  fazendaId: string,
+  formaPagamento: string | null | undefined,
+  parcelas: number | null | undefined,
+): Promise<{ parcelas: number | null; erro: string | null }> {
+  if (formaPagamento !== "cartao") return { parcelas: null, erro: null };
+  const { MAX_PARCELAS_CARTAO } = await import("./parcelamento");
+  const n = Math.min(MAX_PARCELAS_CARTAO, Math.max(1, Math.floor(Number(parcelas) || 1)));
+  if (n > 1) {
+    const bloqueio = await bloqueioDePlano(sql, fazendaId, "financeiroCompleto");
+    if (bloqueio) return { parcelas: null, erro: bloqueio };
+  }
+  return { parcelas: n, erro: null };
+}
+
 function contarPorFazenda(linhas: Record<string, unknown>[]): Map<string, number> {
   const mapa = new Map<string, number>();
   for (const l of linhas) {
@@ -543,7 +564,7 @@ export const consultar = createServerFn({ method: "POST" })
   });
 
 // ---------------------------------------------------------------------------
-// Autenticação (senha com hash SHA-256, sessão por token)
+// Autenticação (senha com scrypt em senha.server, sessão por token)
 // ---------------------------------------------------------------------------
 
 async function hashComPepper(prefixo: string, texto: string): Promise<string> {
@@ -552,10 +573,6 @@ async function hashComPepper(prefixo: string, texto: string): Promise<string> {
   return Array.from(new Uint8Array(digest))
     .map((b) => b.toString(16).padStart(2, "0"))
     .join("");
-}
-
-async function hashSenha(senha: string): Promise<string> {
-  return hashComPepper("mcd:", senha);
 }
 
 async function hashCodigo(codigo: string): Promise<string> {
@@ -658,7 +675,8 @@ export const cadastrar = createServerFn({ method: "POST" })
         await sql`delete from usuarios where id = ${existente.id}`;
       }
 
-      const senhaHash = await hashSenha(data.senha);
+      const { gerarHashSenha } = await import("./senha.server");
+      const senhaHash = await gerarHashSenha(data.senha);
       const nome = data.nome ?? null;
       const objetivo = data.objetivo ?? null;
       const codigo = gerarCodigo();
@@ -722,11 +740,15 @@ export const entrar = createServerFn({ method: "POST" })
       const { conexao } = await import("./pg.server");
       const sql = await conexao();
       const email = data.email.trim().toLowerCase();
-      const senhaHash = await hashSenha(data.senha);
-      const usuarios: any[] = await sql`
-        select id, email, nome, objetivo, email_verificado from usuarios
-        where email = ${email} and senha_hash = ${senhaHash} limit 1`;
-      const usuario = usuarios[0];
+      const { conferirSenha, gerarHashSenha, gastarTempoDeConferencia } =
+        await import("./senha.server");
+      const encontrados: any[] = await sql`
+        select id, email, nome, objetivo, email_verificado, senha_hash from usuarios
+        where email = ${email} limit 1`;
+      const conferido = encontrados[0]
+        ? await conferirSenha(data.senha, encontrados[0]["senha_hash"])
+        : null;
+      const usuario = conferido?.ok ? encontrados[0] : undefined;
 
       if (!usuario) {
         // Sem conta confirmada com essa senha — mas pode existir um
@@ -736,10 +758,17 @@ export const entrar = createServerFn({ method: "POST" })
           nome: string | null;
           expira_em: Date;
           enviado_em: Date;
+          senha_hash: string;
         }[] = await sql`
-            select email, nome, expira_em, enviado_em from cadastros_pendentes
-            where email = ${email} and senha_hash = ${senhaHash} limit 1`;
-        const pendente = pendentes[0];
+            select email, nome, expira_em, enviado_em, senha_hash from cadastros_pendentes
+            where email = ${email} limit 1`;
+        // E-mail sem conta nem cadastro: gasta o mesmo tempo, para a resposta
+        // não denunciar quais e-mails têm conta.
+        if (!encontrados[0] && !pendentes[0]) await gastarTempoDeConferencia(data.senha);
+        const pendente =
+          pendentes[0] && (await conferirSenha(data.senha, pendentes[0].senha_hash)).ok
+            ? pendentes[0]
+            : undefined;
         if (!pendente) {
           return {
             data: { user: null, session: null },
@@ -785,8 +814,15 @@ export const entrar = createServerFn({ method: "POST" })
         };
       }
 
+      // Senha antiga (SHA-256 sem sal): refaz em scrypt agora que temos o texto.
+      if (conferido?.atualizar) {
+        await sql`update usuarios set senha_hash = ${await gerarHashSenha(data.senha)},
+                  updated_at = now() where id = ${usuario["id"]}`;
+      }
       const token = crypto.randomUUID();
       await sql`insert into sessoes (token, user_id) values (${token}, ${usuario["id"]})`;
+      const { registrarAcesso } = await import("./acesso.server");
+      await registrarAcesso(sql, { userId: usuario["id"], email, evento: "login" });
       const user = paraSessao(usuario);
       return { data: { user, session: { user, access_token: token } }, error: null };
     } catch (erro) {
@@ -959,6 +995,12 @@ export const verificarCodigoEmail = createServerFn({ method: "POST" })
 
       const token = crypto.randomUUID();
       await sql`insert into sessoes (token, user_id) values (${token}, ${resultado.usuario.id})`;
+      const { registrarAcesso } = await import("./acesso.server");
+      await registrarAcesso(sql, {
+        userId: resultado.usuario.id,
+        email: resultado.usuario.email,
+        evento: "cadastro",
+      });
       const user = paraSessao(resultado.usuario);
       return { data: { user, session: { user, access_token: token } }, error: null };
     } catch (erro) {
@@ -981,6 +1023,10 @@ export const usuarioAtual = createServerFn({ method: "POST" })
         from sessoes s join usuarios u on u.id = s.user_id
         where s.token = ${data.token} limit 1`;
       const usuario = usuarios[0];
+      if (usuario) {
+        const { registrarAcesso } = await import("./acesso.server");
+        await registrarAcesso(sql, { userId: usuario.id, email: usuario.email, evento: "uso" });
+      }
       return { data: { user: usuario ? paraSessao(usuario) : null }, error: null };
     } catch (erro) {
       return {
@@ -997,6 +1043,14 @@ export const sair = createServerFn({ method: "POST" })
       try {
         const { conexao } = await import("./pg.server");
         const sql = await conexao();
+        const quem = await usuarioIdDaSessao(sql, data.token);
+        if (quem) {
+          const { registrarAcesso } = await import("./acesso.server");
+          await registrarAcesso(sql, {
+            userId: quem,
+            evento: data.escopo === "global" ? "logout_todos" : "logout",
+          });
+        }
         if (data.escopo === "global") {
           // "Sair de todos os aparelhos": apaga todas as sessões do usuário,
           // não só a que fez a chamada.
@@ -1027,12 +1081,20 @@ export const atualizarUsuario = createServerFn({ method: "POST" })
         await sql`select user_id from sessoes where token = ${data.token} limit 1`;
       const sessao = sessoes[0];
       if (!sessao) return { data: { user: null }, error: { message: "Sem sessão ativa." } };
+      const { registrarAcesso } = await import("./acesso.server");
       if (data.password) {
-        const senhaHash = await hashSenha(data.password);
+        const { gerarHashSenha } = await import("./senha.server");
+        const senhaHash = await gerarHashSenha(data.password);
         await sql`update usuarios set senha_hash = ${senhaHash}, updated_at = now() where id = ${sessao["user_id"]}`;
+        await registrarAcesso(sql, { userId: sessao["user_id"], evento: "troca_senha" });
       }
       if (data.email) {
         await sql`update usuarios set email = ${data.email.trim().toLowerCase()}, updated_at = now() where id = ${sessao["user_id"]}`;
+        await registrarAcesso(sql, {
+          userId: sessao["user_id"],
+          email: data.email.trim().toLowerCase(),
+          evento: "troca_email",
+        });
       }
       const usuarios: any[] =
         await sql`select id, email, nome, objetivo from usuarios where id = ${sessao["user_id"]}`;
@@ -1057,6 +1119,15 @@ export const excluirConta = createServerFn({ method: "POST" })
         await sql`select user_id from sessoes where token = ${data.token} limit 1`;
       const sessao = sessoes[0];
       if (sessao) {
+        // O registro de acesso fica (obrigação legal de 6 meses); o resto sai.
+        const dono: { email: string }[] =
+          await sql`select email from usuarios where id = ${sessao["user_id"]}`;
+        const { registrarAcesso } = await import("./acesso.server");
+        await registrarAcesso(sql, {
+          userId: sessao["user_id"],
+          email: dono[0]?.email ?? null,
+          evento: "exclusao_conta",
+        });
         // O cascade apaga perfil, sessões, fazendas e tudo que é da fazenda.
         await sql`delete from usuarios where id = ${sessao["user_id"]}`;
       }
@@ -1314,7 +1385,14 @@ export const registrarVenda = createServerFn({ method: "POST" })
       const categoria = derivado ? "venda_derivados" : `venda_${produto}`;
       const status = data.pago ? "recebido" : "a_receber";
       const formaPagamento = data.pago ? (data.formaPagamento ?? "dinheiro") : "dinheiro";
-      const parcelas = data.pago && formaPagamento === "cartao" ? (data.parcelas ?? 1) : null;
+      const cartao = await parcelasDoCartao(
+        sql,
+        data.fazendaId,
+        data.pago ? formaPagamento : null,
+        data.parcelas,
+      );
+      if (cartao.erro) return { data: null, error: { message: cartao.erro } };
+      const parcelas = cartao.parcelas;
 
       const venda = await sql.begin(async (tx) => {
         const financeiros: { id: string }[] = await tx`
@@ -1380,8 +1458,10 @@ export const marcarLancamentosRecebidos = createServerFn({ method: "POST" })
       if (data.ids.length === 0) return { data: [], error: null };
 
       const atualizados: any[] = await sql`
-        update financeiro_lancamentos set status = 'recebido', updated_at = now()
-        where id = any(${data.ids}) and status = 'a_receber'
+        update financeiro_lancamentos
+        set status = case when status = 'a_receber' then 'recebido' else 'confirmado' end,
+            updated_at = now()
+        where id = any(${data.ids}) and status in ('a_receber', 'a_pagar')
           and fazenda_id in (
             select id from fazendas where dono_id = ${userId}
             union
@@ -1456,7 +1536,14 @@ export const venderAnimal = createServerFn({ method: "POST" })
         const comprador = data.comprador?.trim() || null;
         const status = data.pago ? "recebido" : "a_receber";
         const formaPagamento = data.pago ? (data.formaPagamento ?? "dinheiro") : "dinheiro";
-        const parcelas = data.pago && formaPagamento === "cartao" ? (data.parcelas ?? 1) : null;
+        const cartao = await parcelasDoCartao(
+          tx as unknown as Sql,
+          data.fazendaId,
+          data.pago ? formaPagamento : null,
+          data.parcelas,
+        );
+        if (cartao.erro) throw new Error(cartao.erro);
+        const parcelas = cartao.parcelas;
         const nome = `${animal.nome ?? "animal"}${animal.brinco ? ` (${animal.brinco})` : ""}`;
         const descricao = `Venda de ${nome}${comprador ? ` — ${comprador}` : ""}`;
 
@@ -1658,6 +1745,7 @@ export const registrarVendaLote = createServerFn({ method: "POST" })
       data: string;
       pago?: boolean;
       formaPagamento?: string;
+      parcelas?: number | null;
       // "boi"/"arroba" (padrão, mantém o comportamento de sempre) ou
       // "ovino"/"kg" pra fazenda que não usa arroba.
       produto?: string;
@@ -1700,12 +1788,19 @@ export const registrarVendaLote = createServerFn({ method: "POST" })
         const valorTotal = Math.round(arrobas * data.precoUnitario * 100) / 100;
         const status = data.pago ? "recebido" : "a_receber";
         const formaPagamento = data.pago ? (data.formaPagamento ?? "dinheiro") : "dinheiro";
+        const cartao = await parcelasDoCartao(
+          tx as unknown as Sql,
+          data.fazendaId,
+          data.pago ? formaPagamento : null,
+          data.parcelas,
+        );
+        if (cartao.erro) throw new Error(cartao.erro);
         const nomeLote = /^lote\b/i.test(data.lote.trim()) ? data.lote.trim() : `lote ${data.lote}`;
         const descricao = `Venda do ${nomeLote}${data.comprador ? ` — ${data.comprador}` : ""} (${animaisLote.length} cab)`;
 
         const financeiros: { id: string }[] = await tx`
-          insert into financeiro_lancamentos (fazenda_id, tipo, descricao, valor, data, categoria, status, forma_pagamento, lote)
-          values (${data.fazendaId}, 'receita', ${descricao}, ${valorTotal}, ${data.data}, ${`venda_${produto}`}, ${status}, ${formaPagamento}, ${data.lote})
+          insert into financeiro_lancamentos (fazenda_id, tipo, descricao, valor, data, categoria, status, forma_pagamento, parcelas, lote)
+          values (${data.fazendaId}, 'receita', ${descricao}, ${valorTotal}, ${data.data}, ${`venda_${produto}`}, ${status}, ${formaPagamento}, ${cartao.parcelas}, ${data.lote})
           returning id`;
         const financeiroId = financeiros[0]!.id;
 
@@ -2011,7 +2106,7 @@ export const editarLancamento = createServerFn({ method: "POST" })
       categoria?: string | null;
       formaPagamento?: string | null;
       parcelas?: number | null;
-      status?: "recebido" | "a_receber" | null;
+      status?: "recebido" | "a_receber" | "confirmado" | "a_pagar" | null;
       comprador?: string | null | undefined;
     }) => dados,
   )
@@ -2037,13 +2132,24 @@ export const editarLancamento = createServerFn({ method: "POST" })
         const lanc = linhas[0];
         if (!lanc) throw new Error("Lançamento não encontrado.");
         const forma = formaValida(data.formaPagamento, lanc.forma_pagamento ?? "dinheiro");
-        const parcelas =
-          forma === "cartao" ? Math.max(1, Math.floor(Number(data.parcelas) || 1)) : null;
+        const cartao = await parcelasDoCartao(
+          tx as unknown as Sql,
+          data.fazendaId,
+          forma,
+          data.parcelas,
+        );
+        if (cartao.erro) throw new Error(cartao.erro);
+        const parcelas = cartao.parcelas;
         // Só receita alterna entre "a receber" e "recebido"; despesa fica como está.
+        // Receita alterna recebido/a receber. Despesa "a pagar" (dias futuros
+        // da rotina de alimentação) só pode ser quitada aqui; despesa comum
+        // não vira "a pagar" pela edição (isso é conta, plano Caderno).
         const status =
           lanc.tipo === "receita" && (data.status === "recebido" || data.status === "a_receber")
             ? data.status
-            : lanc.status;
+            : lanc.tipo === "despesa" && lanc.status === "a_pagar" && data.status === "confirmado"
+              ? "confirmado"
+              : lanc.status;
 
         await tx`
           update financeiro_lancamentos set

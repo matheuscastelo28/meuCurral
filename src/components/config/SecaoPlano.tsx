@@ -8,6 +8,7 @@ import { getPlano, PLANOS, usoCabecasTexto } from "@/lib/planos";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { dataCurta } from "@/lib/formato";
 import { cn } from "@/lib/utils";
 import { CartaoConfig } from "./CartaoConfig";
 
@@ -110,11 +111,16 @@ export function SecaoPlano() {
 
   const cancelar = useMutation({
     mutationFn: async () => {
-      const { error } = await db.assinatura.cancelar();
+      const { data, error } = await db.assinatura.cancelar();
       if (error) throw new Error(error.message);
+      return data?.acessoAte ?? null;
     },
-    onSuccess: () => {
-      toast.success("Assinatura cancelada. Seu plano voltou para o Grátis.");
+    onSuccess: (acessoAte) => {
+      toast.success(
+        acessoAte
+          ? `Assinatura cancelada. Nada mais será cobrado; seu plano continua até ${dataCurta(acessoAte.slice(0, 10))}.`
+          : "Assinatura cancelada. Seu plano voltou para o Grátis.",
+      );
       setConfirmarCancelamento(false);
       atualizarTudo();
     },
@@ -140,6 +146,7 @@ export function SecaoPlano() {
     },
     { rotulo: "Relatórios em PDF e Excel com cabeçalho da fazenda", tem: r.relatoriosCompletos },
     { rotulo: "Alertas por e-mail", tem: r.alertasEmail },
+    { rotulo: "Veterinário convidado, com relatório mensal", tem: r.veterinarioConvidado },
     { rotulo: "Exportar seus dados", tem: r.exportarDados },
     {
       rotulo: `${Number.isFinite(plano.limiteUsuarios) ? plano.limiteUsuarios : "Vários"} ${plano.limiteUsuarios === 1 ? "usuário" : "usuários"} na fazenda`,
@@ -208,7 +215,10 @@ export function SecaoPlano() {
             </p>
             {confirmarCancelamento ? (
               <div className="mt-3 flex flex-wrap items-center gap-2">
-                <span className="text-xs">Cancelar a assinatura? O plano volta para o Grátis.</span>
+                <span className="text-xs">
+                  Cancelar a assinatura? Nada mais será cobrado e o plano continua até o fim do
+                  período já pago; depois a conta volta ao Grátis.
+                </span>
                 <Button
                   size="sm"
                   variant="destructive"
@@ -240,6 +250,21 @@ export function SecaoPlano() {
           </div>
         ) : (
           <>
+            {assinatura?.status === "cancelada" &&
+            assinatura.acessoAte &&
+            new Date(assinatura.acessoAte) > new Date() ? (
+              <div className="mb-4 rounded-lg border border-border bg-accent p-3 text-sm">
+                <p className="font-semibold">
+                  Assinatura cancelada · Plano {planoAssinatura?.nome} até{" "}
+                  {dataCurta(assinatura.acessoAte.slice(0, 10))}
+                </p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Nada mais será cobrado. Você usa o plano até o fim do período já pago; depois a
+                  conta volta ao Grátis, com todos os dados. Se quiser continuar, é só assinar de
+                  novo abaixo.
+                </p>
+              </div>
+            ) : null}
             {assinatura?.status === "pendente" ? (
               <div className="mb-4 rounded-lg border border-warning/40 bg-warning/10 p-3 text-sm">
                 <p className="font-semibold">

@@ -11,6 +11,7 @@
  * um aviso de webhook só diz "olhe a assinatura X", e é a resposta da API
  * que decide o plano da fazenda. Assim um aviso forjado não libera nada.
  */
+import type { TransactionSql } from "postgres";
 import type { Sql } from "./pg.server";
 
 export type Preapproval = {
@@ -21,6 +22,9 @@ export type Preapproval = {
   payer_email?: string | null;
   reason?: string | null;
   auto_recurring?: { transaction_amount?: number | null } | null;
+  /** Próxima cobrança prevista (some quando a assinatura é cancelada). */
+  next_payment_date?: string | null;
+  summarized?: { last_charged_date?: string | null } | null;
 };
 
 function urlApi() {
@@ -220,14 +224,84 @@ const STATUS_INTERNO: Record<string, string> = {
   cancelled: "cancelada",
 };
 
+function somarMeses(data: Date, meses: number): Date {
+  const d = new Date(data);
+  d.setUTCMonth(d.getUTCMonth() + meses);
+  return d;
+}
+
+function dataValida(texto: string | null | undefined): Date | null {
+  if (!texto) return null;
+  const d = new Date(texto);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
+/**
+ * Até quando o cliente já pagou. Na ordem: a próxima cobrança prevista pelo
+ * Mercado Pago; senão, a última cobrança mais um período (mês ou ano); senão,
+ * os períodos contados desde a ativação. Null quando nada indica tempo pago.
+ */
+export function fimDoPeriodoPago(
+  pre: Preapproval | null,
+  a: { periodo: string; ativada_em: Date | null; created_at: Date },
+  agora = new Date(),
+): Date | null {
+  const meses = a.periodo === "anual" ? 12 : 1;
+  const proxima = dataValida(pre?.next_payment_date);
+  if (proxima && proxima > agora) return proxima;
+  const ultima = dataValida(pre?.summarized?.last_charged_date);
+  if (ultima) {
+    const fim = somarMeses(ultima, meses);
+    return fim > agora ? fim : null;
+  }
+  const inicio = a.ativada_em ?? a.created_at;
+  let fim = somarMeses(new Date(inicio), meses);
+  for (let i = 0; fim <= agora && i < 600; i++) fim = somarMeses(fim, meses);
+  return fim;
+}
+
+type LinhaAssinatura = {
+  id: string;
+  fazenda_id: string;
+  plano: string;
+  periodo: string;
+  status: string;
+  ativada_em: Date | null;
+  acesso_ate: Date | null;
+  created_at: Date;
+};
+
+/**
+ * A fazenda volta ao plano Grátis. Como o Grátis não inclui veterinário
+ * convidado, os veterinários saem da fazenda e os convites pendentes deles
+ * são cancelados (colaboradores e dados da fazenda ficam como estavam).
+ * Se o dono assinar de novo, é só convidar outra vez.
+ */
+async function voltarAoGratis(
+  tx: TransactionSql,
+  fazendaId: string,
+  planoAnterior: string,
+): Promise<void> {
+  const mudou = await tx`
+    update fazendas set plano = 'gratis', updated_at = now()
+    where id = ${fazendaId} and plano = ${planoAnterior} returning id`;
+  if (mudou.length === 0) return;
+  await tx`delete from fazenda_membros where fazenda_id = ${fazendaId} and papel = 'veterinario'`;
+  await tx`update convites set status = 'cancelado', updated_at = now()
+           where fazenda_id = ${fazendaId} and papel = 'veterinario' and status = 'pendente'`;
+}
+
 /**
  * Leva o status que o Mercado Pago informou pra assinatura e pro plano da
- * fazenda: ativa → plano da assinatura; pausada/cancelada → volta ao Grátis
- * (se não houver outra assinatura ativa). Devolve o status interno.
+ * fazenda: ativa → plano da assinatura; pausada (cobrança falhou) → volta ao
+ * Grátis; cancelada → o plano continua até o fim do período já pago
+ * (acesso_ate) e só então volta ao Grátis, pela tarefa diária. Sempre que
+ * houver outra assinatura ativa, o plano não cai. Devolve o status interno.
  */
 export async function aplicarPreapproval(sql: Sql, pre: Preapproval): Promise<string | null> {
-  const linhas: { id: string; fazenda_id: string; plano: string }[] = await sql`
-    select id, fazenda_id, plano from assinaturas where mp_preapproval_id = ${pre.id}`;
+  const linhas: LinhaAssinatura[] = await sql`
+    select id, fazenda_id, plano, periodo, status, ativada_em, acesso_ate, created_at
+    from assinaturas where mp_preapproval_id = ${pre.id}`;
   const assinatura = linhas[0];
   if (!assinatura) return null;
   let status = STATUS_INTERNO[pre.status] ?? pre.status;
@@ -244,24 +318,59 @@ export async function aplicarPreapproval(sql: Sql, pre: Preapproval): Promise<st
     }
   }
 
+  // Cancelada depois de paga: guarda até quando já foi pago (se ainda não
+  // veio calculado do cancelamento pelo sistema).
+  let acessoAte = assinatura.acesso_ate;
+  if (status === "cancelada" && assinatura.status === "ativa" && !acessoAte) {
+    acessoAte = fimDoPeriodoPago(pre, assinatura);
+  }
+  const aindaPago = status === "cancelada" && !!acessoAte && acessoAte > new Date();
+
   await sql.begin(async (tx) => {
     await tx`
-      update assinaturas set status = ${status}, updated_at = now()
+      update assinaturas set
+        status = ${status},
+        ativada_em = case when ${status} = 'ativa' then coalesce(ativada_em, now()) else ativada_em end,
+        acesso_ate = ${status === "ativa" ? null : acessoAte},
+        updated_at = now()
       where id = ${assinatura.id}`;
     if (status === "ativa") {
       await tx`update fazendas set plano = ${assinatura.plano}, updated_at = now()
                where id = ${assinatura.fazenda_id}`;
-    } else if (status === "pausada" || status === "cancelada") {
+    } else if (status === "pausada" || (status === "cancelada" && !aindaPago)) {
       const outras: { n: number }[] = await tx`
         select count(*)::int as n from assinaturas
         where fazenda_id = ${assinatura.fazenda_id} and status = 'ativa' and id <> ${assinatura.id}`;
       if ((outras[0]?.n ?? 0) === 0) {
-        await tx`update fazendas set plano = 'gratis', updated_at = now()
-                 where id = ${assinatura.fazenda_id} and plano = ${assinatura.plano}`;
+        await voltarAoGratis(tx, assinatura.fazenda_id, assinatura.plano);
       }
     }
   });
   return status;
+}
+
+/**
+ * Assinaturas canceladas cujo período pago acabou: a fazenda volta ao Grátis
+ * (se não tiver outra assinatura ativa nem outro plano). Roda na tarefa diária
+ * e ao abrir a tela de plano. Devolve quantas foram encerradas.
+ */
+export async function encerrarPeriodosVencidos(sql: Sql, fazendaId?: string): Promise<number> {
+  const vencidas: { id: string; fazenda_id: string; plano: string }[] = await sql`
+    select id, fazenda_id, plano from assinaturas
+    where status = 'cancelada' and acesso_ate is not null and acesso_ate <= now()
+      ${fazendaId ? sql`and fazenda_id = ${fazendaId}` : sql``}`;
+  for (const a of vencidas) {
+    await sql.begin(async (tx) => {
+      const outras: { n: number }[] = await tx`
+        select count(*)::int as n from assinaturas
+        where fazenda_id = ${a.fazenda_id} and status = 'ativa' and id <> ${a.id}`;
+      if ((outras[0]?.n ?? 0) === 0) {
+        await voltarAoGratis(tx, a.fazenda_id, a.plano);
+      }
+      await tx`update assinaturas set acesso_ate = null, updated_at = now() where id = ${a.id}`;
+    });
+  }
+  return vencidas.length;
 }
 
 /**

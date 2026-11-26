@@ -79,7 +79,15 @@ export function statusUnificadoLancamento(
   l: { tipo: string; status: string; data: string | Date },
   hoje: string,
 ): StatusConta {
-  if (l.tipo !== "receita") return "pago";
+  // Despesa só fica pendente quando nasceu "a_pagar" (ex.: dias futuros da
+  // rotina de alimentação); as demais são lançamentos já pagos.
+  if (l.tipo !== "receita") {
+    if (l.status !== "a_pagar") return "pago";
+    return dataISO(l.data) < hoje ? "atrasado" : "pendente";
+  }
   if (l.status === "recebido") return "pago";
   return dataISO(l.data) < hoje ? "atrasado" : "pendente";
 }
+
+/** Máximo de parcelas no cartão oferecido em todo o sistema. */
+export const MAX_PARCELAS_CARTAO = 12;

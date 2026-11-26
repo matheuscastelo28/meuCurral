@@ -1,4 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
+import { ParcelasCartao } from "@/components/ParcelasCartao";
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -1518,21 +1519,12 @@ function Engorda() {
                   ) : null}
 
                   {vendaAvulsaPago && vendaAvulsaFormaPagamento === "cartao" ? (
-                    <div className="space-y-1.5">
-                      <Label htmlFor="venda-boi-parcelas">Parcelas</Label>
-                      <select
-                        id="venda-boi-parcelas"
-                        value={vendaAvulsaParcelas}
-                        onChange={(ev) => setVendaAvulsaParcelas(ev.target.value)}
-                        className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
-                      >
-                        {[1, 2, 3].map((n) => (
-                          <option key={n} value={n}>
-                            {n}x de {moeda(vendaAvulsaTotal / n)}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
+                    <ParcelasCartao
+                      id="venda-boi-parcelas"
+                      total={vendaAvulsaTotal}
+                      value={vendaAvulsaParcelas}
+                      onChange={setVendaAvulsaParcelas}
+                    />
                   ) : null}
 
                   <div className="flex gap-2 sm:col-span-2">
@@ -1880,6 +1872,7 @@ function DialogVenderLote({
   }, [aberto, precoSugerido]);
 
   const valorEstimado = lote && Number(preco) > 0 ? lote.arrobasTotais * Number(preco) : 0;
+  const [parcelas, setParcelas] = useState("1");
 
   const salvar = useMutation({
     mutationFn: async () => {
@@ -1892,6 +1885,7 @@ function DialogVenderLote({
         data,
         pago,
         formaPagamento,
+        parcelas: pago && formaPagamento === "cartao" ? Number(parcelas) || 1 : null,
         produto,
         unidade,
       });
@@ -1998,6 +1992,14 @@ function DialogVenderLote({
               </select>
             </div>
           ) : null}
+          {pago && formaPagamento === "cartao" ? (
+            <ParcelasCartao
+              id="vl-parcelas"
+              total={valorEstimado}
+              value={parcelas}
+              onChange={setParcelas}
+            />
+          ) : null}
         </form>
         <DialogFooter>
           <Button variant="outline" type="button" onClick={onFechar}>
@@ -2091,6 +2093,18 @@ function DialogAlimentacaoLote({
   const [tipos, setTipos] = useState<Record<TipoAlimento, EstadoTipoAlimento>>(TIPOS_VAZIOS);
   const [custoDia, setCustoDia] = useState("");
   const [observacoes, setObservacoes] = useState("");
+  // Quantos dias da rotina caem depois de hoje: esses entram como "a pagar".
+  const diasAPagar =
+    Number(custoDia) > 0
+      ? gerarDatasOcorrencias(
+          frequencia,
+          data,
+          Math.max(1, Math.floor(Number(intervaloDias) || 1)),
+          frequencia === "unico"
+            ? 1
+            : Math.max(1, Math.min(MAX_OCORRENCIAS, Math.floor(Number(numOcorrencias) || 1))),
+        ).filter((d) => d > hojeISO()).length
+      : 0;
 
   useEffect(() => {
     if (!aberto) return;
@@ -2220,6 +2234,9 @@ function DialogAlimentacaoLote({
                 data: dataOcorrencia,
                 categoria: "racao",
                 lote: loteAlvo,
+                // Até hoje já foi gasto (pago); os dias seguintes ficam "a pagar"
+                // e o produtor dá baixa no Financeiro quando pagar.
+                status: dataOcorrencia > hojeISO() ? "a_pagar" : "confirmado",
               } as never);
             if (erroDespesa) throw erroDespesa;
             despesaId = (criadas?.[0]?.id as string | undefined) ?? null;
@@ -2239,7 +2256,11 @@ function DialogAlimentacaoLote({
       }
     },
     onSuccess: () => {
-      toast.success("Rotina de alimentação registrada.");
+      toast.success(
+        diasAPagar > 0
+          ? `Rotina registrada. ${diasAPagar} ${diasAPagar === 1 ? "dia ficou" : "dias ficaram"} como “a pagar” no Financeiro.`
+          : "Rotina de alimentação registrada.",
+      );
       onSalvo();
       onFechar();
     },
@@ -2321,6 +2342,7 @@ function DialogAlimentacaoLote({
             data,
             categoria: "racao",
             lote: registroEditar.lote,
+            status: data > hojeISO() ? "a_pagar" : "confirmado",
           } as never);
         if (erroDespesa) throw erroDespesa;
         const novaDespesaId = criadas?.[0]?.id as string | undefined;
@@ -2568,6 +2590,13 @@ function DialogAlimentacaoLote({
               Quanto custa por dia o que foi oferecido (ração, silagem...). Entra como despesa e no
               custo do lote.
             </p>
+            {!modoEdicao && diasAPagar > 0 ? (
+              <p className="rounded-md bg-muted px-2 py-1.5 text-xs text-muted-foreground">
+                Os dias até hoje entram como pagos. {diasAPagar}{" "}
+                {diasAPagar === 1 ? "dia depois de hoje entra" : "dias depois de hoje entram"} no
+                Financeiro como “a pagar”: dê baixa quando pagar.
+              </p>
+            ) : null}
             {escopo === "rebanho" && Number(custoDia) > 0 ? (
               <p className="rounded-md bg-warning/10 px-2 py-1.5 text-xs text-warning">
                 Custo para &quot;todo o rebanho&quot; vai pro Financeiro, mas não entra na margem de
