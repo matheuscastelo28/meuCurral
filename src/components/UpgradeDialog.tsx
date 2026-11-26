@@ -47,7 +47,7 @@ export function UpgradeDialog({
             </Link>
           </Button>
           <Button variant="outline" onClick={onFechar}>
-            Continuar assim
+            Fechar
           </Button>
         </div>
       </DialogContent>
